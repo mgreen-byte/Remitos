@@ -18,8 +18,8 @@ function AdminInner({ profile }) {
   const [choferes, setChoferes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [nuevoIva, setNuevoIva] = useState("");
-  const [formTransp, setFormTransp] = useState({ nombre: "", cuit: "", domicilio: "", chasis: "", acoplado: "" });
-  const [formChofer, setFormChofer] = useState({ nombre: "", dni: "" });
+  const [formTransp, setFormTransp] = useState({ nombre: "", cuit: "", domicilio: "" });
+  const [formChofer, setFormChofer] = useState({ nombre: "", dni: "", chasis: "", acoplado: "" });
   const [errorChofer, setErrorChofer] = useState("");
 
   const cargar = async () => {
@@ -49,12 +49,10 @@ function AdminInner({ profile }) {
       nombre: up(formTransp.nombre),
       cuit: formTransp.cuit,
       domicilio: up(formTransp.domicilio),
-      chasis: up(formTransp.chasis),
-      acoplado: up(formTransp.acoplado),
     };
     const { data } = await supabase.from("transportistas").insert(payload).select().single();
     if (data) setTransportistas((t) => [...t, data]);
-    setFormTransp({ nombre: "", cuit: "", domicilio: "", chasis: "", acoplado: "" });
+    setFormTransp({ nombre: "", cuit: "", domicilio: "" });
   };
 
   const borrarTransportista = async (id) => {
@@ -64,21 +62,31 @@ function AdminInner({ profile }) {
 
   const agregarChofer = async () => {
     setErrorChofer("");
-    if (!formChofer.nombre.trim() || !formChofer.dni.trim()) {
-      setErrorChofer("Completá nombre y CUIL/DNI.");
+    if (!formChofer.nombre.trim()) {
+      setErrorChofer("Completá el nombre.");
+      return;
+    }
+    const dniLimpio = formChofer.dni.replace(/\D/g, "");
+    if (dniLimpio.length !== 11) {
+      setErrorChofer("El CUIL tiene que tener 11 dígitos numéricos.");
       return;
     }
     const { data, error } = await supabase
       .from("choferes")
-      .insert({ nombre: up(formChofer.nombre), dni: formChofer.dni.trim() })
+      .insert({
+        nombre: up(formChofer.nombre),
+        dni: dniLimpio,
+        chasis: up(formChofer.chasis),
+        acoplado: up(formChofer.acoplado),
+      })
       .select()
       .single();
     if (error) {
-      setErrorChofer(error.code === "23505" ? "Ese CUIL/DNI ya está cargado." : "No se pudo guardar el chofer.");
+      setErrorChofer(error.code === "23505" ? "Ese CUIL ya está cargado." : "No se pudo guardar el chofer.");
       return;
     }
     setChoferes((c) => [...c, data]);
-    setFormChofer({ nombre: "", dni: "" });
+    setFormChofer({ nombre: "", dni: "", chasis: "", acoplado: "" });
   };
 
   const borrarChofer = async (id) => {
@@ -138,8 +146,8 @@ function AdminInner({ profile }) {
         <div className="bg-white rounded-lg border border-stone-200 p-4">
           <div className="text-sm font-semibold mb-1">Transportistas</div>
           <p className="text-xs text-stone-400 mb-3">
-            Datos de la empresa/vehículo. El chofer se carga por separado, porque puede cambiar de
-            transporte de un día para el otro.
+            Datos de la empresa de transporte. El camión y el chofer se cargan por separado, porque
+            pueden cambiar de un viaje al otro.
           </p>
           <div className="space-y-3">
             {transportistas.map((t) => (
@@ -147,7 +155,7 @@ function AdminInner({ profile }) {
                 <div>
                   <div className="font-medium">{t.nombre}</div>
                   <div className="text-stone-400 text-xs">
-                    {t.domicilio} · Chasis {t.chasis} · Acoplado {t.acoplado}
+                    {t.cuit} · {t.domicilio}
                   </div>
                 </div>
                 <button onClick={() => borrarTransportista(t.id)} className="text-stone-400 hover:text-red-500 px-1">
@@ -160,8 +168,6 @@ function AdminInner({ profile }) {
                 ["nombre", "Nombre / razón social"],
                 ["cuit", "C.U.I.T."],
                 ["domicilio", "Domicilio"],
-                ["chasis", "Chasis"],
-                ["acoplado", "Acoplado"],
               ].map(([key, label]) => (
                 <input
                   key={key}
@@ -181,15 +187,18 @@ function AdminInner({ profile }) {
         <div className="bg-white rounded-lg border border-stone-200 p-4">
           <div className="text-sm font-semibold mb-1">Choferes</div>
           <p className="text-xs text-stone-400 mb-3">
-            Compartidos entre todos los usuarios. El CUIL/DNI no se puede repetir — cualquier operador
-            también puede agregar uno nuevo directamente desde "Generar remito".
+            Compartidos entre todos los usuarios. El CUIL (11 dígitos) es obligatorio y no se puede
+            repetir — cualquier operador también puede agregar uno nuevo directamente desde "Generar
+            remito".
           </p>
           <div className="space-y-3">
             {choferes.map((c) => (
               <div key={c.id} className="flex items-center justify-between border border-stone-200 rounded px-3 py-2 text-sm">
                 <div>
                   <div className="font-medium">{c.nombre}</div>
-                  <div className="text-stone-400 text-xs">{c.dni}</div>
+                  <div className="text-stone-400 text-xs">
+                    CUIL {c.dni} · Chasis {c.chasis} · Acoplado {c.acoplado}
+                  </div>
                 </div>
                 <button onClick={() => borrarChofer(c.id)} className="text-stone-400 hover:text-red-500 px-1">
                   ✕
@@ -200,13 +209,26 @@ function AdminInner({ profile }) {
               <input
                 value={formChofer.nombre}
                 onChange={(e) => setFormChofer((f) => ({ ...f, nombre: e.target.value }))}
-                placeholder="Nombre del chofer"
+                placeholder="Nombre y apellido"
                 className="border border-stone-300 rounded px-2 py-1.5 text-sm"
               />
               <input
                 value={formChofer.dni}
-                onChange={(e) => setFormChofer((f) => ({ ...f, dni: e.target.value }))}
-                placeholder="CUIL / DNI"
+                onChange={(e) => setFormChofer((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+                placeholder="CUIL (11 dígitos)"
+                inputMode="numeric"
+                className="border border-stone-300 rounded px-2 py-1.5 text-sm"
+              />
+              <input
+                value={formChofer.chasis}
+                onChange={(e) => setFormChofer((f) => ({ ...f, chasis: e.target.value }))}
+                placeholder="Patente chasis"
+                className="border border-stone-300 rounded px-2 py-1.5 text-sm"
+              />
+              <input
+                value={formChofer.acoplado}
+                onChange={(e) => setFormChofer((f) => ({ ...f, acoplado: e.target.value }))}
+                placeholder="Patente acoplado"
                 className="border border-stone-300 rounded px-2 py-1.5 text-sm"
               />
             </div>

@@ -168,7 +168,7 @@ function GenerarInner({ profile }) {
   const applyTransportista = (id) => {
     const t = transportistas.find((x) => x.id === id);
     if (!t) {
-      setRemito((r) => ({ ...r, transportistaId: "", transportista: "", transpCuit: "", transpDomicilio: "", chasis: "", acoplado: "" }));
+      setRemito((r) => ({ ...r, transportistaId: "", transportista: "", transpCuit: "", transpDomicilio: "" }));
       return;
     }
     setRemito((r) => ({
@@ -177,8 +177,6 @@ function GenerarInner({ profile }) {
       transportista: up(t.nombre),
       transpCuit: up(t.cuit),
       transpDomicilio: up(t.domicilio),
-      chasis: up(t.chasis),
-      acoplado: up(t.acoplado),
     }));
   };
 
@@ -187,35 +185,47 @@ function GenerarInner({ profile }) {
     setErrorChofer("");
     const c = choferes.find((x) => x.id === id);
     if (!c) {
-      setRemito((r) => ({ ...r, choferId: "", chofer: "", choferDni: "" }));
+      setRemito((r) => ({ ...r, choferId: "", chofer: "", choferDni: "", chasis: "", acoplado: "" }));
       return;
     }
-    setRemito((r) => ({ ...r, choferId: id, chofer: up(c.nombre), choferDni: up(c.dni) }));
+    setRemito((r) => ({
+      ...r,
+      choferId: id,
+      chofer: up(c.nombre),
+      choferDni: up(c.dni),
+      chasis: up(c.chasis),
+      acoplado: up(c.acoplado),
+    }));
   };
 
   const guardarNuevoChofer = async () => {
     setErrorChofer("");
-    if (!nuevoChofer?.nombre?.trim() || !nuevoChofer?.dni?.trim()) {
-      setErrorChofer("Completá nombre y CUIL/DNI.");
+    if (!nuevoChofer?.nombre?.trim()) {
+      setErrorChofer("Completá el nombre.");
+      return;
+    }
+    const dniLimpio = (nuevoChofer.dni || "").replace(/\D/g, "");
+    if (dniLimpio.length !== 11) {
+      setErrorChofer("El CUIL tiene que tener 11 dígitos numéricos.");
       return;
     }
     const { data, error } = await supabase
       .from("choferes")
-      .insert({ nombre: up(nuevoChofer.nombre), dni: nuevoChofer.dni.trim() })
+      .insert({
+        nombre: up(nuevoChofer.nombre),
+        dni: dniLimpio,
+        chasis: up(nuevoChofer.chasis),
+        acoplado: up(nuevoChofer.acoplado),
+      })
       .select()
       .single();
     if (error) {
       if (error.code === "23505") {
-        // ya existe ese DNI: lo buscamos y lo seleccionamos directamente
-        const { data: existente } = await supabase
-          .from("choferes")
-          .select("*")
-          .eq("dni", nuevoChofer.dni.trim())
-          .maybeSingle();
+        const { data: existente } = await supabase.from("choferes").select("*").eq("dni", dniLimpio).maybeSingle();
         if (existente) {
           setChoferes((cs) => (cs.find((x) => x.id === existente.id) ? cs : [...cs, existente]));
           applyChofer(existente.id);
-          setErrorChofer("Ese CUIL/DNI ya estaba cargado — lo seleccioné de la lista.");
+          setErrorChofer("Ese CUIL ya estaba cargado — lo seleccioné de la lista.");
           return;
         }
       }
@@ -380,7 +390,7 @@ function GenerarInner({ profile }) {
               value={remito.choferId}
               onChange={(e) => {
                 if (e.target.value === "__nuevo__") {
-                  setNuevoChofer({ nombre: "", dni: "" });
+                  setNuevoChofer({ nombre: "", dni: "", chasis: "", acoplado: "" });
                   setRemito((r) => ({ ...r, choferId: "" }));
                 } else {
                   applyChofer(e.target.value);
@@ -401,15 +411,30 @@ function GenerarInner({ profile }) {
                 <input
                   value={nuevoChofer.nombre}
                   onChange={(e) => setNuevoChofer((n) => ({ ...n, nombre: e.target.value }))}
-                  placeholder="Nombre del chofer"
+                  placeholder="Nombre y apellido"
                   className="w-full border border-stone-300 rounded px-2 py-1.5 text-sm uppercase"
                 />
                 <input
                   value={nuevoChofer.dni}
-                  onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value }))}
-                  placeholder="CUIL / DNI"
+                  onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+                  placeholder="CUIL (11 dígitos)"
+                  inputMode="numeric"
                   className="w-full border border-stone-300 rounded px-2 py-1.5 text-sm"
                 />
+                <div className="flex gap-2">
+                  <input
+                    value={nuevoChofer.chasis}
+                    onChange={(e) => setNuevoChofer((n) => ({ ...n, chasis: e.target.value }))}
+                    placeholder="Patente chasis"
+                    className="flex-1 border border-stone-300 rounded px-2 py-1.5 text-sm uppercase"
+                  />
+                  <input
+                    value={nuevoChofer.acoplado}
+                    onChange={(e) => setNuevoChofer((n) => ({ ...n, acoplado: e.target.value }))}
+                    placeholder="Patente acoplado"
+                    className="flex-1 border border-stone-300 rounded px-2 py-1.5 text-sm uppercase"
+                  />
+                </div>
                 {errorChofer && <div className="text-xs text-amber-700">{errorChofer}</div>}
                 <div className="flex gap-2">
                   <button onClick={guardarNuevoChofer} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">
