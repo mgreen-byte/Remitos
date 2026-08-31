@@ -10,8 +10,13 @@
     background: white !important;
   }
   .print-page {
+    display: block !important;
     box-shadow: none !important;
     margin: 0 !important;
+  }
+  .field-print {
+    border: none !important;
+    background: transparent !important;
   }
 }
 
