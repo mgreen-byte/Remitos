@@ -130,7 +130,7 @@ function GenerarInner({ profile }) {
         ? c.items.map((it) => ({ ...it, descripcion: up(it.descripcion), pesoUnidad: "" }))
         : [{ id: uid(), cantidad: "", descripcion: "", pesoUnidad: "" }],
       totalUnidades: String(c.totalCantidad || ""),
-      totalKgs: String(c.totalKilos || ""),
+      totalKgs: c.totalKilos ? String(Math.round(c.totalKilos * 100) / 100) : "",
       observaciones: up(obs),
     }));
     setMostrarPreview(false);
@@ -150,7 +150,7 @@ function GenerarInner({ profile }) {
       (acc, it) => acc + (Number(it.cantidad) || 0) * (Number(it.pesoUnidad) || 0),
       0
     );
-    setRemito((r) => ({ ...r, totalKgs: sumaKg ? String(sumaKg) : "" }));
+    setRemito((r) => ({ ...r, totalKgs: sumaKg ? String(Math.round(sumaKg * 100) / 100) : "" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalidad, JSON.stringify(remito.items.map((i) => [i.cantidad, i.pesoUnidad]))]);
 
