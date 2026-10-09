@@ -18,7 +18,12 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("Usuario o contraseña incorrectos.");
+      const credenciales = error.status === 400 || /invalid login credentials/i.test(error.message || "");
+      setError(
+        credenciales
+          ? "Usuario o contraseña incorrectos."
+          : "No se pudo conectar con el servidor. Revisá tu internet o avisá al administrador."
+      );
       return;
     }
     router.replace("/generar");
@@ -60,7 +65,7 @@ export default function LoginPage() {
           {loading ? "Ingresando…" : "Ingresar"}
         </button>
         <div className="text-xs text-stone-400 text-center pt-2">
-          ¿No tenés cuenta? Pedile al admin que te invite desde el panel de Supabase.
+          ¿No tenés usuario? Pedíselo al administrador.
         </div>
       </form>
     </div>
