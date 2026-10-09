@@ -2,6 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-stone-100 text-stone-800 font-sans text-[14px] leading-relaxed;
+  }
+  input:not([type="checkbox"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    @apply bg-white border border-stone-300 rounded-md text-stone-800 placeholder-stone-400 transition;
+  }
+  input:not([type="checkbox"]):not([type="range"]):not([type="file"]):focus,
+  select:focus,
+  textarea:focus {
+    @apply outline-none border-emerald-500 ring-2 ring-emerald-100;
+  }
+  input[readonly] {
+    @apply bg-stone-100 text-stone-500;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  summary:focus-visible {
+    @apply outline-none ring-2 ring-emerald-300 rounded;
+  }
+  h1, h2, h3 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-white border border-stone-200 rounded-xl shadow-soft;
+  }
+  .paso-titulo {
+    @apply text-[15px] font-semibold text-stone-800;
+  }
+  .paso-ayuda {
+    @apply text-[13px] text-stone-500;
+  }
+  .campo-etiqueta {
+    @apply block text-[12px] font-medium text-stone-500 mb-1;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition disabled:opacity-50;
+  }
+  .btn-primario {
+    @apply btn bg-emerald-700 text-white hover:bg-emerald-800;
+  }
+  .btn-secundario {
+    @apply btn bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-50;
+  }
+}
+
 @media print {
   html,
   body {

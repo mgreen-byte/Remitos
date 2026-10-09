@@ -29,8 +29,7 @@ function AdminInner({ profile }) {
   }, [tab]);
 
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-800">
-      <NavBar profile={profile} />
+    <NavBar profile={profile}>
       <div className="max-w-6xl mx-auto p-6 space-y-4">
         <div className="flex gap-1 flex-wrap">
           {TABS.map(([id, label]) => (
@@ -130,7 +129,7 @@ function AdminInner({ profile }) {
 
         {tab === "config" && <Config />}
       </div>
-    </div>
+    </NavBar>
   );
 }
 
@@ -148,7 +147,7 @@ function Config() {
     setMsg(error ? error.message : "Guardado.");
   };
   return (
-    <div className="bg-white border border-stone-200 rounded-lg p-4 space-y-2 max-w-md">
+    <div className="panel p-4 space-y-2 max-w-md">
       <div className="text-xs font-semibold text-stone-500 uppercase">Condiciones de IVA (una por línea)</div>
       <textarea value={iva} onChange={(e) => setIva(e.target.value)} rows={6} className="w-full border border-stone-300 rounded px-2 py-1.5 text-sm uppercase" />
       <button onClick={guardar} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">

@@ -35,10 +35,23 @@ function remitoVacio() {
   };
 }
 
-const inputCls = "w-full border border-stone-300 rounded px-2 py-1.5 text-sm";
-const labelCls = "block text-xs text-stone-500";
-const cardCls = "bg-white rounded-lg border border-stone-200 p-4 space-y-3";
-const titleCls = "text-xs font-semibold text-stone-500 uppercase";
+const inp = "w-full px-3 py-2 text-[14px]";
+const lab = "campo-etiqueta";
+
+function Paso({ n, titulo, ayuda, children }) {
+  return (
+    <section className="panel p-6">
+      <div className="flex items-start gap-3 mb-5">
+        <span className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 text-[12px] font-semibold flex items-center justify-center">{n}</span>
+        <div>
+          <h2 className="paso-titulo">{titulo}</h2>
+          {ayuda && <p className="paso-ayuda">{ayuda}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 export default function GenerarPage() {
   return <AuthGuard>{(profile) => <GenerarInner profile={profile} />}</AuthGuard>;
@@ -71,6 +84,7 @@ function GenerarInner({ profile }) {
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
   const [sugerido, setSugerido] = useState("");
   const fileInputRef = useRef(null);
+  const previewRef = useRef(null);
 
   const planta = esAdmin ? plantas.find((p) => p.id === plantaId) : profile.planta;
   const puntoVenta = planta?.punto_venta || "";
@@ -395,341 +409,397 @@ function GenerarInner({ profile }) {
 
   const bloqueado = !!emitido;
 
-  return (
-    <div className="print-reset min-h-screen bg-stone-100 text-stone-800 flex flex-col">
-      <NavBar profile={profile} />
-      <div className="print-reset flex-1 flex flex-col lg:flex-row gap-6 p-6">
-        <div className="no-print w-full lg:w-[480px] flex-shrink-0 space-y-5">
-          {emitido && (
-            <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-4 space-y-2">
-              <div className="text-sm font-semibold text-emerald-800">
-                Remito {emitido.pv}-{emitido.numero} registrado
-              </div>
-              <div className="text-xs text-emerald-700">El stock ya fue descontado. Si no salió la impresión, podés reimprimir.</div>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="bg-white border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
-                  Imprimir de nuevo
-                </button>
-                <button onClick={() => reiniciar()} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">
-                  Nuevo remito
-                </button>
-              </div>
-            </div>
-          )}
+  const abrirPreview = () => {
+    setError("");
+    setMostrarPreview(true);
+    setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
 
-          <fieldset disabled={bloqueado} className="space-y-5 disabled:opacity-60">
-            <div className={cardCls}>
-              <div className={titleCls}>Modalidad</div>
-              <div className="flex gap-2">
-                {MODALIDADES.filter((m) => modalidadesPermitidas.includes(m.id)).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => reiniciar(m.id)}
-                    className={`flex-1 px-3 py-2 rounded text-sm font-medium border ${
-                      modalidad === m.id ? "bg-emerald-700 text-white border-emerald-700" : "bg-white text-stone-600 border-stone-300 hover:border-emerald-400"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+  return (
+    <NavBar profile={profile}>
+      <div className="print-reset max-w-4xl mx-auto px-6 py-8 space-y-5">
+        <header className="no-print mb-2">
+          <h1 className="text-[22px] font-semibold text-stone-900">Nuevo remito</h1>
+          <p className="text-stone-500 text-[13.5px]">Completá los datos de arriba hacia abajo. Al final podés ver cómo queda en el formulario antes de imprimir.</p>
+        </header>
+
+        {emitido && (
+          <div className="no-print panel border-emerald-200 bg-emerald-50 p-5 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <div className="font-semibold text-emerald-800">Remito {emitido.pv}-{emitido.numero} registrado</div>
+              <div className="text-[13px] text-emerald-700">El stock ya fue descontado. Si no salió la impresión, podés reimprimir.</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => window.print()} className="btn-secundario">Imprimir de nuevo</button>
+              <button onClick={() => reiniciar()} className="btn-primario">Nuevo remito</button>
+            </div>
+          </div>
+        )}
+
+        <fieldset disabled={bloqueado} className="no-print space-y-5 disabled:opacity-60 min-w-0">
+          <Paso n="1" titulo="Origen" ayuda="Qué tipo de remito es y desde qué planta sale.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <span className={lab}>Modalidad</span>
+                <div className="flex gap-2">
+                  {MODALIDADES.filter((m) => modalidadesPermitidas.includes(m.id)).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => reiniciar(m.id)}
+                      className={`flex-1 px-3 py-2 rounded-md text-[13.5px] font-medium border transition ${
+                        modalidad === m.id ? "bg-emerald-700 text-white border-emerald-700" : "bg-white text-stone-600 border-stone-300 hover:border-emerald-400"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {esAdmin && (
-                <label className={labelCls}>
-                  Planta
-                  <select value={plantaId} onChange={(e) => { setPlantaId(e.target.value); setItems([itemVacio()]); }} className={inputCls}>
+              <div>
+                <span className={lab}>Planta</span>
+                {esAdmin ? (
+                  <select value={plantaId} onChange={(e) => { setPlantaId(e.target.value); setItems([itemVacio()]); }} className={inp}>
                     {plantas.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} (PV {p.punto_venta})
                       </option>
                     ))}
                   </select>
-                </label>
-              )}
-              {!planta && <div className="text-xs text-red-600">Tu usuario no tiene una planta asignada. Pedile al administrador que te la asigne.</div>}
+                ) : (
+                  <input value={profile.planta ? `${profile.planta.nombre} (PV ${profile.planta.punto_venta})` : "Sin planta asignada"} readOnly className={inp} />
+                )}
+                {!planta && <div className="text-[12px] text-red-600 mt-1">Pedile al administrador que te asigne una planta.</div>}
+              </div>
             </div>
 
             {modalidad !== "generico" && (
-              <div className={cardCls}>
-                <div className={titleCls}>Orden de carga (Excel) — opcional</div>
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="text-sm" />
-                {fileName && <div className="text-xs text-stone-500">Archivo: {fileName} (no se guarda, solo se procesa)</div>}
-                {parseError && <div className="text-xs text-red-600">{parseError}</div>}
-                {ocData && (
-                  <select value={clienteSel} onChange={(e) => selectCliente(e.target.value)} className={inputCls}>
-                    <option value="">Elegir cliente ({ocData.clientes.length})…</option>
-                    {ocData.clientes.map((c) => (
-                      <option key={c.cliente} value={c.cliente}>
-                        {c.cliente} — {c.totalCantidad} u. / {c.totalKilos} kg
+              <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2 items-end">
+                <div>
+                  <span className={lab}>Orden de carga (Excel, opcional)</span>
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
+                  {fileName && <div className="text-[12px] text-stone-400 mt-1">{fileName} · no se guarda, solo se lee en este navegador</div>}
+                  {parseError && <div className="text-[12px] text-red-600 mt-1">{parseError}</div>}
+                </div>
+                <div>
+                  {ocData ? (
+                    <>
+                      <span className={lab}>Cliente de la orden ({ocData.clientes.length})</span>
+                      <select value={clienteSel} onChange={(e) => selectCliente(e.target.value)} className={inp}>
+                        <option value="">Elegir cliente…</option>
+                        {ocData.clientes.map((c) => (
+                          <option key={c.cliente} value={c.cliente}>
+                            {c.cliente} — {c.totalCantidad} u. / {c.totalKilos} kg
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : (
+                    <div className="text-[12.5px] text-stone-400">Sin Excel, cargá los datos a mano en los pasos siguientes.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </Paso>
+
+          <Paso n="2" titulo="Datos del remito" ayuda="El número es el que viene impreso en la hoja del talonario.">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className={lab}>Punto de venta</label>
+                <input value={puntoVenta} readOnly className={inp} />
+              </div>
+              <div>
+                <label className={lab}>Número (8 dígitos)</label>
+                <input
+                  value={remito.numero}
+                  onChange={(e) => setRemito((r) => ({ ...r, numero: e.target.value.replace(/\D/g, "").slice(0, 8) }))}
+                  placeholder="00000001"
+                  inputMode="numeric"
+                  className={inp}
+                />
+                {sugerido && remito.numero !== sugerido && (
+                  <button type="button" onClick={() => setRemito((r) => ({ ...r, numero: sugerido }))} className="text-[12px] text-emerald-700 hover:underline mt-1">
+                    Usar el siguiente: {sugerido}
+                  </button>
+                )}
+              </div>
+              <div>
+                <label className={lab}>Fecha</label>
+                <input type="date" value={remito.fecha} onChange={(e) => setRemito((r) => ({ ...r, fecha: e.target.value }))} className={inp} />
+              </div>
+            </div>
+          </Paso>
+
+          <Paso n="3" titulo="Destinatario">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="md:col-span-2">
+                <label className={lab}>Nombre o razón social</label>
+                <input value={remito.destinatario} onChange={(e) => setRemito((r) => ({ ...r, destinatario: up(e.target.value) }))} className={inp} />
+              </div>
+              <div>
+                <label className={lab}>CUIT</label>
+                <input value={remito.cuit} onChange={(e) => setRemito((r) => ({ ...r, cuit: up(e.target.value) }))} className={inp} />
+              </div>
+              <div className="md:col-span-2">
+                <label className={lab}>Domicilio</label>
+                <input value={remito.domicilio} onChange={(e) => setRemito((r) => ({ ...r, domicilio: up(e.target.value) }))} className={inp} />
+              </div>
+              <div>
+                <label className={lab}>Condición de IVA</label>
+                <select value={remito.iva} onChange={(e) => setRemito((r) => ({ ...r, iva: e.target.value }))} className={inp}>
+                  {ivaOptions.map((op) => (
+                    <option key={op}>{op}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-3">
+                <label className={lab}>Entregar en</label>
+                <input value={remito.entregarEn} onChange={(e) => setRemito((r) => ({ ...r, entregarEn: up(e.target.value) }))} className={inp} />
+              </div>
+            </div>
+          </Paso>
+
+          <Paso n="4" titulo="Transporte" ayuda="Elegí de la lista o cargá los datos a mano. Los choferes nuevos quedan guardados para todos.">
+            <div className="grid gap-8 md:grid-cols-2">
+              <div className="space-y-3">
+                <div>
+                  <label className={lab}>Transportista</label>
+                  <select value={remito.transportistaId} onChange={(e) => applyTransportista(e.target.value)} className={inp}>
+                    <option value="">Cargar a mano…</option>
+                    {transportistas.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nombre}
                       </option>
                     ))}
                   </select>
+                </div>
+                {!remito.transportistaId ? (
+                  <>
+                    <input value={remito.transportista} onChange={(e) => setRemito((r) => ({ ...r, transportista: up(e.target.value) }))} placeholder="Nombre o razón social" className={inp} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input value={remito.transpCuit} onChange={(e) => setRemito((r) => ({ ...r, transpCuit: up(e.target.value) }))} placeholder="CUIT" className={inp} />
+                      <input value={remito.transpDomicilio} onChange={(e) => setRemito((r) => ({ ...r, transpDomicilio: up(e.target.value) }))} placeholder="Domicilio" className={inp} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[12.5px] text-stone-500">
+                    CUIT {remito.transpCuit || "—"} · {remito.transpDomicilio || "sin domicilio"}
+                  </div>
                 )}
-                <div className="text-xs text-stone-400">Sin Excel, cargá los datos a mano más abajo.</div>
               </div>
-            )}
 
-            <div className={cardCls}>
-              <div className={titleCls}>Datos del remito</div>
-              <div className="flex gap-2">
-                <div className="w-24">
-                  <div className="text-[10px] text-stone-400 mb-0.5">Punto de venta</div>
-                  <input value={puntoVenta} readOnly className={`${inputCls} bg-stone-100`} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-[10px] text-stone-400 mb-0.5">N° impreso en la hoja (8 dígitos)</div>
-                  <input
-                    value={remito.numero}
-                    onChange={(e) => setRemito((r) => ({ ...r, numero: e.target.value.replace(/\D/g, "").slice(0, 8) }))}
-                    placeholder="00000001"
-                    inputMode="numeric"
-                    className={inputCls}
-                  />
-                </div>
-                <div className="w-36">
-                  <div className="text-[10px] text-stone-400 mb-0.5">Fecha</div>
-                  <input type="date" value={remito.fecha} onChange={(e) => setRemito((r) => ({ ...r, fecha: e.target.value }))} className={inputCls} />
-                </div>
-              </div>
-              {sugerido && remito.numero !== sugerido && (
-                <button onClick={() => setRemito((r) => ({ ...r, numero: sugerido }))} className="text-xs text-emerald-700 hover:underline">
-                  Usar el siguiente número: {sugerido}
-                </button>
-              )}
-              <label className={labelCls}>
-                Destinatario
-                <input value={remito.destinatario} onChange={(e) => setRemito((r) => ({ ...r, destinatario: up(e.target.value) }))} className={inputCls} />
-              </label>
-              <div className="flex gap-2">
-                <label className={`${labelCls} flex-1`}>
-                  CUIT
-                  <input value={remito.cuit} onChange={(e) => setRemito((r) => ({ ...r, cuit: up(e.target.value) }))} className={inputCls} />
-                </label>
-                <label className={`${labelCls} flex-1`}>
-                  Condición de IVA
-                  <select value={remito.iva} onChange={(e) => setRemito((r) => ({ ...r, iva: e.target.value }))} className={inputCls}>
-                    {ivaOptions.map((op) => (
-                      <option key={op}>{op}</option>
+              <div className="space-y-3">
+                <div>
+                  <label className={lab}>Chofer</label>
+                  <select
+                    value={remito.choferId}
+                    onChange={(e) => {
+                      if (e.target.value === "__nuevo__") {
+                        setNuevoChofer({ nombre: "", dni: "", chasis: "", acoplado: "" });
+                        setRemito((r) => ({ ...r, choferId: "" }));
+                      } else applyChofer(e.target.value);
+                    }}
+                    className={inp}
+                  >
+                    <option value="">Cargar a mano…</option>
+                    {choferes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre} — {c.dni}
+                      </option>
                     ))}
+                    <option value="__nuevo__">+ Agregar chofer nuevo…</option>
                   </select>
-                </label>
+                </div>
+                {nuevoChofer && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                    <input value={nuevoChofer.nombre} onChange={(e) => setNuevoChofer((n) => ({ ...n, nombre: e.target.value }))} placeholder="Nombre y apellido" className={`${inp} uppercase`} />
+                    <input
+                      value={nuevoChofer.dni}
+                      onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
+                      placeholder="CUIL (11 dígitos)"
+                      inputMode="numeric"
+                      className={inp}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={nuevoChofer.chasis} onChange={(e) => setNuevoChofer((n) => ({ ...n, chasis: e.target.value }))} placeholder="Patente chasis" className={`${inp} uppercase`} />
+                      <input value={nuevoChofer.acoplado} onChange={(e) => setNuevoChofer((n) => ({ ...n, acoplado: e.target.value }))} placeholder="Patente acoplado" className={`${inp} uppercase`} />
+                    </div>
+                    {errorChofer && <div className="text-[12px] text-amber-700">{errorChofer}</div>}
+                    <div className="flex gap-2">
+                      <button type="button" onClick={guardarNuevoChofer} className="btn-primario !py-1.5">Guardar chofer</button>
+                      <button type="button" onClick={() => { setNuevoChofer(null); setErrorChofer(""); }} className="btn text-stone-500 !py-1.5">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {!remito.choferId && !nuevoChofer && (
+                  <>
+                    <input value={remito.chofer} onChange={(e) => setRemito((r) => ({ ...r, chofer: up(e.target.value) }))} placeholder="Nombre y apellido" className={inp} />
+                    <input value={remito.choferDni} onChange={(e) => setRemito((r) => ({ ...r, choferDni: up(e.target.value) }))} placeholder="CUIL" className={inp} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input value={remito.chasis} onChange={(e) => setRemito((r) => ({ ...r, chasis: up(e.target.value) }))} placeholder="Patente chasis" className={inp} />
+                      <input value={remito.acoplado} onChange={(e) => setRemito((r) => ({ ...r, acoplado: up(e.target.value) }))} placeholder="Patente acoplado" className={inp} />
+                    </div>
+                  </>
+                )}
+                {remito.choferId && (
+                  <div className="text-[12.5px] text-stone-500">
+                    Chasis {remito.chasis || "—"} · Acoplado {remito.acoplado || "—"}
+                  </div>
+                )}
               </div>
-              <label className={labelCls}>
-                Domicilio
-                <input value={remito.domicilio} onChange={(e) => setRemito((r) => ({ ...r, domicilio: up(e.target.value) }))} className={inputCls} />
-              </label>
-              <label className={labelCls}>
-                Entregar en
-                <input value={remito.entregarEn} onChange={(e) => setRemito((r) => ({ ...r, entregarEn: up(e.target.value) }))} className={inputCls} />
-              </label>
             </div>
+          </Paso>
 
-            <div className={cardCls}>
-              <div className={titleCls}>Transporte</div>
-              <select value={remito.transportistaId} onChange={(e) => applyTransportista(e.target.value)} className={inputCls}>
-                <option value="">Cargar manualmente…</option>
-                {transportistas.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre}
-                  </option>
-                ))}
-              </select>
-              {!remito.transportistaId && (
-                <>
-                  <input value={remito.transportista} onChange={(e) => setRemito((r) => ({ ...r, transportista: up(e.target.value) }))} placeholder="Nombre / Razón social" className={inputCls} />
-                  <div className="flex gap-2">
-                    <input value={remito.transpCuit} onChange={(e) => setRemito((r) => ({ ...r, transpCuit: up(e.target.value) }))} placeholder="CUIT" className={inputCls} />
-                    <input value={remito.transpDomicilio} onChange={(e) => setRemito((r) => ({ ...r, transpDomicilio: up(e.target.value) }))} placeholder="Domicilio" className={inputCls} />
-                  </div>
-                </>
-              )}
+          <Paso n="5" titulo="Mercadería" ayuda="Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito.">
+            <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_96px_28px] gap-3 mb-1">
+              <span className={lab}>Producto</span>
+              <span className={lab}>Lote</span>
+              <span className={lab}>Cantidad</span>
+              <span />
             </div>
-
-            <div className={cardCls}>
-              <div className={titleCls}>Chofer</div>
-              <select
-                value={remito.choferId}
-                onChange={(e) => {
-                  if (e.target.value === "__nuevo__") {
-                    setNuevoChofer({ nombre: "", dni: "", chasis: "", acoplado: "" });
-                    setRemito((r) => ({ ...r, choferId: "" }));
-                  } else applyChofer(e.target.value);
-                }}
-                className={inputCls}
-              >
-                <option value="">Cargar manualmente…</option>
-                {choferes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} — {c.dni}
-                  </option>
-                ))}
-                <option value="__nuevo__">+ Agregar chofer nuevo…</option>
-              </select>
-              {nuevoChofer && (
-                <div className="border border-emerald-200 bg-emerald-50 rounded p-2 space-y-2">
-                  <input value={nuevoChofer.nombre} onChange={(e) => setNuevoChofer((n) => ({ ...n, nombre: e.target.value }))} placeholder="Nombre y apellido" className={`${inputCls} uppercase`} />
-                  <input
-                    value={nuevoChofer.dni}
-                    onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
-                    placeholder="CUIL (11 dígitos)"
-                    inputMode="numeric"
-                    className={inputCls}
-                  />
-                  <div className="flex gap-2">
-                    <input value={nuevoChofer.chasis} onChange={(e) => setNuevoChofer((n) => ({ ...n, chasis: e.target.value }))} placeholder="Patente chasis" className={`${inputCls} uppercase`} />
-                    <input value={nuevoChofer.acoplado} onChange={(e) => setNuevoChofer((n) => ({ ...n, acoplado: e.target.value }))} placeholder="Patente acoplado" className={`${inputCls} uppercase`} />
-                  </div>
-                  {errorChofer && <div className="text-xs text-amber-700">{errorChofer}</div>}
-                  <div className="flex gap-2">
-                    <button onClick={guardarNuevoChofer} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">
-                      Guardar chofer
-                    </button>
-                    <button onClick={() => { setNuevoChofer(null); setErrorChofer(""); }} className="text-stone-500 text-sm px-3 py-1.5">
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-              {!remito.choferId && !nuevoChofer && (
-                <>
-                  <input value={remito.chofer} onChange={(e) => setRemito((r) => ({ ...r, chofer: up(e.target.value) }))} placeholder="Nombre y apellido" className={inputCls} />
-                  <input value={remito.choferDni} onChange={(e) => setRemito((r) => ({ ...r, choferDni: up(e.target.value) }))} placeholder="CUIL" className={inputCls} />
-                  <div className="flex gap-2">
-                    <input value={remito.chasis} onChange={(e) => setRemito((r) => ({ ...r, chasis: up(e.target.value) }))} placeholder="Patente chasis" className={inputCls} />
-                    <input value={remito.acoplado} onChange={(e) => setRemito((r) => ({ ...r, acoplado: up(e.target.value) }))} placeholder="Patente acoplado" className={inputCls} />
-                  </div>
-                </>
-              )}
-              {remito.choferId && (
-                <div className="text-xs text-stone-500">
-                  Chasis: {remito.chasis || "—"} · Acoplado: {remito.acoplado || "—"}
-                </div>
-              )}
-            </div>
-
-            <div className={cardCls}>
-              <div className={titleCls}>Ítems</div>
+            <div className="divide-y divide-stone-200">
               {itemsCalc.map((it, idx) => {
                 const ls = lotesDe(it.productoId);
                 const l = loteDe(it.loteId);
                 return (
-                  <div key={it.id} className="border border-stone-200 rounded p-2 space-y-2">
-                    <div className="flex items-center justify-between text-[11px] text-stone-400">
-                      <span>Ítem {idx + 1}</span>
-                      <div className="flex gap-3">
-                        <button onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="hover:text-emerald-700">
-                          {it.libre ? "Elegir del stock" : "Cargar libre (sin stock)"}
-                        </button>
-                        {items.length > 1 && (
-                          <button onClick={() => setItems((a) => a.filter((x) => x.id !== it.id))} className="hover:text-red-500">
-                            Quitar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {it.hint && <div className="text-[11px] text-amber-700">{it.hint}</div>}
-                    {it.libre ? (
-                      <div className="flex gap-1">
-                        <input value={it.cantidad} onChange={(e) => updItem(it.id, { cantidad: e.target.value.replace(",", ".") })} placeholder="Cant." inputMode="decimal" className={`${inputCls} w-16`} />
-                        <input value={it.descripcion} onChange={(e) => updItem(it.id, { descripcion: up(e.target.value) })} placeholder="Descripción" className={`${inputCls} flex-1`} />
-                        <input value={it.kgUnidad} onChange={(e) => updItem(it.id, { kgUnidad: e.target.value.replace(",", ".") })} placeholder="Kg/u" inputMode="decimal" className={`${inputCls} w-16`} />
-                      </div>
-                    ) : (
-                      <>
-                        <select value={it.productoId} onChange={(e) => selProducto(it.id, e.target.value)} className={inputCls}>
-                          <option value="">Producto…</option>
-                          {productosDisponibles.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.nombre} {p.presentacion}
-                            </option>
-                          ))}
-                          {it.productoId && !productosDisponibles.find((p) => p.id === it.productoId) && productoDe(it.productoId) && (
-                            <option value={it.productoId}>{productoDe(it.productoId).nombre} (sin stock)</option>
-                          )}
-                        </select>
-                        <div className="flex gap-1">
-                          <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={`${inputCls} flex-1`} disabled={!it.productoId}>
-                            <option value="">{it.productoId && !ls.length ? "Sin lotes con stock" : "Lote…"}</option>
+                  <div key={it.id} className="py-3 first:pt-0">
+                    <div className="grid grid-cols-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_96px_28px] gap-3 items-center">
+                      {it.libre ? (
+                        <>
+                          <input value={it.descripcion} onChange={(e) => updItem(it.id, { descripcion: up(e.target.value) })} placeholder="Descripción" className={`${inp} col-span-2 md:col-span-1`} />
+                          <input value={it.kgUnidad} onChange={(e) => updItem(it.id, { kgUnidad: e.target.value.replace(",", ".") })} placeholder="Kg por unidad" inputMode="decimal" className={inp} />
+                        </>
+                      ) : (
+                        <>
+                          <select value={it.productoId} onChange={(e) => selProducto(it.id, e.target.value)} className={`${inp} col-span-2 md:col-span-1`}>
+                            <option value="">Elegir producto…</option>
+                            {productosDisponibles.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.nombre} {p.presentacion}
+                              </option>
+                            ))}
+                            {it.productoId && !productosDisponibles.find((p) => p.id === it.productoId) && productoDe(it.productoId) && (
+                              <option value={it.productoId}>{productoDe(it.productoId).nombre} (sin stock)</option>
+                            )}
+                          </select>
+                          <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={inp} disabled={!it.productoId}>
+                            <option value="">{it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
                             {ls.map((x) => (
                               <option key={x.id} value={x.id}>
-                                {x.lote} — {fmtNum(x.stock)} disp.
+                                {x.lote} · {fmtNum(x.stock)} disp.
                               </option>
                             ))}
                           </select>
-                          <input value={it.cantidad} onChange={(e) => updItem(it.id, { cantidad: e.target.value.replace(",", ".") })} placeholder="Cant." inputMode="decimal" className={`${inputCls} w-20`} />
-                        </div>
-                        {it.cant > 0 && l && it.cant > Number(l.stock) && <div className="text-[11px] text-red-600">Supera el stock del lote ({fmtNum(l.stock)}).</div>}
-                        <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Detalle adicional (opcional): precinto, calibre…" className={`${inputCls} text-xs`} />
-                      </>
-                    )}
-                    {it.desc && <div className="text-[11px] text-stone-400">Se imprime: {it.desc} {it.kgu ? `· ${fmtNum(it.cant * it.kgu)} kg` : ""}</div>}
+                        </>
+                      )}
+                      <input value={it.cantidad} onChange={(e) => updItem(it.id, { cantidad: e.target.value.replace(",", ".") })} placeholder="0" inputMode="decimal" className={`${inp} text-right`} />
+                      {items.length > 1 ? (
+                        <button type="button" onClick={() => setItems((a) => a.filter((x) => x.id !== it.id))} className="text-stone-400 hover:text-red-600 text-lg leading-none justify-self-end" aria-label={`Quitar ítem ${idx + 1}`}>
+                          ×
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 flex-wrap text-[12px]">
+                      <div className="text-stone-400 min-w-0">
+                        {it.hint && <span className="text-amber-700 mr-2">{it.hint}</span>}
+                        {it.cant > 0 && l && it.cant > Number(l.stock) && <span className="text-red-600 mr-2">Supera el stock del lote ({fmtNum(l.stock)}).</span>}
+                        {it.desc && <span>Se imprime: {it.desc}{it.kgu ? ` · ${fmtNum(it.cant * it.kgu)} kg` : ""}</span>}
+                      </div>
+                      <div className="flex gap-x-4 gap-y-1 flex-wrap">
+                        {!it.libre && (
+                          <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Detalle (precinto, calibre…)" className="px-2 py-1 text-[12px] w-52" />
+                        )}
+                        <button type="button" onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="text-emerald-700 hover:underline">
+                          {it.libre ? "Elegir del stock" : "Cargar sin stock"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
-              <button onClick={() => setItems((a) => [...a, itemVacio()])} className="text-emerald-700 text-sm font-medium">
-                + Agregar ítem
-              </button>
-              <div className="flex items-center gap-3 text-xs text-stone-500">
-                <span>Total unidades: <b>{fmtNum(totalUnidades)}</b></span>
-                <label className="flex items-center gap-1">
-                  Total kg:
-                  <input value={remito.totalKgs} onChange={(e) => setRemito((r) => ({ ...r, totalKgs: e.target.value.replace(",", ".") }))} className="border border-stone-300 rounded px-1.5 py-0.5 w-24 text-sm" />
-                </label>
-              </div>
-              <label className={labelCls}>
-                Observaciones
-                <textarea value={remito.observaciones} onChange={(e) => setRemito((r) => ({ ...r, observaciones: up(e.target.value) }))} rows={2} className={inputCls} />
-              </label>
             </div>
-          </fieldset>
+            <button type="button" onClick={() => setItems((a) => [...a, itemVacio()])} className="mt-3 text-[13.5px] font-medium text-emerald-700 hover:text-emerald-800">
+              + Agregar ítem
+            </button>
+          </Paso>
 
-          <details className={cardCls}>
-            <summary className={`${titleCls} cursor-pointer`}>Calibración de impresión</summary>
-            <p className="text-xs text-stone-400 mt-2">Se guarda en este navegador. Imprimí una prueba y ajustá hasta que el texto caiga sobre las líneas.</p>
-            {[
-              ["offsetX", "Desplazar horizontal (mm)", -10, 10, 0.5],
-              ["offsetY", "Desplazar vertical (mm)", -10, 10, 0.5],
-              ["fontSize", "Tamaño de letra (pt)", 7, 13, 0.5],
-            ].map(([k, label, min, max, step]) => (
-              <label key={k} className={`${labelCls} mt-2`}>
-                {label}: {calibracion[k]}
-                <input type="range" min={min} max={max} step={step} value={calibracion[k]} onChange={(e) => guardarCalibracion({ ...calibracion, [k]: Number(e.target.value) })} className="w-full" />
-              </label>
-            ))}
+          <Paso n="6" titulo="Totales y observaciones">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <div>
+                <label className={lab}>Total de unidades</label>
+                <input value={fmtNum(totalUnidades)} readOnly className={inp} />
+              </div>
+              <div>
+                <label className={lab}>Total de kg</label>
+                <input value={remito.totalKgs} onChange={(e) => setRemito((r) => ({ ...r, totalKgs: e.target.value.replace(",", ".") }))} className={inp} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={lab}>Observaciones</label>
+                <textarea value={remito.observaciones} onChange={(e) => setRemito((r) => ({ ...r, observaciones: up(e.target.value) }))} rows={2} className={inp} />
+              </div>
+            </div>
+          </Paso>
+        </fieldset>
+
+        {error && <div className="no-print rounded-lg bg-red-50 border border-red-200 text-red-700 text-[13.5px] p-4">{error}</div>}
+
+        {!bloqueado && (
+          <div className="no-print flex justify-end pt-1">
+            <button onClick={abrirPreview} className="btn-primario px-8 py-2.5">
+              Vista previa
+            </button>
+          </div>
+        )}
+
+        <div ref={previewRef} className="print-reset space-y-4" style={{ display: mostrarPreview ? "block" : "none" }}>
+          <div className="no-print flex items-end justify-between flex-wrap gap-3 pt-2">
+            <div>
+              <h2 className="text-[17px] font-semibold text-stone-900">Vista previa</h2>
+              <p className="text-[13px] text-stone-500">Así se imprime sobre el remito preimpreso. Revisá los datos antes de registrar.</p>
+            </div>
+            {!bloqueado && (
+              <div className="flex gap-2">
+                <button onClick={() => { setMostrarPreview(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn-secundario">
+                  Volver a editar
+                </button>
+                <button onClick={emitir} disabled={saving} className="btn-primario">
+                  {saving ? "Registrando…" : "Registrar e imprimir"}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="print-reset bg-stone-200 rounded-xl p-6 overflow-x-auto flex justify-center">
+            <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} />
+          </div>
+          <details className="no-print panel p-5">
+            <summary className="cursor-pointer text-[13.5px] font-medium text-stone-700">Ajustar posición de impresión</summary>
+            <p className="paso-ayuda mt-2">Se guarda en este navegador. Imprimí una prueba y ajustá hasta que el texto caiga sobre las líneas.</p>
+            <div className="grid gap-4 md:grid-cols-3 mt-3">
+              {[
+                ["offsetX", "Horizontal (mm)", -10, 10, 0.5],
+                ["offsetY", "Vertical (mm)", -10, 10, 0.5],
+                ["fontSize", "Tamaño de letra (pt)", 7, 13, 0.5],
+              ].map(([k, label, min, max, step]) => (
+                <label key={k} className={lab}>
+                  {label}: <span className="text-stone-800">{calibracion[k]}</span>
+                  <input type="range" min={min} max={max} step={step} value={calibracion[k]} onChange={(e) => guardarCalibracion({ ...calibracion, [k]: Number(e.target.value) })} className="w-full accent-emerald-700" />
+                </label>
+              ))}
+            </div>
             {esAdmin && (
               <button
                 onClick={async () => {
                   await supabase.from("configuracion").upsert({ clave: "calibracion_default", valor: calibracion });
                 }}
-                className="text-xs text-emerald-700 font-medium hover:underline mt-2"
+                className="text-[12.5px] text-emerald-700 hover:underline mt-3"
               >
-                Guardar como calibración predeterminada (para todos)
+                Guardar como posición predeterminada para todos
               </button>
             )}
           </details>
-
-          {error && <div className="bg-red-50 border border-red-300 text-red-700 text-sm rounded p-3">{error}</div>}
-
-          {!bloqueado && (
-            <div className="flex gap-2">
-              <button onClick={() => setMostrarPreview((v) => !v)} className="flex-1 bg-white border border-emerald-700 text-emerald-800 font-semibold py-3 rounded-lg hover:bg-emerald-50">
-                {mostrarPreview ? "Ocultar vista previa" : "Vista previa"}
-              </button>
-              <button onClick={emitir} disabled={saving} className="flex-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-semibold py-3 rounded-lg">
-                {saving ? "Registrando…" : "Registrar e imprimir"}
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="print-reset flex-1 flex justify-center overflow-auto">
-          <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} />
-          {!mostrarPreview && (
-            <div className="no-print text-stone-400 text-sm self-start mt-10">
-              Tocá <span className="font-medium text-emerald-700">"Vista previa"</span> para ver el remito antes de imprimir.
-            </div>
-          )}
         </div>
       </div>
-    </div>
+    </NavBar>
   );
 }

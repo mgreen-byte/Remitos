@@ -127,7 +127,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     <div className="space-y-3">
       {help && <div className="text-xs text-stone-500">{help}</div>}
       {msg && <div className="text-sm bg-red-50 border border-red-300 text-red-700 rounded p-2">{msg}</div>}
-      <div className="bg-white border border-stone-200 rounded-lg overflow-x-auto">
+      <div className="panel overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-stone-500 bg-stone-50">
             <tr>

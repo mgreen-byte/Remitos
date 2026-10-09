@@ -99,8 +99,7 @@ function StockInner({ profile }) {
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
 
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-800">
-      <NavBar profile={profile} />
+    <NavBar profile={profile}>
       <div className="max-w-5xl mx-auto p-6 space-y-5">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-lg font-semibold">Stock por lote</h1>
@@ -123,7 +122,7 @@ function StockInner({ profile }) {
           <div className={`text-sm rounded p-3 border ${msg.tipo === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-red-50 border-red-300 text-red-700"}`}>{msg.texto}</div>
         )}
 
-        <form onSubmit={ingresar} className="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
+        <form onSubmit={ingresar} className="panel p-4 space-y-3">
           <div className="text-xs font-semibold text-stone-500 uppercase">Ingresar stock de un lote</div>
           <div className="flex gap-2 flex-wrap">
             <select required value={form.productoId} onChange={(e) => setForm({ ...form, productoId: e.target.value })} className={`${inputCls} flex-1 min-w-[220px]`}>
@@ -142,7 +141,7 @@ function StockInner({ profile }) {
           <div className="text-xs text-stone-400">Si el lote ya existe, la cantidad se suma al stock actual.</div>
         </form>
 
-        <div className="bg-white border border-stone-200 rounded-lg">
+        <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm text-stone-600">
               {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades
@@ -233,6 +232,6 @@ function StockInner({ profile }) {
           </div>
         </div>
       </div>
-    </div>
+    </NavBar>
   );
 }

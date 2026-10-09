@@ -138,11 +138,10 @@ function HistorialInner({ profile }) {
   };
 
   return (
-    <div className="print-reset min-h-screen bg-stone-100 text-stone-800">
-      <NavBar profile={profile} />
+    <NavBar profile={profile}>
       <div className="max-w-6xl mx-auto p-6 space-y-4 no-print">
         <h1 className="text-lg font-semibold">Historial de remitos</h1>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 flex gap-2 flex-wrap items-end">
+        <div className="panel p-4 flex gap-2 flex-wrap items-end">
           <input value={f.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Cliente, número, chofer, transporte…" className={`${inputCls} flex-1 min-w-[200px]`} />
           <input value={f.lote} onChange={(e) => setF({ ...f, lote: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Lote" className={`${inputCls} w-32`} />
           <select value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} className={inputCls}>
@@ -178,7 +177,7 @@ function HistorialInner({ profile }) {
 
         {msg && <div className="text-sm bg-amber-50 border border-amber-300 text-amber-800 rounded p-3">{msg}</div>}
 
-        <div className="bg-white border border-stone-200 rounded-lg overflow-x-auto">
+        <div className="panel overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-stone-500 bg-stone-50">
               <tr>
@@ -307,6 +306,6 @@ function HistorialInner({ profile }) {
           <RemitoSheet d={reimp} calibracion={calibracion} visible />
         </div>
       )}
-    </div>
+    </NavBar>
   );
 }
