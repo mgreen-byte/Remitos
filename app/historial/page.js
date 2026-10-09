@@ -138,7 +138,7 @@ function HistorialInner({ profile }) {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-800">
+    <div className="print-reset min-h-screen bg-stone-100 text-stone-800">
       <NavBar profile={profile} />
       <div className="max-w-6xl mx-auto p-6 space-y-4 no-print">
         <h1 className="text-lg font-semibold">Historial de remitos</h1>
@@ -303,7 +303,7 @@ function HistorialInner({ profile }) {
         {rows.length >= 300 && <div className="text-xs text-stone-400">Se muestran los últimos 300. Acotá con filtros para ver más.</div>}
       </div>
       {reimp && (
-        <div className="hidden print:block">
+        <div className="print-reset hidden print:block">
           <RemitoSheet d={reimp} calibracion={calibracion} visible />
         </div>
       )}

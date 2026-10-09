@@ -396,9 +396,9 @@ function GenerarInner({ profile }) {
   const bloqueado = !!emitido;
 
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-800 flex flex-col">
+    <div className="print-reset min-h-screen bg-stone-100 text-stone-800 flex flex-col">
       <NavBar profile={profile} />
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6">
+      <div className="print-reset flex-1 flex flex-col lg:flex-row gap-6 p-6">
         <div className="no-print w-full lg:w-[480px] flex-shrink-0 space-y-5">
           {emitido && (
             <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-4 space-y-2">
@@ -721,7 +721,7 @@ function GenerarInner({ profile }) {
           )}
         </div>
 
-        <div className="flex-1 flex justify-center overflow-auto">
+        <div className="print-reset flex-1 flex justify-center overflow-auto">
           <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} />
           {!mostrarPreview && (
             <div className="no-print text-stone-400 text-sm self-start mt-10">
