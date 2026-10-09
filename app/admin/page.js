@@ -11,8 +11,6 @@ const TABS = [
   ["plantas", "Plantas"],
   ["usuarios", "Usuarios"],
   ["catalogo", "Catálogo"],
-  ["transportes", "Transportes"],
-  ["choferes", "Choferes"],
   ["config", "Configuración"],
 ];
 
@@ -93,36 +91,6 @@ function AdminInner({ profile }) {
               { key: "kg_por_unidad", label: "Kg por unidad", type: "number" },
               { key: "alias", label: "Alias (Excel)", type: "list", placeholder: "nombre 1, nombre 2" },
               { key: "activo", label: "Activo", type: "bool" },
-            ]}
-          />
-        )}
-
-        {tab === "transportes" && (
-          <CrudTable
-            key="transportes"
-            table="transportistas"
-            orderBy="nombre"
-            canDelete
-            columns={[
-              { key: "nombre", label: "Nombre / Razón social", type: "text", upper: true },
-              { key: "cuit", label: "CUIT", type: "text" },
-              { key: "domicilio", label: "Domicilio", type: "text", upper: true },
-            ]}
-          />
-        )}
-
-        {tab === "choferes" && (
-          <CrudTable
-            key="choferes"
-            table="choferes"
-            orderBy="nombre"
-            canDelete
-            help="Los choferes son compartidos por todas las plantas. El CUIL son 11 dígitos y no se puede repetir."
-            columns={[
-              { key: "nombre", label: "Nombre y apellido", type: "text", upper: true },
-              { key: "dni", label: "CUIL", type: "text", digits: 11 },
-              { key: "chasis", label: "Patente chasis", type: "text", upper: true },
-              { key: "acoplado", label: "Patente acoplado", type: "text", upper: true },
             ]}
           />
         )}

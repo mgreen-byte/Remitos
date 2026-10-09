@@ -8,6 +8,8 @@ const ICONOS = {
   generar: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
   stock: "M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8",
   historial: "M12 7v5l3 2M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4",
+  transportes: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  choferes: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1",
   admin: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .3-1.4-1.4.3-2-3-1-1 2h-2l-1-2-3 1 .3 2L6.8 7.3 4.8 7l-1 3 2 1v2l-2 1 1 3 2-.3 1.4 1.4-.3 2 3 1 1-2h2l1 2 3-1-.3-2 1.4-1.4 2 .3 1-3-2-1z",
 };
 
@@ -28,6 +30,8 @@ export default function NavBar({ profile, children }) {
     ["/generar", "Nuevo remito", "generar"],
     ["/stock", "Stock", "stock"],
     ["/historial", "Historial", "historial"],
+    ["/transportes", "Transportes", "transportes"],
+    ["/choferes", "Choferes", "choferes"],
     ...(profile?.rol === "admin" ? [["/admin", "Administración", "admin"]] : []),
   ];
 

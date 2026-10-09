@@ -8,7 +8,7 @@ import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
-import { up, fmtNum, hoyISO, friendlyError } from "@/lib/util";
+import { up, fmtNum, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
 
 const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", cantidad: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
 
@@ -79,6 +79,8 @@ function GenerarInner({ profile }) {
   const [mostrarPreview, setMostrarPreview] = useState(false);
   const [nuevoChofer, setNuevoChofer] = useState(null);
   const [errorChofer, setErrorChofer] = useState("");
+  const [nuevoTransp, setNuevoTransp] = useState(null);
+  const [errorTransp, setErrorTransp] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
@@ -254,10 +256,37 @@ function GenerarInner({ profile }) {
       ...r,
       transportistaId: t ? id : "",
       transportista: t ? up(t.nombre) : "",
-      transpCuit: t ? up(t.cuit) : "",
+      transpCuit: t ? fmtCuit(t.cuit) : "",
       transpDomicilio: t ? up(t.domicilio) : "",
     }));
   };
+  const guardarNuevoTransp = async () => {
+    setErrorTransp("");
+    if (!nuevoTransp?.nombre?.trim()) return setErrorTransp("Completá el nombre o la razón social.");
+    const cuit = (nuevoTransp.cuit || "").replace(/\D/g, "");
+    if (cuit && cuit.length !== 11) return setErrorTransp("El CUIT tiene que tener 11 dígitos, sin guiones.");
+    const { data, error } = await supabase
+      .from("transportistas")
+      .insert({ nombre: up(nuevoTransp.nombre).trim(), cuit: cuit || null, domicilio: up(nuevoTransp.domicilio).trim() || null })
+      .select()
+      .single();
+    if (error) {
+      if (error.code === "23505" && cuit) {
+        const { data: ex } = await supabase.from("transportistas").select("*").eq("cuit", cuit).maybeSingle();
+        if (ex) {
+          setTransportistas((ts) => (ts.find((x) => x.id === ex.id) ? ts : [...ts, ex]));
+          setNuevoTransp(null);
+          setRemito((r) => ({ ...r, transportistaId: ex.id, transportista: up(ex.nombre), transpCuit: fmtCuit(ex.cuit), transpDomicilio: up(ex.domicilio) }));
+          return;
+        }
+      }
+      return setErrorTransp(friendlyError(error));
+    }
+    setTransportistas((ts) => [...ts, data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setNuevoTransp(null);
+    setRemito((r) => ({ ...r, transportistaId: data.id, transportista: up(data.nombre), transpCuit: fmtCuit(data.cuit), transpDomicilio: up(data.domicilio) }));
+  };
+
   const applyChofer = (id) => {
     setNuevoChofer(null);
     setErrorChofer("");
@@ -266,7 +295,7 @@ function GenerarInner({ profile }) {
       ...r,
       choferId: c ? id : "",
       chofer: c ? up(c.nombre) : "",
-      choferDni: c ? up(c.dni) : "",
+      choferDni: c ? fmtCuit(c.dni) : "",
       chasis: c ? up(c.chasis) : "",
       acoplado: c ? up(c.acoplado) : "",
     }));
@@ -287,7 +316,7 @@ function GenerarInner({ profile }) {
         if (ex) {
           setChoferes((cs) => (cs.find((x) => x.id === ex.id) ? cs : [...cs, ex]));
           setNuevoChofer(null);
-          setRemito((r) => ({ ...r, choferId: ex.id, chofer: up(ex.nombre), choferDni: ex.dni, chasis: up(ex.chasis), acoplado: up(ex.acoplado) }));
+          setRemito((r) => ({ ...r, choferId: ex.id, chofer: up(ex.nombre), choferDni: fmtCuit(ex.dni), chasis: up(ex.chasis), acoplado: up(ex.acoplado) }));
           return setErrorChofer("Ese CUIL ya estaba cargado: lo seleccioné de la lista.");
         }
       }
@@ -563,16 +592,44 @@ function GenerarInner({ profile }) {
               <div className="space-y-3">
                 <div>
                   <label className={lab}>Transportista</label>
-                  <select value={remito.transportistaId} onChange={(e) => applyTransportista(e.target.value)} className={inp}>
+                  <select
+                    value={remito.transportistaId}
+                    onChange={(e) => {
+                      if (e.target.value === "__nuevo__") {
+                        setNuevoTransp({ nombre: "", cuit: "", domicilio: "" });
+                        setRemito((r) => ({ ...r, transportistaId: "" }));
+                      } else {
+                        setNuevoTransp(null);
+                        setErrorTransp("");
+                        applyTransportista(e.target.value);
+                      }
+                    }}
+                    className={inp}
+                  >
                     <option value="">Cargar a mano…</option>
                     {transportistas.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.nombre}
                       </option>
                     ))}
+                    <option value="__nuevo__">+ Agregar transporte nuevo…</option>
                   </select>
                 </div>
-                {!remito.transportistaId ? (
+                {nuevoTransp && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                    <input value={nuevoTransp.nombre} onChange={(e) => setNuevoTransp((n) => ({ ...n, nombre: e.target.value }))} placeholder="Nombre o razón social" className={`${inp} uppercase`} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={nuevoTransp.cuit} onChange={(e) => setNuevoTransp((n) => ({ ...n, cuit: e.target.value.replace(/\D/g, "").slice(0, 11) }))} placeholder="CUIT (11 dígitos)" inputMode="numeric" className={inp} />
+                      <input value={nuevoTransp.domicilio} onChange={(e) => setNuevoTransp((n) => ({ ...n, domicilio: e.target.value }))} placeholder="Domicilio" className={`${inp} uppercase`} />
+                    </div>
+                    {errorTransp && <div className="text-[12px] text-amber-700">{errorTransp}</div>}
+                    <div className="flex gap-2">
+                      <button type="button" onClick={guardarNuevoTransp} className="btn-primario !py-1.5">Guardar transporte</button>
+                      <button type="button" onClick={() => { setNuevoTransp(null); setErrorTransp(""); }} className="btn text-stone-500 !py-1.5">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {!remito.transportistaId && !nuevoTransp ? (
                   <>
                     <input value={remito.transportista} onChange={(e) => setRemito((r) => ({ ...r, transportista: up(e.target.value) }))} placeholder="Nombre o razón social" className={inp} />
                     <div className="grid grid-cols-2 gap-3">
@@ -580,7 +637,7 @@ function GenerarInner({ profile }) {
                       <input value={remito.transpDomicilio} onChange={(e) => setRemito((r) => ({ ...r, transpDomicilio: up(e.target.value) }))} placeholder="Domicilio" className={inp} />
                     </div>
                   </>
-                ) : (
+                ) : nuevoTransp ? null : (
                   <div className="text-[12.5px] text-stone-500">
                     CUIT {remito.transpCuit || "—"} · {remito.transpDomicilio || "sin domicilio"}
                   </div>
