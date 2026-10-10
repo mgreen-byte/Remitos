@@ -27,7 +27,7 @@ export default function HistorialPage() {
 function HistorialInner({ profile }) {
   const esAdmin = profile.rol === "admin";
   const [plantas, setPlantas] = useState([]);
-  const [f, setF] = useState({ texto: "", lote: "", estado: "", desde: "", hasta: "", planta: "" });
+  const [f, setF] = useState({ texto: "", lote: "", precinto: "", estado: "", desde: "", hasta: "", planta: "" });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(null);
@@ -60,6 +60,11 @@ function HistorialInner({ profile }) {
       const { data } = await supabase.from("v_remito_items_detalle").select("remito_id").ilike("lote", `%${f.lote.trim()}%`).limit(1000);
       ids = [...new Set((data || []).map((x) => x.remito_id))];
     }
+    if (f.precinto.trim()) {
+      const { data } = await supabase.from("v_remito_items_detalle").select("remito_id").ilike("precinto", `%${f.precinto.trim()}%`).limit(1000);
+      const ids2 = [...new Set((data || []).map((x) => x.remito_id))];
+      ids = ids ? ids.filter((x) => ids2.includes(x)) : ids2;
+    }
     let q = supabase
       .from("remitos")
       .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre), remito_items(*)")
@@ -87,7 +92,7 @@ function HistorialInner({ profile }) {
   };
 
   const reimprimir = (r) => {
-    const items = [...(r.remito_items || [])].sort((a, b) => a.orden - b.orden).map((i) => ({ cantidad: i.cantidad, descripcion: i.descripcion }));
+    const items = [...(r.remito_items || [])].sort((a, b) => a.orden - b.orden).map((i) => ({ cantidad: i.cantidad, descripcion: i.descripcion, kgUnidad: i.kg_unidad }));
     setReimp({
       fecha: r.fecha,
       destinatario: r.cliente_nombre,
@@ -132,6 +137,7 @@ function HistorialInner({ profile }) {
             Acoplado: r.acoplado,
             Descripción: i.descripcion,
             Lote: i.lote_texto,
+            Precinto: i.precinto,
             Unidades: Number(i.cantidad),
             "Kg/u": i.kg_unidad ? Number(i.kg_unidad) : "",
             "Kg total": i.kg_total ? Number(i.kg_total) : "",
@@ -153,6 +159,7 @@ function HistorialInner({ profile }) {
         <div className="panel p-4 flex gap-2 flex-wrap items-end">
           <input value={f.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Cliente, número, chofer, transporte…" className={`${inputCls} flex-1 min-w-[200px]`} />
           <input value={f.lote} onChange={(e) => setF({ ...f, lote: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Lote" className={`${inputCls} w-32`} />
+          <input value={f.precinto} onChange={(e) => setF({ ...f, precinto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Precinto" className={`${inputCls} w-32`} />
           <select value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} className={inputCls}>
             <option value="">Todos los estados</option>
             <option value="emitido">Emitidos</option>
@@ -252,6 +259,7 @@ function HistorialInner({ profile }) {
                               <th className="text-right pr-3 w-16">Cant.</th>
                               <th className="text-left">Descripción</th>
                               <th className="text-left">Lote</th>
+                              <th className="text-left">Precinto</th>
                               {r.tipo === "traslado" && <th className="text-right pr-3">Recibido</th>}
                               <th className="text-right">Kg</th>
                             </tr>
@@ -264,6 +272,7 @@ function HistorialInner({ profile }) {
                                   <td className="text-right pr-3">{fmtNum(i.cantidad)}</td>
                                   <td>{i.descripcion}</td>
                                   <td className="font-mono">{i.lote_texto || "—"}</td>
+                                  <td className="font-mono">{i.precinto || "—"}</td>
                                   {r.tipo === "traslado" && <td className="text-right pr-3">{i.cantidad_recibida == null ? "—" : fmtNum(i.cantidad_recibida)}</td>}
                                   <td className="text-right">{fmtNum(i.kg_total)}</td>
                                 </tr>

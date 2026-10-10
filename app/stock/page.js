@@ -104,6 +104,7 @@ function StockInner({ profile }) {
 
   const visibles = lotes.filter((l) => verAgotados || Number(l.stock) > 0);
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
+  const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * Number(l.producto?.kg_por_unidad || 0), 0);
 
   return (
     <NavBar profile={profile}>
@@ -171,7 +172,7 @@ function StockInner({ profile }) {
         <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm text-stone-600">
-              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades
+              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg
             </div>
             <label className="text-xs text-stone-500 flex items-center gap-1">
               <input type="checkbox" checked={verAgotados} onChange={(e) => setVerAgotados(e.target.checked)} /> Mostrar agotados
@@ -184,7 +185,7 @@ function StockInner({ profile }) {
                   <th className="text-left p-2 pl-4">Producto</th>
                   <th className="text-left p-2">Lote</th>
                   <th className="text-right p-2">Stock (u.)</th>
-                  <th className="text-right p-2">Kg aprox.</th>
+                  <th className="text-right p-2">Kg</th>
                   <th className="p-2"></th>
                 </tr>
               </thead>
@@ -205,7 +206,7 @@ function StockInner({ profile }) {
                       </td>
                       <td className="p-2 font-mono">{l.lote}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
-                      <td className="p-2 text-right text-stone-500">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right whitespace-nowrap">
                         <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
                           Ajustar

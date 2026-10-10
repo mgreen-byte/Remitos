@@ -132,6 +132,7 @@ function TrasladosInner({ profile }) {
                   <tr>
                     <th className="text-left font-normal">Producto</th>
                     <th className="text-left font-normal">Lote</th>
+                    <th className="text-left font-normal">Precinto</th>
                     <th className="text-right font-normal">Enviado</th>
                     {puedeRecibir && abierto && panel.modo === "confirmar" && <th className="text-right font-normal pl-3">Recibido</th>}
                   </tr>
@@ -141,6 +142,7 @@ function TrasladosInner({ profile }) {
                     <tr key={i.id} className="border-t border-stone-100">
                       <td className="py-1.5">{i.descripcion}</td>
                       <td className="font-mono">{i.lote_texto}</td>
+                      <td className="font-mono">{i.precinto || "—"}</td>
                       <td className="text-right">{fmtNum(i.cantidad)}</td>
                       {puedeRecibir && abierto && panel.modo === "confirmar" && (
                         <td className="text-right pl-3">

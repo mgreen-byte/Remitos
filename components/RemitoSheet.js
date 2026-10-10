@@ -11,7 +11,7 @@ export default function RemitoSheet({ d, calibracion, visible = true }) {
   const offset = { offsetX: calibracion.offsetX, offsetY: calibracion.offsetY };
   const fs = calibracion.fontSize;
   const [yy, mm, dd] = (d.fecha || "").split("-");
-  const items = (d.items || []).slice(0, 9);
+  const items = (d.items || []).slice(0, 15);
   const rowH = (FIELD_COORDS.tablaBottom - FIELD_COORDS.tablaTop - 3) / Math.max(items.length, 6);
   const F = (key, value, extra = {}) => (
     <Field coords={FIELD_COORDS[key]} offset={offset} fontSize={fs} value={value ?? ""} readOnly {...extra} />
@@ -50,12 +50,23 @@ export default function RemitoSheet({ d, calibracion, visible = true }) {
               readOnly
             />
             <Field
-              coords={{ left: FIELD_COORDS.colDescLeft, top, width: FIELD_COORDS.colDescWidth, height: rowH }}
+              coords={{ left: FIELD_COORDS.colDescLeft, top, width: FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, height: rowH }}
               offset={offset}
-              fontSize={fs}
+              fontSize={Math.round(fs * Math.max(0.7, Math.min(1, 46 / String(it.descripcion || "").length)) * 10) / 10}
               value={it.descripcion}
               readOnly
             />
+            {Number(it.kgUnidad) > 0 && (
+              <Field
+                coords={{ left: FIELD_COORDS.colDescLeft + FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, top, width: FIELD_COORDS.colKgWidth, height: rowH }}
+                offset={offset}
+                fontSize={fs}
+                align="right"
+                uppercase={false}
+                value={`${fmtNum(it.cantidad)} x ${fmtNum(it.kgUnidad)} = ${fmtNum(it.cantidad * it.kgUnidad)} kg`}
+                readOnly
+              />
+            )}
           </div>
         );
       })}

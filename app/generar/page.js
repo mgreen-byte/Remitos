@@ -12,7 +12,7 @@ import { up, fmtNum, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
-const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", cantidad: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
+const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", precinto: "", cantidad: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
 
 function remitoVacio() {
   return {
@@ -173,7 +173,7 @@ function GenerarInner({ profile }) {
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
     if (!p) return "";
-    return [`${p.nombre} ${p.presentacion || ""}`.trim(), l ? `LOTE ${l.lote}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
+    return [`${p.nombre} ${p.presentacion || ""}`.trim(), l ? `LOTE ${l.lote}` : "", it.precinto ? `PRECINTO ${up(it.precinto)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
@@ -376,7 +376,7 @@ function GenerarInner({ profile }) {
     acoplado: remito.acoplado,
     chofer: remito.chofer,
     choferDni: remito.choferDni,
-    items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, descripcion: i.desc })),
+    items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, descripcion: i.desc, kgUnidad: i.kgu })),
     totalUnidades,
     totalKgs: remito.totalKgs,
     observaciones: remito.observaciones,
@@ -389,12 +389,13 @@ function GenerarInner({ profile }) {
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     const validos = itemsCalc.filter((i) => i.cant > 0);
     if (!validos.length) return "Cargá al menos un ítem con cantidad.";
-    if (validos.length > 9) return "El remito preimpreso admite hasta 9 ítems. Dividilo en dos remitos.";
+    if (validos.length > 15) return "El remito preimpreso admite hasta 15 ítems. Dividilo en dos remitos.";
     for (const [i, it] of validos.entries()) {
       if (!it.desc) return `Ítem ${i + 1}: falta el producto o la descripción.`;
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
         if (!it.loteId) return `Ítem ${i + 1}: elegí el lote.`;
+        if (!it.precinto.trim()) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
         const l = loteDe(it.loteId);
         if (l && it.cant > Number(l.stock)) return `Ítem ${i + 1}: el lote ${l.lote} tiene ${fmtNum(l.stock)} disponibles y pedís ${fmtNum(it.cant)}.`;
       }
@@ -438,6 +439,7 @@ function GenerarInner({ profile }) {
       .map((i) => ({
         producto_id: i.libre ? null : i.productoId,
         lote_id: i.libre ? null : i.loteId,
+        precinto: i.libre ? null : i.precinto,
         descripcion: i.desc,
         cantidad: i.cant,
         kg_unidad: i.kgu,
@@ -820,11 +822,20 @@ function GenerarInner({ profile }) {
                       <div className="text-stone-400 min-w-0">
                         {it.hint && <span className="text-amber-700 mr-2">{it.hint}</span>}
                         {it.cant > 0 && l && it.cant > Number(l.stock) && <span className="text-red-600 mr-2">Supera el stock del lote ({fmtNum(l.stock)}).</span>}
-                        {it.desc && <span>Se imprime: {it.desc}{it.kgu ? ` · ${fmtNum(it.cant * it.kgu)} kg` : ""}</span>}
+                        {it.desc && <span>Se imprime: {it.desc}</span>}
+                        {it.kgu > 0 && it.cant > 0 && <span className="ml-2 font-medium text-stone-700">{fmtNum(it.cant)} x {fmtNum(it.kgu)} kg = {fmtNum(it.cant * it.kgu)} kg</span>}
                       </div>
                       <div className="flex gap-x-4 gap-y-1 flex-wrap">
                         {!it.libre && (
-                          <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Detalle (precinto, calibre…)" className="px-2 py-1 text-[12px] w-52" />
+                          <>
+                            <input
+                              value={it.precinto}
+                              onChange={(e) => updItem(it.id, { precinto: up(e.target.value) })}
+                              placeholder="Precinto (obligatorio)"
+                              className={`px-2 py-1 text-[12px] w-48 ${!it.precinto.trim() && it.cant > 0 ? "!border-red-400" : ""}`}
+                            />
+                            <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Otro detalle (opcional)" className="px-2 py-1 text-[12px] w-44" />
+                          </>
                         )}
                         {!esTraslado && (
                           <button type="button" onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="text-emerald-700 hover:underline">
