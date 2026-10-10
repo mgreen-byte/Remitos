@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, up, norm, fmtCuit } from "@/lib/util";
+import ImportarExcel from "@/components/ImportarExcel";
 
 // Directorio compartido (transportes, choferes). Todos los usuarios ven, agregan y editan;
 // solo el admin borra. columns: [{key, label, upper, digits, format, span, placeholder, required}]
-export default function Directorio({ table, titulo, singular, ayuda, columns, profile, vacioTexto }) {
+export default function Directorio({ table, titulo, singular, ayuda, columns, profile, vacioTexto, claveUnica }) {
   const esAdmin = profile?.rol === "admin";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,12 +15,22 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
   const [form, setForm] = useState(null); // {id|null, data}
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
+  const [importando, setImportando] = useState(false);
 
   const cargar = async () => {
-    const { data, error } = await supabase.from(table).select("*").order("nombre");
+    // Supabase devuelve como máximo 1000 filas por consulta: se piden de a tandas.
+    let todo = [];
+    for (let desde = 0; ; desde += 1000) {
+      const { data, error } = await supabase.from(table).select("*").order("nombre").range(desde, desde + 999);
+      if (error) {
+        setError(friendlyError(error));
+        break;
+      }
+      todo = todo.concat(data || []);
+      if (!data || data.length < 1000) break;
+    }
     setLoading(false);
-    if (error) setError(friendlyError(error));
-    setRows(data || []);
+    setRows(todo);
   };
   useEffect(() => {
     cargar();
@@ -41,6 +52,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
     for (const c of columns) {
       let v = (form.data[c.key] ?? "").toString().trim();
       if (c.upper) v = up(v);
+      if (c.compact) v = v.replace(/[\s.\-]/g, "");
       if (c.digits) v = v.replace(/\D/g, "");
       if (c.required && !v) return setError(`Completá: ${c.label}.`);
       if (c.digits && c.exact && v && v.length !== c.digits) return setError(`${c.label}: tienen que ser ${c.digits} dígitos, sin guiones.`);
@@ -76,14 +88,23 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
           <h1 className="text-[22px] font-semibold text-stone-900">{titulo}</h1>
           <p className="text-stone-500 text-[13.5px] max-w-xl">{ayuda}</p>
         </div>
-        {!form && (
-          <button onClick={() => { setError(""); setAviso(""); setForm({ id: null, data: vacio() }); }} className="btn-primario">
-            Agregar {singular.toLowerCase()}
-          </button>
+        {!form && !importando && (
+          <div className="flex gap-2">
+            <button onClick={() => { setError(""); setAviso(""); setImportando(true); }} className="btn-secundario">
+              Importar desde Excel
+            </button>
+            <button onClick={() => { setError(""); setAviso(""); setForm({ id: null, data: vacio() }); }} className="btn-primario">
+              Agregar {singular.toLowerCase()}
+            </button>
+          </div>
         )}
       </header>
 
       {aviso && <div className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13.5px] px-4 py-3">{aviso}</div>}
+
+      {importando && (
+        <ImportarExcel table={table} singular={singular} columns={columns} claveUnica={claveUnica} existentes={rows} onClose={() => setImportando(false)} onDone={cargar} />
+      )}
 
       {form && (
         <section className="panel p-6">
@@ -100,6 +121,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
                   onChange={(e) => {
                     let v = e.target.value;
                     if (c.upper) v = up(v);
+                    if (c.compact) v = v.replace(/[\s.\-]/g, "");
                     if (c.digits) v = v.replace(/\D/g, "").slice(0, c.digits);
                     setForm((f) => ({ ...f, data: { ...f.data, [c.key]: v } }));
                   }}

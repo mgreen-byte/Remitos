@@ -10,6 +10,8 @@ import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
 import { up, fmtNum, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
 
+const patente = (v) => up(v).replace(/[\s.\-]/g, "");
+
 const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", cantidad: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
 
 function remitoVacio() {
@@ -87,6 +89,9 @@ function GenerarInner({ profile }) {
   const [sugerido, setSugerido] = useState("");
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
+
+  const choferSel = choferes.find((c) => c.id === remito.choferId);
+  const patentesCambiadas = !!choferSel && (patente(choferSel.chasis) !== remito.chasis || patente(choferSel.acoplado) !== remito.acoplado);
 
   const planta = esAdmin ? plantas.find((p) => p.id === plantaId) : profile.planta;
   const puntoVenta = planta?.punto_venta || "";
@@ -296,8 +301,8 @@ function GenerarInner({ profile }) {
       choferId: c ? id : "",
       chofer: c ? up(c.nombre) : "",
       choferDni: c ? fmtCuit(c.dni) : "",
-      chasis: c ? up(c.chasis) : "",
-      acoplado: c ? up(c.acoplado) : "",
+      chasis: c ? patente(c.chasis) : "",
+      acoplado: c ? patente(c.acoplado) : "",
     }));
   };
   const guardarNuevoChofer = async () => {
@@ -422,6 +427,11 @@ function GenerarInner({ profile }) {
     const { data, error: err } = await supabase.rpc("emitir_remito", { p_remito: payload, p_items: lista });
     setSaving(false);
     if (err) return setError(friendlyError(err));
+    if (patentesCambiadas) {
+      const { error: errP } = await supabase.from("choferes").update({ chasis: remito.chasis || null, acoplado: remito.acoplado || null }).eq("id", remito.choferId);
+      if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
+      else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
+    }
     setEmitido({ id: data, pv: puntoVenta, numero: remito.numero });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
@@ -698,9 +708,23 @@ function GenerarInner({ profile }) {
                   </>
                 )}
                 {remito.choferId && (
-                  <div className="text-[12.5px] text-stone-500">
-                    Chasis {remito.chasis || "—"} · Acoplado {remito.acoplado || "—"}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lab}>Patente chasis</label>
+                        <input value={remito.chasis} onChange={(e) => setRemito((r) => ({ ...r, chasis: patente(e.target.value) }))} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lab}>Patente acoplado</label>
+                        <input value={remito.acoplado} onChange={(e) => setRemito((r) => ({ ...r, acoplado: patente(e.target.value) }))} className={inp} />
+                      </div>
+                    </div>
+                    {patentesCambiadas && (
+                      <div className="text-[12.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        Las patentes son distintas de las guardadas para este chofer. Al registrar el remito se actualizan también en el chofer.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
