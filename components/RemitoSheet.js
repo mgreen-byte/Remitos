@@ -63,7 +63,7 @@ export default function RemitoSheet({ d, calibracion, visible = true }) {
                 fontSize={fs}
                 align="right"
                 uppercase={false}
-                value={`${fmtNum(it.cantidad)} x ${fmtNum(it.kgUnidad)} = ${fmtNum(it.cantidad * it.kgUnidad)} kg`}
+                value={`${fmtNum(it.cantidad * it.kgUnidad)} kg`}
                 readOnly
               />
             )}

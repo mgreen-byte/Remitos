@@ -823,7 +823,7 @@ function GenerarInner({ profile }) {
                         {it.hint && <span className="text-amber-700 mr-2">{it.hint}</span>}
                         {it.cant > 0 && l && it.cant > Number(l.stock) && <span className="text-red-600 mr-2">Supera el stock del lote ({fmtNum(l.stock)}).</span>}
                         {it.desc && <span>Se imprime: {it.desc}</span>}
-                        {it.kgu > 0 && it.cant > 0 && <span className="ml-2 font-medium text-stone-700">{fmtNum(it.cant)} x {fmtNum(it.kgu)} kg = {fmtNum(it.cant * it.kgu)} kg</span>}
+                        {it.kgu > 0 && it.cant > 0 && <span className="ml-2 font-medium text-stone-700">{fmtNum(it.cant * it.kgu)} kg</span>}
                       </div>
                       <div className="flex gap-x-4 gap-y-1 flex-wrap">
                         {!it.libre && (
