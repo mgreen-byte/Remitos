@@ -11,6 +11,15 @@ import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
+const ESTADO_TXT = { emitido: "emitido", anulado: "anulado", en_transito: "en tránsito", recibido: "recibido", rechazado: "rechazado" };
+const ESTADO_CLS = {
+  emitido: "bg-emerald-100 text-emerald-800",
+  anulado: "bg-red-100 text-red-700",
+  en_transito: "bg-amber-100 text-amber-800",
+  recibido: "bg-sky-100 text-sky-800",
+  rechazado: "bg-orange-100 text-orange-800",
+};
+
 export default function HistorialPage() {
   return <AuthGuard>{(profile) => <HistorialInner profile={profile} />}</AuthGuard>;
 }
@@ -53,7 +62,7 @@ function HistorialInner({ profile }) {
     }
     let q = supabase
       .from("remitos")
-      .select("*, planta:plantas(nombre), remito_items(*)")
+      .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre), remito_items(*)")
       .order("created_at", { ascending: false })
       .limit(300);
     if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
@@ -147,6 +156,9 @@ function HistorialInner({ profile }) {
           <select value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} className={inputCls}>
             <option value="">Todos los estados</option>
             <option value="emitido">Emitidos</option>
+            <option value="en_transito">En tránsito</option>
+            <option value="recibido">Recibidos (traslados)</option>
+            <option value="rechazado">Rechazados (traslados)</option>
             <option value="anulado">Anulados</option>
           </select>
           {esAdmin && (
@@ -213,13 +225,13 @@ function HistorialInner({ profile }) {
                       {r.punto_venta}-{r.numero}
                     </td>
                     <td className="p-2">{fmtFecha(r.fecha)}</td>
-                    <td className="p-2">{r.cliente_nombre}</td>
+                    <td className="p-2">{r.tipo === "traslado" ? <><span className="text-[11px] font-medium text-sky-700 bg-sky-50 rounded px-1.5 py-0.5 mr-1.5">TRASLADO</span>{r.planta?.nombre} → {r.destino?.nombre}</> : r.cliente_nombre}</td>
                     {esAdmin && <td className="p-2">{r.planta?.nombre}</td>}
                     <td className="p-2 text-right">{fmtNum(r.total_unidades)}</td>
                     <td className="p-2 text-right">{fmtNum(r.total_kgs)}</td>
                     <td className="p-2 text-stone-500">{r.usuario_nombre}</td>
                     <td className="p-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${r.estado === "anulado" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>{r.estado}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${ESTADO_CLS[r.estado] || "bg-stone-100 text-stone-700"}`}>{ESTADO_TXT[r.estado] || r.estado}</span>
                     </td>
                   </tr>
                   {open === r.id && (
@@ -240,6 +252,7 @@ function HistorialInner({ profile }) {
                               <th className="text-right pr-3 w-16">Cant.</th>
                               <th className="text-left">Descripción</th>
                               <th className="text-left">Lote</th>
+                              {r.tipo === "traslado" && <th className="text-right pr-3">Recibido</th>}
                               <th className="text-right">Kg</th>
                             </tr>
                           </thead>
@@ -251,11 +264,22 @@ function HistorialInner({ profile }) {
                                   <td className="text-right pr-3">{fmtNum(i.cantidad)}</td>
                                   <td>{i.descripcion}</td>
                                   <td className="font-mono">{i.lote_texto || "—"}</td>
+                                  {r.tipo === "traslado" && <td className="text-right pr-3">{i.cantidad_recibida == null ? "—" : fmtNum(i.cantidad_recibida)}</td>}
                                   <td className="text-right">{fmtNum(i.kg_total)}</td>
                                 </tr>
                               ))}
                           </tbody>
                         </table>
+                        {r.tipo === "traslado" && r.estado === "recibido" && (
+                          <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2">
+                            Recibido por {r.recibido_por_nombre} ({r.destino?.nombre}) el {new Date(r.recibido_at).toLocaleString("es-AR")}.{r.obs_recepcion ? ` Obs.: ${r.obs_recepcion}` : ""}
+                          </div>
+                        )}
+                        {r.tipo === "traslado" && r.estado === "rechazado" && (
+                          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                            Rechazado por {r.recibido_por_nombre} el {new Date(r.recibido_at).toLocaleString("es-AR")}. Motivo: {r.motivo_rechazo}. El stock volvió a {r.planta?.nombre}.
+                          </div>
+                        )}
                         {r.estado === "anulado" && (
                           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
                             Anulado por {r.anulado_por_nombre} el {new Date(r.anulado_at).toLocaleString("es-AR")}. Motivo: {r.motivo_anulacion}
@@ -265,7 +289,7 @@ function HistorialInner({ profile }) {
                           <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
                             Reimprimir
                           </button>
-                          {r.estado === "emitido" && anulando?.id !== r.id && (
+                          {(r.estado === "emitido" || (r.estado === "en_transito" && (esAdmin || r.planta_id === profile.planta?.id))) && anulando?.id !== r.id && (
                             <button onClick={() => setAnulando({ id: r.id, motivo: "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">
                               Anular…
                             </button>

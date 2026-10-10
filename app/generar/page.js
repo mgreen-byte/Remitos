@@ -61,7 +61,7 @@ export default function GenerarPage() {
 
 function GenerarInner({ profile }) {
   const esAdmin = profile.rol === "admin";
-  const modalidadesPermitidas = profile.modalidades?.length ? profile.modalidades : ["soja", "maiz", "generico"];
+  const modalidadesPermitidas = [...(profile.modalidades?.length ? profile.modalidades : ["soja", "maiz", "generico"]), "traslado"];
 
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
   const [plantas, setPlantas] = useState([]);
@@ -83,6 +83,7 @@ function GenerarInner({ profile }) {
   const [errorChofer, setErrorChofer] = useState("");
   const [nuevoTransp, setNuevoTransp] = useState(null);
   const [errorTransp, setErrorTransp] = useState("");
+  const [destinoId, setDestinoId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
@@ -158,7 +159,7 @@ function GenerarInner({ profile }) {
   const productosDisponibles = useMemo(() => {
     const conStock = new Set(lotes.map((l) => l.producto_id));
     return productos.filter(
-      (p) => conStock.has(p.id) && (modalidad === "generico" || p.categoria === modalidad || p.categoria === "otro")
+      (p) => conStock.has(p.id) && (modalidad === "generico" || modalidad === "traslado" || p.categoria === modalidad || p.categoria === "otro")
     );
   }, [productos, lotes, modalidad]);
 
@@ -339,11 +340,25 @@ function GenerarInner({ profile }) {
     setFileName("");
     setParseError("");
     setRemito(remitoVacio());
+    setDestinoId("");
     setItems([itemVacio()]);
     setMostrarPreview(false);
     setEmitido(null);
     setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const esTraslado = modalidad === "traslado";
+  const plantasDestino = plantas.filter((p) => p.id !== plantaId);
+  const elegirDestino = (id) => {
+    setDestinoId(id);
+    const d = plantas.find((p) => p.id === id);
+    setRemito((r) => ({
+      ...r,
+      destinatario: d ? up(`TRASLADO A PLANTA ${d.nombre}`) : "",
+      domicilio: d?.domicilio ? up(d.domicilio) : r.domicilio,
+      entregarEn: d?.domicilio ? up(d.domicilio) : r.entregarEn,
+    }));
   };
 
   // ---------- emitir ----------
@@ -370,12 +385,14 @@ function GenerarInner({ profile }) {
   const validar = () => {
     if (!planta) return "No hay una planta asignada. Elegí una planta (o pedile al administrador que te asigne una).";
     if (remito.numero.length !== 8) return "El número de remito tiene que tener 8 dígitos.";
+    if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     const validos = itemsCalc.filter((i) => i.cant > 0);
     if (!validos.length) return "Cargá al menos un ítem con cantidad.";
     if (validos.length > 9) return "El remito preimpreso admite hasta 9 ítems. Dividilo en dos remitos.";
     for (const [i, it] of validos.entries()) {
       if (!it.desc) return `Ítem ${i + 1}: falta el producto o la descripción.`;
+      if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
         if (!it.loteId) return `Ítem ${i + 1}: elegí el lote.`;
         const l = loteDe(it.loteId);
@@ -398,6 +415,7 @@ function GenerarInner({ profile }) {
       fecha: remito.fecha,
       modalidad,
       planta_id: esAdmin ? plantaId : undefined,
+      planta_destino_id: esTraslado ? destinoId : undefined,
       cliente_nombre: remito.destinatario,
       cliente_cuit: remito.cuit,
       cliente_domicilio: remito.domicilio,
@@ -424,7 +442,7 @@ function GenerarInner({ profile }) {
         cantidad: i.cant,
         kg_unidad: i.kgu,
       }));
-    const { data, error: err } = await supabase.rpc("emitir_remito", { p_remito: payload, p_items: lista });
+    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : "emitir_remito", { p_remito: payload, p_items: lista });
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
@@ -466,7 +484,7 @@ function GenerarInner({ profile }) {
           <div className="no-print panel border-emerald-200 bg-emerald-50 p-5 flex items-center justify-between flex-wrap gap-3">
             <div>
               <div className="font-semibold text-emerald-800">Remito {emitido.pv}-{emitido.numero} registrado</div>
-              <div className="text-[13px] text-emerald-700">El stock ya fue descontado. Si no salió la impresión, podés reimprimir.</div>
+              <div className="text-[13px] text-emerald-700">{esTraslado ? "La mercadería quedó en tránsito hasta que la planta de destino confirme la recepción. " : "El stock ya fue descontado. "}Si no salió la impresión, podés reimprimir.</div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => window.print()} className="btn-secundario">Imprimir de nuevo</button>
@@ -497,7 +515,7 @@ function GenerarInner({ profile }) {
               <div>
                 <span className={lab}>Planta</span>
                 {esAdmin ? (
-                  <select value={plantaId} onChange={(e) => { setPlantaId(e.target.value); setItems([itemVacio()]); }} className={inp}>
+                  <select value={plantaId} onChange={(e) => { setPlantaId(e.target.value); setDestinoId(""); setItems([itemVacio()]); }} className={inp}>
                     {plantas.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} (PV {p.punto_venta})
@@ -511,7 +529,24 @@ function GenerarInner({ profile }) {
               </div>
             </div>
 
-            {modalidad !== "generico" && (
+            {esTraslado && (
+              <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2">
+                <div>
+                  <span className={lab}>Planta de destino</span>
+                  <select value={destinoId} onChange={(e) => elegirDestino(e.target.value)} className={inp}>
+                    <option value="">Elegir planta…</option>
+                    {plantasDestino.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="text-[12.5px] text-stone-500 self-end">
+                  El stock sale de tu planta y queda <b>en tránsito</b> (sigue siendo de la empresa). Cuando el destino confirme la recepción, pasa a su stock y se puede despachar desde ahí.
+                </div>
+              </div>
+            )}
+
+            {modalidad !== "generico" && !esTraslado && (
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2 items-end">
                 <div>
                   <span className={lab}>Orden de carga (Excel, opcional)</span>
@@ -791,9 +826,11 @@ function GenerarInner({ profile }) {
                         {!it.libre && (
                           <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Detalle (precinto, calibre…)" className="px-2 py-1 text-[12px] w-52" />
                         )}
-                        <button type="button" onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="text-emerald-700 hover:underline">
-                          {it.libre ? "Elegir del stock" : "Cargar sin stock"}
-                        </button>
+                        {!esTraslado && (
+                          <button type="button" onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="text-emerald-700 hover:underline">
+                            {it.libre ? "Elegir del stock" : "Cargar sin stock"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

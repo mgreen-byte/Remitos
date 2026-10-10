@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 const ICONOS = {
+  traslados: "M4 8h13l-3-3M20 16H7l3 3M4 8h0M20 16h0",
   generar: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
   stock: "M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8",
   historial: "M12 7v5l3 2M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4",
@@ -26,9 +28,21 @@ export default function NavBar({ profile, children }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const [pendientes, setPendientes] = useState(0);
+  useEffect(() => {
+    if (!profile) return;
+    let q = supabase.from("remitos").select("id", { count: "exact", head: true }).eq("tipo", "traslado").eq("estado", "en_transito");
+    if (profile.rol !== "admin") {
+      if (!profile.planta?.id) return;
+      q = q.eq("planta_destino_id", profile.planta.id);
+    }
+    q.then(({ count }) => setPendientes(count || 0));
+  }, [profile, pathname]);
+
   const items = [
     ["/generar", "Nuevo remito", "generar"],
     ["/stock", "Stock", "stock"],
+    ["/traslados", "Traslados", "traslados"],
     ["/historial", "Historial", "historial"],
     ["/transportes", "Transportes", "transportes"],
     ["/choferes", "Choferes", "choferes"],
@@ -60,6 +74,9 @@ export default function NavBar({ profile, children }) {
               >
                 <Icono d={ICONOS[icono]} />
                 {label}
+                {icono === "traslados" && pendientes > 0 && (
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-500 text-white rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
+                )}
               </Link>
             );
           })}

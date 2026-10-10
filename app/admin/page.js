@@ -50,6 +50,7 @@ function AdminInner({ profile }) {
             columns={[
               { key: "nombre", label: "Planta", type: "text", upper: true },
               { key: "punto_venta", label: "Punto de venta", type: "text", digits: 4, placeholder: "0001" },
+              { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "activa", label: "Activa", type: "bool" },
             ]}
           />

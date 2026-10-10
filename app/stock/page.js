@@ -22,6 +22,7 @@ function StockInner({ profile }) {
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
+  const [transito, setTransito] = useState([]);
   const [movs, setMovs] = useState({ loteId: null, rows: [] });
 
   useEffect(() => {
@@ -46,7 +47,13 @@ function StockInner({ profile }) {
       .order("lote");
     setLotes(data || []);
   };
+  const cargarTransito = async () => {
+    if (!plantaId) return setTransito([]);
+    const { data } = await supabase.from("v_stock_en_transito").select("*").or(`planta_id.eq.${plantaId},planta_destino_id.eq.${plantaId}`);
+    setTransito(data || []);
+  };
   useEffect(() => {
+    cargarTransito();
     cargar();
     setMovs({ loteId: null, rows: [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,6 +127,26 @@ function StockInner({ profile }) {
 
         {msg.texto && (
           <div className={`text-sm rounded p-3 border ${msg.tipo === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-red-50 border-red-300 text-red-700"}`}>{msg.texto}</div>
+        )}
+
+        {transito.length > 0 && (
+          <div className="panel p-4 space-y-2 border-amber-200 bg-amber-50/50">
+            <div className="text-xs font-semibold text-amber-800 uppercase">Mercadería en tránsito (sigue siendo de la empresa)</div>
+            <table className="w-full text-[13px]">
+              <tbody>
+                {transito.map((t, i) => (
+                  <tr key={i} className="border-t border-amber-100">
+                    <td className="py-1 font-mono">{t.punto_venta}-{t.numero}</td>
+                    <td>{t.descripcion}</td>
+                    <td className="font-mono">{t.lote}</td>
+                    <td className="text-right">{fmtNum(t.cantidad)}</td>
+                    <td className="pl-3 text-stone-500">{t.planta_id === plantaId ? `hacia ${t.planta_destino}` : `desde ${t.planta_origen}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-xs text-stone-500">Lo que viene desde otra planta se suma a tu stock cuando confirmás la recepción en Traslados.</div>
+          </div>
         )}
 
         <form onSubmit={ingresar} className="panel p-4 space-y-3">
@@ -213,7 +240,7 @@ function StockInner({ profile }) {
                               {movs.rows.map((m) => (
                                 <tr key={m.id} className="border-b border-stone-100">
                                   <td className="py-1 pr-2 text-stone-400">{new Date(m.created_at).toLocaleString("es-AR")}</td>
-                                  <td className="pr-2 uppercase">{m.tipo}</td>
+                                  <td className="pr-2 uppercase">{String(m.tipo).replace("traslado_", "traslado ")}</td>
                                   <td className={`pr-2 text-right font-semibold ${m.cantidad < 0 ? "text-red-600" : "text-emerald-700"}`}>{fmtNum(m.cantidad)}</td>
                                   <td className="pr-2 text-right text-stone-500">→ {fmtNum(m.stock_resultante)}</td>
                                   <td className="pr-2">{m.remito ? `Remito ${m.remito.punto_venta}-${m.remito.numero}` : m.motivo || ""}</td>
