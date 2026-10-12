@@ -7,7 +7,7 @@ import NavBar from "@/components/NavBar";
 import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { CALIBRACION_DEFAULT } from "@/lib/fieldCoords";
-import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
+import { fmtNum, fmtFecha, friendlyError, observacionesImpresas } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -77,7 +77,7 @@ function HistorialInner({ profile }) {
     if (f.hasta) q = q.lte("fecha", f.hasta);
     if (f.planta) q = q.eq("planta_id", f.planta);
     const t = f.texto.trim().replace(/[,()]/g, " ");
-    if (t) q = q.or(`cliente_nombre.ilike.%${t}%,numero.ilike.%${t}%,chofer_nombre.ilike.%${t}%,transportista_nombre.ilike.%${t}%`);
+    if (t) q = q.or(`cliente_nombre.ilike.%${t}%,numero.ilike.%${t}%,chofer_nombre.ilike.%${t}%,transportista_nombre.ilike.%${t}%,cot.ilike.%${t}%,orden_carga.ilike.%${t}%`);
     const { data, error } = await q;
     setLoading(false);
     if (error) return setMsg(friendlyError(error));
@@ -111,7 +111,7 @@ function HistorialInner({ profile }) {
       items,
       totalUnidades: r.total_unidades,
       totalKgs: r.total_kgs,
-      observaciones: r.observaciones,
+      observaciones: observacionesImpresas({ ordenCarga: r.orden_carga, cot: r.cot, observaciones: r.observaciones }),
     });
     setTimeout(() => window.print(), 200);
   };
@@ -129,6 +129,9 @@ function HistorialInner({ profile }) {
             Fecha: fmtFecha(r.fecha),
             Estado: r.estado,
             Modalidad: r.modalidad,
+            "Orden de carga": r.orden_carga,
+            COT: r.cot,
+            Provincia: r.cliente_provincia,
             Cliente: r.cliente_nombre,
             CUIT: r.cliente_cuit,
             "Entregar en": r.entregar_en,
@@ -158,7 +161,7 @@ function HistorialInner({ profile }) {
       <div className="max-w-6xl mx-auto p-6 space-y-4 no-print">
         <h1 className="text-lg font-semibold">Historial de remitos</h1>
         <div className="panel p-4 flex gap-2 flex-wrap items-end">
-          <input value={f.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Cliente, número, chofer, transporte…" className={`${inputCls} flex-1 min-w-[200px]`} />
+          <input value={f.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Cliente, número, chofer, transporte, COT, orden…" className={`${inputCls} flex-1 min-w-[200px]`} />
           <input value={f.lote} onChange={(e) => setF({ ...f, lote: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Lote" className={`${inputCls} w-32`} />
           <input value={f.precinto} onChange={(e) => setF({ ...f, precinto: e.target.value })} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Precinto" className={`${inputCls} w-32`} />
           <select value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value })} className={inputCls}>
@@ -247,6 +250,7 @@ function HistorialInner({ profile }) {
                       <td colSpan={8} className="p-4 space-y-3">
                         <div className="text-xs text-stone-500 grid sm:grid-cols-2 gap-x-6 gap-y-1">
                           <div>Modalidad: <b>{r.modalidad}</b></div>
+                          {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga || "—"}</b> · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
                           <div>Registrado: {new Date(r.created_at).toLocaleString("es-AR")}</div>
                           <div>Transporte: {r.transportista_nombre || "—"}</div>
                           <div>Chofer: {r.chofer_nombre || "—"} {r.chofer_cuil ? `(${r.chofer_cuil})` : ""}</div>

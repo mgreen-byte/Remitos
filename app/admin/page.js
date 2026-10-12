@@ -6,6 +6,7 @@ import NavBar from "@/components/NavBar";
 import CrudTable from "@/components/CrudTable";
 import { supabase } from "@/lib/supabaseClient";
 import { MODALIDADES, IVA_DEFAULT } from "@/lib/fieldCoords";
+import { PROVINCIAS } from "@/lib/util";
 
 const TABS = [
   ["plantas", "Plantas"],
@@ -51,6 +52,7 @@ function AdminInner({ profile }) {
               { key: "nombre", label: "Planta", type: "text", upper: true },
               { key: "punto_venta", label: "Punto de venta", type: "text", digits: 4, placeholder: "0001" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
+              { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
               { key: "activa", label: "Activa", type: "bool" },
             ]}
           />

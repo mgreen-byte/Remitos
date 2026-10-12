@@ -8,7 +8,7 @@ import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
-import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
+import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -34,6 +34,9 @@ function remitoVacio() {
     acoplado: "",
     totalKgs: "",
     observaciones: "",
+    provincia: "",
+    cot: "",
+    ordenCarga: "",
   };
 }
 
@@ -234,6 +237,7 @@ function GenerarInner({ profile }) {
     const obs = [c.contacto ? `Contacto: ${c.contacto}` : "", c.telefono ? `Tel: ${c.telefono}` : ""].filter(Boolean).join(" — ");
     setRemito((r) => ({
       ...r,
+      ordenCarga: ocData?.ordenCarga || r.ordenCarga,
       destinatario: up(c.cliente),
       cuit: up(c.cuit),
       domicilio: up(c.domicilio),
@@ -369,6 +373,7 @@ function GenerarInner({ profile }) {
     setRemito((r) => ({
       ...r,
       destinatario: d ? up(`TRASLADO A PLANTA ${d.nombre}`) : "",
+      provincia: d?.provincia ? up(d.provincia) : "",
       domicilio: d?.domicilio ? up(d.domicilio) : r.domicilio,
       entregarEn: d?.domicilio ? up(d.domicilio) : r.entregarEn,
     }));
@@ -392,7 +397,7 @@ function GenerarInner({ profile }) {
     items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, descripcion: i.desc, kgUnidad: i.kgu })),
     totalUnidades,
     totalKgs: remito.totalKgs,
-    observaciones: remito.observaciones,
+    observaciones: observacionesImpresas({ ordenCarga: remito.ordenCarga, cot: remito.cot, observaciones: remito.observaciones }),
   };
 
   const validar = () => {
@@ -400,6 +405,8 @@ function GenerarInner({ profile }) {
     if (remito.numero.length !== 8) return "El número de remito tiene que tener 8 dígitos.";
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
+    if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
+    if (esBuenosAires(remito.provincia) && remito.cot.trim().length < 3) return "El destino es la provincia de Buenos Aires: generá el COT en ARBA y cargalo antes de emitir el remito.";
     const validos = itemsCalc.filter((i) => i.cant > 0);
     if (!validos.length) return "Cargá al menos un ítem con cantidad.";
     if (validos.length > 15) return "El remito preimpreso admite hasta 15 ítems. Dividilo en dos remitos.";
@@ -446,6 +453,9 @@ function GenerarInner({ profile }) {
       acoplado: remito.acoplado,
       total_kgs: remito.totalKgs || null,
       observaciones: remito.observaciones,
+      cliente_provincia: remito.provincia,
+      cot: remito.cot,
+      orden_carga: remito.ordenCarga,
     };
     const lista = itemsCalc
       .filter((i) => i.cant > 0)
@@ -653,6 +663,37 @@ function GenerarInner({ profile }) {
                 <label className={lab}>Entregar en</label>
                 <input value={remito.entregarEn} onChange={(e) => setRemito((r) => ({ ...r, entregarEn: up(e.target.value) }))} className={inp} />
               </div>
+              <div>
+                <label className={lab}>Provincia de destino</label>
+                <select value={remito.provincia} onChange={(e) => setRemito((r) => ({ ...r, provincia: e.target.value }))} className={inp} disabled={esTraslado}>
+                  <option value="">Elegir…</option>
+                  {PROVINCIAS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lab}>Orden de carga</label>
+                <input value={remito.ordenCarga} onChange={(e) => setRemito((r) => ({ ...r, ordenCarga: up(e.target.value) }))} placeholder="OC-SF-143" className={inp} />
+              </div>
+              <div>
+                <label className={lab}>COT (ARBA){esBuenosAires(remito.provincia) && <span className="text-red-600"> · obligatorio</span>}</label>
+                <input
+                  value={remito.cot}
+                  onChange={(e) => setRemito((r) => ({ ...r, cot: up(e.target.value) }))}
+                  className={`${inp} ${esBuenosAires(remito.provincia) && remito.cot.trim().length < 3 ? "!border-red-400" : ""}`}
+                />
+              </div>
+              {esBuenosAires(remito.provincia) && (
+                <div className="md:col-span-3 text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                  El destino es la provincia de Buenos Aires: generá el COT en ARBA y cargalo acá. Sin COT no se puede emitir el remito.
+                </div>
+              )}
+              {!esBuenosAires(remito.provincia) && esBuenosAires(planta?.provincia) && (
+                <div className="md:col-span-3 text-[12.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  Tu planta está en la provincia de Buenos Aires: verificá si este traslado requiere COT. Si lo tenés, cargalo en el casillero.
+                </div>
+              )}
             </div>
           </Paso>
 

@@ -5,6 +5,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, up, friendlyError } from "@/lib/util";
+import ImportarStock from "@/components/ImportarStock";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -24,6 +25,8 @@ function StockInner({ profile }) {
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
+  const [importando, setImportando] = useState(false);
+  const [todasPlantas, setTodasPlantas] = useState([]);
   const [movs, setMovs] = useState({ loteId: null, rows: [] });
 
   useEffect(() => {
@@ -34,6 +37,7 @@ function StockInner({ profile }) {
       ]);
       setProductos(p.data || []);
       setPlantas(pl.data || []);
+      setTodasPlantas(pl.data || []);
       if (esAdmin && !plantaId && pl.data?.[0]) setPlantaId(pl.data[0].id);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,6 +128,16 @@ function StockInner({ profile }) {
             <span className="text-sm text-stone-500">{profile.planta?.nombre}</span>
           )}
         </div>
+
+        {!soloLectura && (
+          <div>
+            {importando ? (
+              <ImportarStock profile={profile} plantas={todasPlantas} productos={productos} onClose={() => setImportando(false)} onDone={cargar} />
+            ) : (
+              <button onClick={() => setImportando(true)} className="btn-secundario">Cargar stock desde Excel</button>
+            )}
+          </div>
+        )}
 
         {!plantaId && <div className="text-sm text-red-600">Tu usuario no tiene una planta asignada.</div>}
 
@@ -221,7 +235,7 @@ function StockInner({ profile }) {
                         </button>
                       </td>
                     </tr>
-                    {ajuste?.loteId === l.id && (
+                    {ajuste && ajuste.loteId === l.id && (
                       <tr className="bg-amber-50">
                         <td colSpan={5} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
