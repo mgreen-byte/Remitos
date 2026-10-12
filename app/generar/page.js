@@ -8,7 +8,7 @@ import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
-import { up, fmtNum, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
+import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -88,6 +88,7 @@ function GenerarInner({ profile }) {
   const [error, setError] = useState("");
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
   const [sugerido, setSugerido] = useState("");
+  const [tal, setTal] = useState(null); // respuesta de siguiente_numero cuando el control de talonarios está activo
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
 
@@ -141,7 +142,14 @@ function GenerarInner({ profile }) {
 
   const cargarSugerido = async (pv) => {
     setSugerido("");
+    setTal(null);
     if (!pv) return;
+    const { data: sn } = await supabase.rpc("siguiente_numero", { p_planta: esAdmin ? plantaId || null : null });
+    if (sn?.control) {
+      setTal(sn);
+      setSugerido(sn.numero || "");
+      return;
+    }
     const { data } = await supabase.from("remitos").select("numero").eq("punto_venta", pv).order("numero", { ascending: false }).limit(1);
     const ult = data?.[0]?.numero;
     setSugerido(ult ? String(Number(ult) + 1).padStart(8, "0") : "00000001");
@@ -155,6 +163,11 @@ function GenerarInner({ profile }) {
   useEffect(() => {
     cargarSugerido(puntoVenta);
   }, [puntoVenta]);
+
+  // Con el control de talonarios activo, el número se completa solo (se puede cambiar).
+  useEffect(() => {
+    if (tal?.numero && !emitido) setRemito((r) => (r.numero ? r : { ...r, numero: tal.numero }));
+  }, [tal, emitido, remito.numero]);
 
   const productosDisponibles = useMemo(() => {
     const conStock = new Set(lotes.map((l) => l.producto_id));
@@ -592,6 +605,15 @@ function GenerarInner({ profile }) {
                   inputMode="numeric"
                   className={inp}
                 />
+                {tal && !tal.numero && <div className="text-[12px] text-red-600 mt-1">{tal.motivo}</div>}
+                {tal?.numero && (
+                  <div className={`text-[12px] mt-1 ${tal.dias_vencimiento <= 15 || tal.total_disponibles <= 5 ? "text-amber-700" : "text-stone-500"}`}>
+                    Talonario {tal.desde} a {tal.hasta} · CAI {tal.cai} · vence {fmtFecha(tal.cai_vencimiento)} · quedan {tal.total_disponibles}
+                    {tal.dias_vencimiento <= 15 && ` · el CAI vence en ${tal.dias_vencimiento} día(s)`}
+                    {tal.total_disponibles <= 5 && " · pedí el próximo talonario"}
+                    {tal.huecos > 0 && ` · ${tal.huecos} número(s) salteados sin justificar`}
+                  </div>
+                )}
                 {sugerido && remito.numero !== sugerido && (
                   <button type="button" onClick={() => setRemito((r) => ({ ...r, numero: sugerido }))} className="text-[12px] text-emerald-700 hover:underline mt-1">
                     Usar el siguiente: {sugerido}

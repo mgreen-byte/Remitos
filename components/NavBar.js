@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 const ICONOS = {
+  talonarios: "M5 4h14v16H5zM9 4v16M12 9h4M12 13h4",
   traslados: "M4 8h13l-3-3M20 16H7l3 3M4 8h0M20 16h0",
   generar: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
   stock: "M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8",
@@ -29,6 +30,7 @@ export default function NavBar({ profile, children }) {
   const router = useRouter();
 
   const [pendientes, setPendientes] = useState(0);
+  const [avisoTal, setAvisoTal] = useState(0);
   useEffect(() => {
     if (!profile) return;
     let q = supabase.from("remitos").select("id", { count: "exact", head: true }).eq("tipo", "traslado").eq("estado", "en_transito");
@@ -37,12 +39,17 @@ export default function NavBar({ profile, children }) {
       q = q.eq("planta_destino_id", profile.planta.id);
     }
     q.then(({ count }) => setPendientes(count || 0));
+    // Talonarios: la planta ve los que faltan confirmar; el admin, las pérdidas reportadas.
+    let qt = supabase.from("talonarios").select("id", { count: "exact", head: true }).eq("estado", "activo");
+    qt = profile.rol === "admin" ? qt.not("extravio_reportado_at", "is", null) : qt.is("recibido_at", null);
+    qt.then(({ count }) => setAvisoTal(count || 0));
   }, [profile, pathname]);
 
   const items = [
     ["/generar", "Nuevo remito", "generar"],
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],
+    ["/talonarios", "Talonarios", "talonarios"],
     ["/historial", "Historial", "historial"],
     ["/transportes", "Transportes", "transportes"],
     ["/choferes", "Choferes", "choferes"],
@@ -76,6 +83,9 @@ export default function NavBar({ profile, children }) {
                 {label}
                 {icono === "traslados" && pendientes > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-500 text-white rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
+                )}
+                {icono === "talonarios" && avisoTal > 0 && (
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-500 text-white rounded-full px-1.5 min-w-[18px] text-center">{avisoTal}</span>
                 )}
               </Link>
             );

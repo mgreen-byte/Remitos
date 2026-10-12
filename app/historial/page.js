@@ -251,6 +251,7 @@ function HistorialInner({ profile }) {
                           <div>Chofer: {r.chofer_nombre || "—"} {r.chofer_cuil ? `(${r.chofer_cuil})` : ""}</div>
                           <div>Chasis / Acoplado: {r.chasis || "—"} / {r.acoplado || "—"}</div>
                           <div>Entregar en: {r.entregar_en || "—"}</div>
+                          {r.cai && <div>CAI: <b>{r.cai}</b> (vence {fmtFecha(r.cai_vencimiento)})</div>}
                           {r.observaciones && <div className="sm:col-span-2">Obs.: {r.observaciones}</div>}
                         </div>
                         <table className="w-full text-xs">
