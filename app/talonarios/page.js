@@ -86,7 +86,7 @@ function Inner({ profile }) {
       "Punto de venta": t.punto_venta,
       Desde: n8(t.desde),
       Hasta: n8(t.hasta),
-      "Primero a usar": n8(t.primero),
+      "Primero a usar": n8(t.primero ?? t.desde),
       CAI: t.cai,
       "Vence": fmtFecha(t.cai_vencimiento),
       Estado: t.estado === "cerrado" ? "dado de baja" : t.estado,
@@ -189,8 +189,9 @@ function Inner({ profile }) {
         {!loading && visibles.length === 0 && <div className="panel p-6 text-sm text-stone-400">No hay talonarios para mostrar.</div>}
 
         {visibles.map((t) => {
-          const total = t.hasta - t.primero + 1;
-          const previos = t.primero - t.desde;
+          const primero = t.primero ?? t.desde; // si falta migration_9, se toma el "desde"
+          const total = t.hasta - primero + 1;
+          const previos = primero - t.desde;
           const pct = Math.round(((t.usados + t.justificados) / total) * 100);
           const dias = Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000);
           const activo = t.estado === "activo";
@@ -219,7 +220,7 @@ function Inner({ profile }) {
                   <div className="h-full bg-emerald-600" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="text-[12.5px] text-stone-500 mt-1">
-                  {previos > 0 && <>Previos al sistema {fmtNum(previos)} (hasta el {n8(t.primero - 1)}) · </>}Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
+                  {previos > 0 && <>Previos al sistema {fmtNum(previos)} (hasta el {n8(primero - 1)}) · </>}Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
                   {t.disponibles <= 5 && activo && <b className="text-amber-700"> · pedí el próximo talonario</b>}
                 </div>
               </div>
@@ -327,7 +328,7 @@ function Inner({ profile }) {
                   <button onClick={() => setPanel({ id: t.id, modo: "extravio", texto: "" })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Reportar pérdida…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (
-                  <button onClick={() => setPanel({ id: t.id, modo: "editar", primero: String(t.primero), hasta: String(t.hasta), cai: t.cai, venc: t.cai_vencimiento })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Editar…</button>
+                  <button onClick={() => setPanel({ id: t.id, modo: "editar", primero: String(primero), hasta: String(t.hasta), cai: t.cai, venc: t.cai_vencimiento })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Editar…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (
                   <button onClick={() => setPanel({ id: t.id, modo: "baja", texto: t.extravio_detalle || "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">Dar de baja…</button>
