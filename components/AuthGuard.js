@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 // Protege una página: exige sesión y (opcionalmente) rol admin.
 // Entrega `profile` con la planta asignada (profile.planta).
-export default function AuthGuard({ children, adminOnly }) {
+export default function AuthGuard({ children, adminOnly, roles }) {
   const router = useRouter();
   const [state, setState] = useState({ loading: true, profile: null, notice: "" });
 
@@ -34,8 +34,8 @@ export default function AuthGuard({ children, adminOnly }) {
         setState({ loading: false, profile: null, notice: "Tu usuario está desactivado. Consultá con el administrador." });
         return;
       }
-      if (adminOnly && profile.rol !== "admin") {
-        router.replace("/generar");
+      if ((adminOnly && profile.rol !== "admin") || (roles && !roles.includes(profile.rol))) {
+        router.replace(profile.rol === "consulta" ? "/historial" : "/generar");
         return;
       }
       setState({ loading: false, profile, notice: "" });

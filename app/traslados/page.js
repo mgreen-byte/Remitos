@@ -13,7 +13,8 @@ export default function TrasladosPage() {
 }
 
 function TrasladosInner({ profile }) {
-  const esAdmin = profile.rol === "admin";
+  const esAdmin = profile.rol === "admin" || profile.rol === "consulta"; // ve todas las plantas
+  const soloLectura = profile.rol === "consulta";
   const miPlanta = profile.planta?.id || null;
   const [tab, setTab] = useState("entrantes");
   const [rows, setRows] = useState([]);
@@ -109,7 +110,7 @@ function TrasladosInner({ profile }) {
         {lista.map((r) => {
           const items = [...(r.remito_items || [])].sort((a, b) => a.orden - b.orden);
           const abierto = panel?.id === r.id;
-          const puedeRecibir = tab === "entrantes";
+          const puedeRecibir = tab === "entrantes" && !soloLectura;
           return (
             <section key={r.id} className="panel p-5 space-y-3">
               <div className="flex justify-between flex-wrap gap-2">
@@ -195,7 +196,7 @@ function TrasladosInner({ profile }) {
                 </div>
               )}
 
-              {!puedeRecibir && <div className="text-xs text-stone-400">Esperando confirmación de {r.destino?.nombre}. Si fue un error, podés anularlo desde Historial mientras siga en tránsito.</div>}
+              {!puedeRecibir && <div className="text-xs text-stone-400">{soloLectura ? `Pendiente de confirmación de ${r.destino?.nombre}.` : `Esperando confirmación de ${r.destino?.nombre}. Si fue un error, podés anularlo desde Historial mientras siga en tránsito.`}</div>}
             </section>
           );
         })}

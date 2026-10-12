@@ -6,7 +6,7 @@ import Directorio from "@/components/Directorio";
 
 export default function ChoferesPage() {
   return (
-    <AuthGuard>
+    <AuthGuard roles={["admin", "consulta"]}>
       {(profile) => (
         <NavBar profile={profile}>
           <Directorio

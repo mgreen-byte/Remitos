@@ -17,6 +17,8 @@ export default function TalonariosPage() {
 
 function Inner({ profile }) {
   const esAdmin = profile.rol === "admin";
+  const soloLectura = profile.rol === "consulta";
+  const veTodo = esAdmin || soloLectura;
   const [rows, setRows] = useState([]);
   const [plantas, setPlantas] = useState([]);
   const [filtro, setFiltro] = useState("");
@@ -167,7 +169,7 @@ function Inner({ profile }) {
         )}
 
         <div className="flex items-center gap-3 flex-wrap text-[13px]">
-          {esAdmin && (
+          {veTodo && (
             <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={inputCls}>
               <option value="">Todas las plantas</option>
               {plantas.map((p) => (
@@ -250,7 +252,7 @@ function Inner({ profile }) {
                       </label>
                     ))}
                   </div>
-                  {panel.lista.length > 0 && (
+                  {panel.lista.length > 0 && !soloLectura && (
                     <div className="flex gap-2 flex-wrap items-center">
                       <select value={panel.motivo} onChange={(e) => setPanel({ ...panel, motivo: e.target.value })} className={inputCls}>
                         {Object.entries(MOTIVOS).map(([k, v]) => (
@@ -261,7 +263,7 @@ function Inner({ profile }) {
                       <button disabled={!panel.nums.length} onClick={justificar} className="btn-primario">Justificar {panel.nums.length || ""}</button>
                     </div>
                   )}
-                  <div className="text-xs text-stone-400">Un número justificado ya no se puede usar. Los que no marques quedan disponibles para usar más adelante.</div>
+                  <div className="text-xs text-stone-400">{soloLectura ? "Estos números todavía no se usaron ni se justificaron." : "Un número justificado ya no se puede usar. Los que no marques quedan disponibles para usar más adelante."}</div>
                 </div>
               )}
 
@@ -281,10 +283,10 @@ function Inner({ profile }) {
               )}
 
               <div className="flex gap-2 flex-wrap">
-                {!t.recibido_at && t.estado !== "cerrado" && (
+                {!soloLectura && !t.recibido_at && t.estado !== "cerrado" && (
                   <button onClick={() => run(() => supabase.rpc("confirmar_recepcion_talonario", { p_id: t.id }), "Recepción confirmada.")} className="btn-primario">Confirmar recepción</button>
                 )}
-                {activo && !t.extravio_reportado_at && !abierto && (
+                {!soloLectura && activo && !t.extravio_reportado_at && !abierto && (
                   <button onClick={() => setPanel({ id: t.id, modo: "extravio", texto: "" })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Reportar pérdida…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (

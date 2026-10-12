@@ -9,6 +9,7 @@ import ImportarExcel from "@/components/ImportarExcel";
 // solo el admin borra. columns: [{key, label, upper, digits, format, span, placeholder, required}]
 export default function Directorio({ table, titulo, singular, ayuda, columns, profile, vacioTexto, claveUnica }) {
   const esAdmin = profile?.rol === "admin";
+  const soloLectura = profile?.rol === "consulta";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -88,7 +89,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
           <h1 className="text-[22px] font-semibold text-stone-900">{titulo}</h1>
           <p className="text-stone-500 text-[13.5px] max-w-xl">{ayuda}</p>
         </div>
-        {!form && !importando && (
+        {!form && !importando && !soloLectura && (
           <div className="flex gap-2">
             <button onClick={() => { setError(""); setAviso(""); setImportando(true); }} className="btn-secundario">
               Importar desde Excel
@@ -183,9 +184,11 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
                     {r.modificado_por_nombre && <div>Editado por {r.modificado_por_nombre}</div>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
-                      Editar
-                    </button>
+                    {!soloLectura && (
+                      <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
+                        Editar
+                      </button>
+                    )}
                     {esAdmin && (
                       <button onClick={() => borrar(r)} className="text-stone-400 hover:text-red-600 text-[13px]">
                         Borrar

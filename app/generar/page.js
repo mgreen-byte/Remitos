@@ -56,7 +56,7 @@ function Paso({ n, titulo, ayuda, children }) {
 }
 
 export default function GenerarPage() {
-  return <AuthGuard>{(profile) => <GenerarInner profile={profile} />}</AuthGuard>;
+  return <AuthGuard roles={["admin", "operador"]}>{(profile) => <GenerarInner profile={profile} />}</AuthGuard>;
 }
 
 function GenerarInner({ profile }) {
@@ -461,7 +461,7 @@ function GenerarInner({ profile }) {
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
-      const { error: errP } = await supabase.from("choferes").update({ chasis: remito.chasis || null, acoplado: remito.acoplado || null }).eq("id", remito.choferId);
+      const { error: errP } = await supabase.rpc("actualizar_patentes_chofer", { p_chofer: remito.choferId, p_chasis: remito.chasis || null, p_acoplado: remito.acoplado || null });
       if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
       else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
     }
@@ -812,11 +812,18 @@ function GenerarInner({ profile }) {
                         <>
                           <select value={it.productoId} onChange={(e) => selProducto(it.id, e.target.value)} className={`${inp} col-span-2 md:col-span-1`}>
                             <option value="">Elegir producto…</option>
-                            {productosDisponibles.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.nombre} {p.presentacion}
-                              </option>
-                            ))}
+                            {[["semilla", "Semillas"], ["insumo", "Insumos"], ["ensamblaje", "Ensamblajes"]].map(([g, titulo]) => {
+                              const delGrupo = productosDisponibles.filter((p) => (p.grupo || "semilla") === g);
+                              return delGrupo.length ? (
+                                <optgroup key={g} label={titulo}>
+                                  {delGrupo.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.nombre} {p.presentacion}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ) : null;
+                            })}
                             {it.productoId && !productosDisponibles.find((p) => p.id === it.productoId) && productoDe(it.productoId) && (
                               <option value={it.productoId}>{productoDe(it.productoId).nombre} (sin stock)</option>
                             )}

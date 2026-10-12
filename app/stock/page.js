@@ -13,7 +13,8 @@ export default function StockPage() {
 }
 
 function StockInner({ profile }) {
-  const esAdmin = profile.rol === "admin";
+  const esAdmin = profile.rol === "admin" || profile.rol === "consulta"; // elige planta
+  const soloLectura = profile.rol === "consulta";
   const [plantas, setPlantas] = useState([]);
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
@@ -150,6 +151,7 @@ function StockInner({ profile }) {
           </div>
         )}
 
+        {!soloLectura && (
         <form onSubmit={ingresar} className="panel p-4 space-y-3">
           <div className="text-xs font-semibold text-stone-500 uppercase">Ingresar stock de un lote</div>
           <div className="flex gap-2 flex-wrap">
@@ -157,7 +159,7 @@ function StockInner({ profile }) {
               <option value="">Producto…</option>
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.categoria.toUpperCase()} · {p.nombre} {p.presentacion}
+                  {((p.grupo || "semilla") === "semilla" ? p.categoria : p.grupo).toUpperCase()} · {p.nombre} {p.presentacion}
                 </option>
               ))}
             </select>
@@ -168,6 +170,7 @@ function StockInner({ profile }) {
           </div>
           <div className="text-xs text-stone-400">Si el lote ya existe, la cantidad se suma al stock actual.</div>
         </form>
+        )}
 
         <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
@@ -208,9 +211,11 @@ function StockInner({ profile }) {
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right whitespace-nowrap">
-                        <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
-                          Ajustar
-                        </button>
+                        {!soloLectura && (
+                          <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
+                            Ajustar
+                          </button>
+                        )}
                         <button onClick={() => verMovs(l.id)} className="text-xs text-stone-500 hover:underline">
                           Movimientos
                         </button>

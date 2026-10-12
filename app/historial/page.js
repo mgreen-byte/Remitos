@@ -25,7 +25,8 @@ export default function HistorialPage() {
 }
 
 function HistorialInner({ profile }) {
-  const esAdmin = profile.rol === "admin";
+  const esAdmin = profile.rol === "admin" || profile.rol === "consulta"; // ve todas las plantas
+  const soloLectura = profile.rol === "consulta";
   const [plantas, setPlantas] = useState([]);
   const [f, setF] = useState({ texto: "", lote: "", precinto: "", estado: "", desde: "", hasta: "", planta: "" });
   const [rows, setRows] = useState([]);
@@ -299,7 +300,7 @@ function HistorialInner({ profile }) {
                           <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
                             Reimprimir
                           </button>
-                          {(r.estado === "emitido" || (r.estado === "en_transito" && (esAdmin || r.planta_id === profile.planta?.id))) && anulando?.id !== r.id && (
+                          {!soloLectura && (r.estado === "emitido" || (r.estado === "en_transito" && (esAdmin || r.planta_id === profile.planta?.id))) && anulando?.id !== r.id && (
                             <button onClick={() => setAnulando({ id: r.id, motivo: "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">
                               Anular…
                             </button>

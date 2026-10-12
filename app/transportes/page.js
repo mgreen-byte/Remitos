@@ -6,7 +6,7 @@ import Directorio from "@/components/Directorio";
 
 export default function TransportesPage() {
   return (
-    <AuthGuard>
+    <AuthGuard roles={["admin", "consulta"]}>
       {(profile) => (
         <NavBar profile={profile}>
           <Directorio
@@ -14,7 +14,7 @@ export default function TransportesPage() {
             titulo="Transportes"
             singular="Transporte"
             profile={profile}
-            ayuda="Empresas de transporte compartidas por todas las plantas. Si falta una, agregala acá o desde el remito y queda disponible para todos."
+            ayuda="Maestro de empresas de transporte, compartido por todas las plantas. Las plantas pueden dar de alta una nueva desde el remito; solo el administrador edita y borra."
             vacioTexto="Todavía no hay transportes cargados."
             claveUnica="cuit"
             columns={[

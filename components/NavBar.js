@@ -34,7 +34,7 @@ export default function NavBar({ profile, children }) {
   useEffect(() => {
     if (!profile) return;
     let q = supabase.from("remitos").select("id", { count: "exact", head: true }).eq("tipo", "traslado").eq("estado", "en_transito");
-    if (profile.rol !== "admin") {
+    if (profile.rol === "operador") {
       if (!profile.planta?.id) return;
       q = q.eq("planta_destino_id", profile.planta.id);
     }
@@ -42,18 +42,20 @@ export default function NavBar({ profile, children }) {
     // Talonarios: la planta ve los que faltan confirmar; el admin, las pérdidas reportadas.
     let qt = supabase.from("talonarios").select("id", { count: "exact", head: true }).eq("estado", "activo");
     qt = profile.rol === "admin" ? qt.not("extravio_reportado_at", "is", null) : qt.is("recibido_at", null);
+    if (profile.rol === "consulta") return;
     qt.then(({ count }) => setAvisoTal(count || 0));
   }, [profile, pathname]);
 
+  const rol = profile?.rol;
   const items = [
-    ["/generar", "Nuevo remito", "generar"],
+    ...(rol !== "consulta" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],
     ["/talonarios", "Talonarios", "talonarios"],
     ["/historial", "Historial", "historial"],
-    ["/transportes", "Transportes", "transportes"],
-    ["/choferes", "Choferes", "choferes"],
-    ...(profile?.rol === "admin" ? [["/admin", "Administración", "admin"]] : []),
+    // Los maestros de transportes y choferes: admin (edita) y consulta (solo mira).
+    ...(rol === "admin" || rol === "consulta" ? [["/transportes", "Transportes", "transportes"], ["/choferes", "Choferes", "choferes"]] : []),
+    ...(rol === "admin" ? [["/admin", "Administración", "admin"]] : []),
   ];
 
   const logout = async () => {
@@ -93,7 +95,7 @@ export default function NavBar({ profile, children }) {
         </nav>
         <div className="hidden md:block px-5 py-4 border-t border-stone-200 text-[13px]">
           <div className="font-medium text-stone-800 truncate">{profile?.nombre}</div>
-          <div className="text-stone-400 text-[12px] mb-2">{profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
+          <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo consulta" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-stone-500 hover:text-stone-800 text-[12.5px]">
             Cerrar sesión
           </button>

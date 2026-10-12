@@ -65,12 +65,12 @@ function AdminInner({ profile }) {
             help={
               <>
                 Para crear un usuario nuevo: Supabase → Authentication → Users → Add user (con “Auto Confirm User”). Después aparece acá y le asignás planta y permisos.
-                Un usuario sin planta solo puede ver (no puede emitir). Los admin pueden operar en cualquier planta.
+                Operador: emite remitos y trabaja en su planta. Solo consulta: ve todas las plantas, descarga y reimprime, pero no modifica nada (no necesita planta). Admin: todo.
               </>
             }
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
-              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Operador" }, { value: "admin", label: "Admin" }] },
+              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Operador" }, { value: "consulta", label: "Solo consulta" }, { value: "admin", label: "Admin" }] },
               { key: "planta_id", label: "Planta", type: "select", nullable: true, options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "modalidades", label: "Modalidades", type: "multi", options: MODALIDADES.map((m) => ({ value: m.id, label: m.label })) },
               { key: "activo", label: "Activo", type: "bool" },
@@ -83,11 +83,13 @@ function AdminInner({ profile }) {
             key="catalogo"
             table="productos"
             orderBy="nombre"
-            nuevoDefault={{ categoria: "soja" }}
-            help="Variedades/híbridos y su presentación. Los kg por unidad se usan para calcular el peso del remito (ej. Big Bag 800 / 1000 / 1089 kg: cargá una fila por cada presentación). En “Alias” poné otros nombres con los que viene el producto en el Excel de la OC, separados por coma, para que se reconozca solo."
+            canDelete
+            nuevoDefault={{ categoria: "soja", grupo: "semilla" }}
+            help="Todo lo que se remite: semillas, insumos y ensamblajes. Para insumos y ensamblajes elegí Categoría “Otro” y completá el Grupo. Podés editar o eliminar un producto; si ya tiene lotes cargados no se puede eliminar: desactivalo en “Activo”. Variedades/híbridos y su presentación. Los kg por unidad se usan para calcular el peso del remito (ej. Big Bag 800 / 1000 / 1089 kg: cargá una fila por cada presentación). En “Alias” poné otros nombres con los que viene el producto en el Excel de la OC, separados por coma, para que se reconozca solo."
             columns={[
+              { key: "grupo", label: "Grupo", type: "select", options: [{ value: "semilla", label: "Semilla" }, { value: "insumo", label: "Insumo" }, { value: "ensamblaje", label: "Ensamblaje" }] },
               { key: "categoria", label: "Categoría", type: "select", options: [{ value: "soja", label: "Soja" }, { value: "maiz", label: "Maíz" }, { value: "otro", label: "Otro" }] },
-              { key: "nombre", label: "Variedad / Híbrido", type: "text", upper: true },
+              { key: "nombre", label: "Nombre (variedad / insumo / ensamblaje)", type: "text", upper: true },
               { key: "presentacion", label: "Presentación", type: "text", upper: true, placeholder: "BIG BAG 1000 KG" },
               { key: "kg_por_unidad", label: "Kg por unidad", type: "number" },
               { key: "alias", label: "Alias (Excel)", type: "list", placeholder: "nombre 1, nombre 2" },
