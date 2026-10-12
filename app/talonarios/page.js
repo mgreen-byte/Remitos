@@ -63,7 +63,7 @@ function Inner({ profile }) {
   const crear = (e) => {
     e.preventDefault();
     run(
-      () => supabase.rpc("crear_talonario", { p_planta: nuevo.planta, p_desde: Number(nuevo.desde), p_hasta: Number(nuevo.hasta), p_cai: nuevo.cai, p_vencimiento: nuevo.venc }),
+      () => supabase.rpc("crear_talonario", { p_planta: nuevo.planta, p_desde: Number(nuevo.desde), p_hasta: Number(nuevo.hasta), p_cai: nuevo.cai, p_vencimiento: nuevo.venc, p_primero: nuevo.primero ? Number(nuevo.primero) : null }),
       "Talonario cargado."
     );
   };
@@ -86,6 +86,7 @@ function Inner({ profile }) {
       "Punto de venta": t.punto_venta,
       Desde: n8(t.desde),
       Hasta: n8(t.hasta),
+      "Primero a usar": n8(t.primero),
       CAI: t.cai,
       "Vence": fmtFecha(t.cai_vencimiento),
       Estado: t.estado === "cerrado" ? "dado de baja" : t.estado,
@@ -115,7 +116,7 @@ function Inner({ profile }) {
           {esAdmin && (
             <div className="flex gap-2">
               <button onClick={exportar} className="btn-secundario">Exportar Excel</button>
-              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", cai: "", venc: "" })} className="btn-primario">Nuevo talonario</button>
+              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", primero: "", cai: "", venc: "" })} className="btn-primario">Nuevo talonario</button>
             </div>
           )}
         </header>
@@ -155,12 +156,14 @@ function Inner({ profile }) {
               </select>
               <input required value={nuevo.desde} onChange={(e) => setNuevo({ ...nuevo, desde: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Desde" inputMode="numeric" className={inputCls} />
               <input required value={nuevo.hasta} onChange={(e) => setNuevo({ ...nuevo, hasta: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Hasta" inputMode="numeric" className={inputCls} />
+              <input value={nuevo.primero} onChange={(e) => setNuevo({ ...nuevo, primero: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Primero a usar (opcional)" inputMode="numeric" className={`${inputCls} sm:col-span-2`} />
               <input required value={nuevo.cai} onChange={(e) => setNuevo({ ...nuevo, cai: e.target.value.toUpperCase() })} placeholder="CAI" className={inputCls} />
               <div className="sm:col-span-2">
                 <label className="campo-etiqueta">Vencimiento del CAI</label>
                 <input required type="date" value={nuevo.venc} onChange={(e) => setNuevo({ ...nuevo, venc: e.target.value })} className={`${inputCls} w-full`} />
               </div>
             </div>
+            <div className="text-xs text-stone-400">Si la planta ya venía usando este talonario en papel, poné en “Primero a usar” el primer remito que va a emitir desde el sistema. Los anteriores se toman como usados antes de empezar.</div>
             <div className="flex gap-2">
               <button className="btn-primario">Cargar</button>
               <button type="button" onClick={() => setNuevo(null)} className="text-sm text-stone-500">Cancelar</button>
@@ -186,7 +189,8 @@ function Inner({ profile }) {
         {!loading && visibles.length === 0 && <div className="panel p-6 text-sm text-stone-400">No hay talonarios para mostrar.</div>}
 
         {visibles.map((t) => {
-          const total = t.hasta - t.desde + 1;
+          const total = t.hasta - t.primero + 1;
+          const previos = t.primero - t.desde;
           const pct = Math.round(((t.usados + t.justificados) / total) * 100);
           const dias = Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000);
           const activo = t.estado === "activo";
@@ -215,7 +219,7 @@ function Inner({ profile }) {
                   <div className="h-full bg-emerald-600" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="text-[12.5px] text-stone-500 mt-1">
-                  Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
+                  {previos > 0 && <>Previos al sistema {fmtNum(previos)} (hasta el {n8(t.primero - 1)}) · </>}Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
                   {t.disponibles <= 5 && activo && <b className="text-amber-700"> · pedí el próximo talonario</b>}
                 </div>
               </div>
@@ -267,6 +271,39 @@ function Inner({ profile }) {
                 </div>
               )}
 
+              {abierto && panel.modo === "editar" && (
+                <div className="space-y-2 border-t border-stone-100 pt-3">
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <div>
+                      <label className="campo-etiqueta">Primero a usar</label>
+                      <input value={panel.primero} onChange={(e) => setPanel({ ...panel, primero: e.target.value.replace(/\D/g, "").slice(0, 8) })} inputMode="numeric" className={`${inputCls} w-full`} />
+                    </div>
+                    <div>
+                      <label className="campo-etiqueta">Hasta</label>
+                      <input value={panel.hasta} onChange={(e) => setPanel({ ...panel, hasta: e.target.value.replace(/\D/g, "").slice(0, 8) })} inputMode="numeric" className={`${inputCls} w-full`} />
+                    </div>
+                    <div>
+                      <label className="campo-etiqueta">CAI</label>
+                      <input value={panel.cai} onChange={(e) => setPanel({ ...panel, cai: e.target.value.toUpperCase() })} className={`${inputCls} w-full`} />
+                    </div>
+                    <div>
+                      <label className="campo-etiqueta">Vencimiento</label>
+                      <input type="date" value={panel.venc} onChange={(e) => setPanel({ ...panel, venc: e.target.value })} className={`${inputCls} w-full`} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => run(() => supabase.rpc("editar_talonario", { p_id: t.id, p_primero: Number(panel.primero), p_hasta: Number(panel.hasta), p_cai: panel.cai, p_vencimiento: panel.venc || null }), "Talonario actualizado.")}
+                      className="btn-primario"
+                    >
+                      Guardar cambios
+                    </button>
+                    <button onClick={() => setPanel(null)} className="text-sm text-stone-500">Cancelar</button>
+                  </div>
+                  <div className="text-xs text-stone-400">El primero a usar no puede ser mayor que un remito ya emitido desde el sistema, ni el hasta menor.</div>
+                </div>
+              )}
+
               {abierto && (panel.modo === "baja" || panel.modo === "extravio") && (
                 <div className="space-y-2 border-t border-stone-100 pt-3">
                   <textarea value={panel.texto} onChange={(e) => setPanel({ ...panel, texto: e.target.value })} rows={2} className={`${inputCls} w-full`} placeholder={panel.modo === "baja" ? "Motivo de la baja (obligatorio)" : "Contá qué pasó con el talonario (obligatorio)"} />
@@ -288,6 +325,9 @@ function Inner({ profile }) {
                 )}
                 {!soloLectura && activo && !t.extravio_reportado_at && !abierto && (
                   <button onClick={() => setPanel({ id: t.id, modo: "extravio", texto: "" })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Reportar pérdida…</button>
+                )}
+                {esAdmin && t.estado !== "cerrado" && !abierto && (
+                  <button onClick={() => setPanel({ id: t.id, modo: "editar", primero: String(t.primero), hasta: String(t.hasta), cai: t.cai, venc: t.cai_vencimiento })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Editar…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (
                   <button onClick={() => setPanel({ id: t.id, modo: "baja", texto: t.extravio_detalle || "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">Dar de baja…</button>
