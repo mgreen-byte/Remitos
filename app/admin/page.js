@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import CrudTable from "@/components/CrudTable";
+import ExportarTodo from "@/components/ExportarTodo";
 import { supabase } from "@/lib/supabaseClient";
 import { MODALIDADES, IVA_DEFAULT } from "@/lib/fieldCoords";
 import { PROVINCIAS } from "@/lib/util";
@@ -13,6 +14,7 @@ const TABS = [
   ["usuarios", "Usuarios"],
   ["catalogo", "Catálogo"],
   ["config", "Configuración"],
+  ["respaldo", "Respaldo"],
 ];
 
 export default function AdminPage() {
@@ -102,6 +104,8 @@ function AdminInner({ profile }) {
         )}
 
         {tab === "config" && <Config />}
+
+        {tab === "respaldo" && <ExportarTodo />}
       </div>
     </NavBar>
   );
