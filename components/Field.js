@@ -12,6 +12,7 @@ export default function Field({
   align,
   readOnly,
   uppercase = true,
+  fit = false,
 }) {
   const style = {
     position: "absolute",
@@ -43,6 +44,19 @@ export default function Field({
   };
 
   if (readOnly) {
+    if (fit) {
+      // Una sola línea: si el texto es largo, se achica la letra (hasta 60%) para que entre en el casillero.
+      const largo = String(value ?? "").length;
+      const mmDisponibles = coords.width - 1.4;
+      const mmPorLetra = fontSize * 0.3528 * (uppercase ? 0.62 : 0.55);
+      const escala = largo > 0 ? Math.max(0.6, Math.min(1, mmDisponibles / (largo * mmPorLetra))) : 1;
+      style.fontSize = `${Math.round(fontSize * escala * 10) / 10}pt`;
+      return (
+        <div style={style} className="whitespace-nowrap overflow-hidden field-print">
+          {value}
+        </div>
+      );
+    }
     return (
       <div style={style} className="whitespace-pre-wrap overflow-hidden field-print">
         {value}

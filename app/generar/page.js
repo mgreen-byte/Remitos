@@ -92,6 +92,7 @@ function GenerarInner({ profile }) {
   const [remito, setRemito] = useState(remitoVacio());
   const [items, setItems] = useState([itemVacio()]);
   const [mostrarPreview, setMostrarPreview] = useState(false);
+  const [mostrarGuia, setMostrarGuia] = useState(true);
   const [nuevoChofer, setNuevoChofer] = useState(null);
   const [errorChofer, setErrorChofer] = useState("");
   const [nuevoTransp, setNuevoTransp] = useState(null);
@@ -980,6 +981,10 @@ function GenerarInner({ profile }) {
             <div>
               <h2 className="text-[17px] font-semibold text-stone-900">Vista previa</h2>
               <p className="text-[13px] text-stone-500">Así se imprime sobre el remito preimpreso. Revisá los datos antes de registrar.</p>
+              <label className="flex items-center gap-2 mt-2 text-[13px] text-stone-600 cursor-pointer select-none">
+                <input type="checkbox" checked={mostrarGuia} onChange={(e) => setMostrarGuia(e.target.checked)} className="accent-emerald-700" />
+                Mostrar el boceto del formulario de fondo (no se imprime)
+              </label>
             </div>
             {!bloqueado && (
               <div className="flex gap-2">
@@ -993,7 +998,7 @@ function GenerarInner({ profile }) {
             )}
           </div>
           <div className="print-reset bg-stone-200 rounded-xl p-6 overflow-x-auto flex justify-center">
-            <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} />
+            <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} guia={mostrarGuia} />
           </div>
           <details className="no-print panel p-5">
             <summary className="cursor-pointer text-[13.5px] font-medium text-stone-700">Ajustar posición de impresión</summary>
