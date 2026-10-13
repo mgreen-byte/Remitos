@@ -1,5 +1,7 @@
 "use client";
 
+import { FUENTE_REMITO } from "@/lib/fieldCoords";
+
 export default function Field({
   coords,
   offset,
@@ -18,7 +20,7 @@ export default function Field({
     width: `${coords.width}mm`,
     height: `${coords.height}mm`,
     fontSize: `${fontSize}pt`,
-    fontFamily: "Arial, Helvetica, sans-serif",
+    fontFamily: FUENTE_REMITO,
     color: "#111",
     background: readOnly ? "transparent" : "rgba(16, 185, 129, 0.04)",
     border: readOnly ? "none" : "1px dashed rgba(5, 150, 105, 0.35)",

@@ -4,6 +4,9 @@ import Field from "@/components/Field";
 import { FIELD_COORDS } from "@/lib/fieldCoords";
 import { fmtNum } from "@/lib/util";
 
+// CUIT / CUIL / DNI se imprimen solo con números, sin guiones ni puntos.
+const soloDigitos = (v) => String(v ?? "").replace(/\D/g, "");
+
 // Hoja A4 con los datos posicionados sobre el remito preimpreso.
 // Se alimenta de un objeto plano `d` (el mismo que se registra), así lo que
 // se imprime es exactamente lo que queda guardado.
@@ -25,17 +28,17 @@ export default function RemitoSheet({ d, calibracion, visible = true }) {
       {F("fechaMM", mm, { align: "center", uppercase: false })}
       {F("fechaAA", yy, { align: "center", uppercase: false })}
       {F("destinatario", d.destinatario)}
-      {F("destCuit", d.cuit)}
+      {F("destCuit", soloDigitos(d.cuit))}
       {F("domicilio", d.domicilio)}
       {F("destIva", d.iva)}
       {F("entregarEn", d.entregarEn)}
       {F("transportista", d.transportista)}
-      {F("transpCuit", d.transpCuit)}
+      {F("transpCuit", soloDigitos(d.transpCuit))}
       {F("transpDomicilio", d.transpDomicilio)}
       {F("chasis", d.chasis)}
       {F("acoplado", d.acoplado)}
       {F("chofer", d.chofer)}
-      {F("choferDni", d.choferDni)}
+      {F("choferDni", soloDigitos(d.choferDni))}
       {items.map((it, idx) => {
         const top = FIELD_COORDS.tablaTop + 2 + idx * rowH;
         return (
