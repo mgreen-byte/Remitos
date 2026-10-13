@@ -53,8 +53,8 @@ export default function NavBar({ profile, children }) {
     ["/traslados", "Traslados", "traslados"],
     ["/talonarios", "Talonarios", "talonarios"],
     ["/historial", "Historial", "historial"],
-    // Los maestros de transportes y choferes: admin (edita) y consulta (solo mira).
-    ...(rol === "admin" || rol === "consulta" ? [["/transportes", "Transportes", "transportes"], ["/choferes", "Choferes", "choferes"]] : []),
+    // Los maestros de transportes y choferes: admin (edita) (consulta no los ve).
+    ...(rol === "admin" ? [["/transportes", "Transportes", "transportes"], ["/choferes", "Choferes", "choferes"]] : []),
     ...(rol === "admin" ? [["/admin", "Administración", "admin"]] : []),
   ];
 

@@ -67,7 +67,7 @@ function AdminInner({ profile }) {
             help={
               <>
                 Para crear un usuario nuevo: Supabase → Authentication → Users → Add user (con “Auto Confirm User”). Después aparece acá y le asignás planta y permisos.
-                Operador: emite remitos y trabaja en su planta. Solo consulta: ve todas las plantas, descarga y reimprime, pero no modifica nada (no necesita planta). Admin: todo.
+                Operador: emite remitos y trabaja en su planta. Solo consulta: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Admin: todo.
               </>
             }
             columns={[

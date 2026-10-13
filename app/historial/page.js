@@ -301,9 +301,11 @@ function HistorialInner({ profile }) {
                           </div>
                         )}
                         <div className="flex gap-2 items-start flex-wrap">
-                          <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
-                            Reimprimir
-                          </button>
+                          {!soloLectura && (
+                            <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
+                              Reimprimir
+                            </button>
+                          )}
                           {!soloLectura && (r.estado === "emitido" || (r.estado === "en_transito" && (esAdmin || r.planta_id === profile.planta?.id))) && anulando?.id !== r.id && (
                             <button onClick={() => setAnulando({ id: r.id, motivo: "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">
                               Anular…
