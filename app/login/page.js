@@ -15,7 +15,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       const credenciales = error.status === 400 || /invalid login credentials/i.test(error.message || "");
@@ -26,7 +26,9 @@ export default function LoginPage() {
       );
       return;
     }
-    router.replace("/generar");
+    // Admin y consulta arrancan en el tablero de inicio; el operador, en Nuevo remito.
+    const { data: perfil } = await supabase.from("profiles").select("rol").eq("id", data.user.id).maybeSingle();
+    router.replace(perfil?.rol === "admin" || perfil?.rol === "consulta" ? "/inicio" : "/generar");
   };
 
   return (

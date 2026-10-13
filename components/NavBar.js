@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 const ICONOS = {
+  inicio: "M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10",
   talonarios: "M5 4h14v16H5zM9 4v16M12 9h4M12 13h4",
   traslados: "M4 8h13l-3-3M20 16H7l3 3M4 8h0M20 16h0",
   generar: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
@@ -48,6 +49,7 @@ export default function NavBar({ profile, children }) {
 
   const rol = profile?.rol;
   const items = [
+    ...(rol === "admin" || rol === "consulta" ? [["/inicio", "Inicio", "inicio"]] : []),
     ...(rol !== "consulta" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],

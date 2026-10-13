@@ -11,7 +11,9 @@ export default function Home() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      router.replace(session ? "/generar" : "/login");
+      if (!session) return router.replace("/login");
+      const { data: perfil } = await supabase.from("profiles").select("rol").eq("id", session.user.id).maybeSingle();
+      router.replace(perfil?.rol === "admin" || perfil?.rol === "consulta" ? "/inicio" : "/generar");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
