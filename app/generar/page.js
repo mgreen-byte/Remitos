@@ -43,20 +43,30 @@ function remitoVacio() {
 const inp = "w-full px-3 py-2 text-[14px]";
 const lab = "campo-etiqueta";
 
-function Paso({ n, titulo, ayuda, children }) {
+function Paso({ n, titulo, ayuda, resumen, abierto, onToggle, children }) {
   return (
-    <section className="panel p-6">
-      <div className="flex items-start gap-3 mb-5">
-        <span className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 text-[12px] font-semibold flex items-center justify-center">{n}</span>
-        <div>
-          <h2 className="paso-titulo">{titulo}</h2>
-          {ayuda && <p className="paso-ayuda">{ayuda}</p>}
-        </div>
+    <section className="panel overflow-hidden">
+      <button type="button" onClick={onToggle} aria-expanded={abierto} className="w-full flex items-center gap-3 px-6 py-3.5 text-left hover:bg-emerald-50/40 transition">
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 text-[12px] font-semibold flex items-center justify-center">{n}</span>
+        <h2 className="paso-titulo flex-shrink-0">{titulo}</h2>
+        {!abierto && resumen ? <span className="text-[13px] text-stone-500 truncate min-w-0">{resumen}</span> : <span className="flex-1" />}
+        <svg className={`ml-auto flex-shrink-0 text-stone-400 transition-transform ${abierto ? "rotate-180" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      <div className={abierto ? "px-6 pb-6 pt-1" : "hidden"}>
+        {ayuda && <p className="paso-ayuda mb-4">{ayuda}</p>}
+        {children}
       </div>
-      {children}
     </section>
   );
 }
+
+// Completa con ceros a la izquierda hasta 8 dígitos (214 -> 00000214).
+const num8 = (v) => {
+  const d = String(v ?? "").replace(/\D/g, "").slice(0, 8);
+  return d ? d.padStart(8, "0") : "";
+};
 
 export default function GenerarPage() {
   return <AuthGuard roles={["admin", "operador"]}>{(profile) => <GenerarInner profile={profile} />}</AuthGuard>;
@@ -90,6 +100,9 @@ function GenerarInner({ profile }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
+  const [abiertos, setAbiertos] = useState(["1"]); // secciones desplegadas
+  const TODOS = ["1", "2", "3", "4", "5", "6"];
+  const P = (id) => ({ abierto: abiertos.includes(id), onToggle: () => setAbiertos((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id])) });
   const [sugerido, setSugerido] = useState("");
   const [tal, setTal] = useState(null); // respuesta de siguiente_numero cuando el control de talonarios está activo
   const fileInputRef = useRef(null);
@@ -404,7 +417,7 @@ function GenerarInner({ profile }) {
 
   const validar = () => {
     if (!planta) return "No hay una planta asignada. Elegí una planta (o pedile al administrador que te asigne una).";
-    if (remito.numero.length !== 8) return "El número de remito tiene que tener 8 dígitos.";
+    if (!num8(remito.numero) || /^0+$/.test(num8(remito.numero))) return "Falta el número de remito (el que viene impreso en la hoja).";
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
@@ -428,13 +441,16 @@ function GenerarInner({ profile }) {
   const emitir = async () => {
     setError("");
     const msg = validar();
-    if (msg) return setError(msg);
+    if (msg) {
+      setAbiertos(TODOS); // para que se vea qué falta
+      return setError(msg);
+    }
     const libres = itemsCalc.filter((i) => i.cant > 0 && i.libre).length;
     if (libres && modalidad !== "generico" && !window.confirm(`Hay ${libres} ítem(s) sin lote del stock: no descuentan stock. ¿Registrar de todas formas?`)) return;
     setSaving(true);
     const payload = {
       punto_venta: puntoVenta,
-      numero: remito.numero,
+      numero: num8(remito.numero),
       fecha: remito.fecha,
       modalidad,
       planta_id: esAdmin ? plantaId : undefined,
@@ -477,7 +493,7 @@ function GenerarInner({ profile }) {
       if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
       else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
     }
-    setEmitido({ id: data, pv: puntoVenta, numero: remito.numero });
+    setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero) });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
     setMostrarPreview(true);
@@ -520,8 +536,13 @@ function GenerarInner({ profile }) {
           </div>
         )}
 
-        <fieldset disabled={bloqueado} className="no-print space-y-5 disabled:opacity-60 min-w-0">
-          <Paso n="1" titulo="Origen" ayuda="Qué tipo de remito es y desde qué planta sale.">
+        <div className="no-print flex justify-end gap-4 text-[12.5px] -mb-2">
+          <button type="button" onClick={() => setAbiertos(TODOS)} className="text-emerald-700 hover:underline">Desplegar todo</button>
+          <button type="button" onClick={() => setAbiertos([])} className="text-stone-500 hover:underline">Contraer todo</button>
+        </div>
+
+        <fieldset disabled={bloqueado} className="no-print space-y-3 disabled:opacity-60 min-w-0">
+          <Paso n="1" {...P("1")} resumen={`${MODALIDADES.find((m) => m.id === modalidad)?.label || ""}${planta?.nombre ? " · " + planta.nombre : ""}`} titulo="Origen" ayuda="Qué tipo de remito es y desde qué planta sale.">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <span className={lab}>Modalidad</span>
@@ -602,18 +623,19 @@ function GenerarInner({ profile }) {
             )}
           </Paso>
 
-          <Paso n="2" titulo="Datos del remito" ayuda="El número es el que viene impreso en la hoja del talonario.">
+          <Paso n="2" {...P("2")} resumen={`${puntoVenta}${remito.numero ? "-" + num8(remito.numero) : ""} · ${fmtFecha(remito.fecha)}`} titulo="Datos del remito" ayuda="El número es el que viene impreso en la hoja del talonario.">
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label className={lab}>Punto de venta</label>
                 <input value={puntoVenta} readOnly className={inp} />
               </div>
               <div>
-                <label className={lab}>Número (8 dígitos)</label>
+                <label className={lab}>Número de remito</label>
                 <input
                   value={remito.numero}
                   onChange={(e) => setRemito((r) => ({ ...r, numero: e.target.value.replace(/\D/g, "").slice(0, 8) }))}
-                  placeholder="00000001"
+                  onBlur={() => setRemito((r) => ({ ...r, numero: num8(r.numero) }))}
+                  placeholder="Ej: 214 → 00000214"
                   inputMode="numeric"
                   className={inp}
                 />
@@ -626,7 +648,7 @@ function GenerarInner({ profile }) {
                     {tal.huecos > 0 && ` · ${tal.huecos} número(s) salteados sin justificar`}
                   </div>
                 )}
-                {sugerido && remito.numero !== sugerido && (
+                {sugerido && num8(remito.numero) !== sugerido && (
                   <button type="button" onClick={() => setRemito((r) => ({ ...r, numero: sugerido }))} className="text-[12px] text-emerald-700 hover:underline mt-1">
                     Usar el siguiente: {sugerido}
                   </button>
@@ -639,7 +661,7 @@ function GenerarInner({ profile }) {
             </div>
           </Paso>
 
-          <Paso n="3" titulo="Destinatario">
+          <Paso n="3" {...P("3")} resumen={[esTraslado ? "→ " + (plantas.find((x) => x.id === destinoId)?.nombre || "") : remito.destinatario, remito.provincia].filter(Boolean).join(" · ")} titulo="Destinatario">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
                 <label className={lab}>Nombre o razón social</label>
@@ -699,7 +721,7 @@ function GenerarInner({ profile }) {
             </div>
           </Paso>
 
-          <Paso n="4" titulo="Transporte" ayuda="Elegí de la lista o cargá los datos a mano. Los choferes nuevos quedan guardados para todos.">
+          <Paso n="4" {...P("4")} resumen={[remito.transportista, remito.chofer, remito.chasis].filter(Boolean).join(" · ")} titulo="Transporte" ayuda="Elegí de la lista o cargá los datos a mano. Los choferes nuevos quedan guardados para todos.">
             <div className="grid gap-8 md:grid-cols-2">
               <div className="space-y-3">
                 <div>
@@ -832,7 +854,7 @@ function GenerarInner({ profile }) {
             </div>
           </Paso>
 
-          <Paso n="5" titulo="Mercadería" ayuda="Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito.">
+          <Paso n="5" {...P("5")} resumen={itemsCalc.some((i) => i.cant > 0) ? `${itemsCalc.filter((i) => i.cant > 0).length} línea(s) · ${fmtNum(totalUnidades)} unidades` : ""} titulo="Mercadería" ayuda="Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito.">
             <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_96px_28px] gap-3 mb-1">
               <span className={lab}>Producto</span>
               <span className={lab}>Lote</span>
@@ -925,7 +947,7 @@ function GenerarInner({ profile }) {
             </button>
           </Paso>
 
-          <Paso n="6" titulo="Totales y observaciones">
+          <Paso n="6" {...P("6")} resumen={[remito.cot && `COT ${remito.cot}`, remito.ordenCarga && `OC ${remito.ordenCarga}`, remito.totalKgs && `${fmtNum(remito.totalKgs)} kg`].filter(Boolean).join(" · ")} titulo="Totales y observaciones">
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <label className={lab}>Total de unidades</label>
