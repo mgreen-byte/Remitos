@@ -70,6 +70,7 @@ export default function RemitoSheet({ d, calibracion, visible = true }) {
           </div>
         );
       })}
+      {F("ordenCarga", d.ordenCarga, { uppercase: false })}
       {F("totalUnidades", fmtNum(d.totalUnidades), { align: "center", uppercase: false })}
       {F("totalKgs", fmtNum(d.totalKgs), { align: "center", uppercase: false })}
       {F("observaciones", d.observaciones)}

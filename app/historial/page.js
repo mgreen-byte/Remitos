@@ -7,7 +7,7 @@ import NavBar from "@/components/NavBar";
 import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { CALIBRACION_DEFAULT } from "@/lib/fieldCoords";
-import { fmtNum, fmtFecha, friendlyError, observacionesImpresas } from "@/lib/util";
+import { fmtNum, fmtFecha, friendlyError, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -42,10 +42,10 @@ function HistorialInner({ profile }) {
       const { data: pl } = await supabase.from("plantas").select("*").order("nombre");
       setPlantas(pl || []);
       const { data: cfg } = await supabase.from("configuracion").select("*").eq("clave", "calibracion_default").maybeSingle();
-      let calib = cfg?.valor || CALIBRACION_DEFAULT;
+      let calib = cfg?.valor?.v === CALIBRACION_DEFAULT.v ? cfg.valor : CALIBRACION_DEFAULT;
       try {
         const local = JSON.parse(localStorage.getItem("calibracion_local") || "null");
-        if (local) calib = local;
+        if (local && local.v === CALIBRACION_DEFAULT.v) calib = local;
       } catch {}
       setCalibracion(calib);
     })();
@@ -111,7 +111,8 @@ function HistorialInner({ profile }) {
       items,
       totalUnidades: r.total_unidades,
       totalKgs: r.total_kgs,
-      observaciones: observacionesImpresas({ ordenCarga: r.orden_carga, cot: r.cot, observaciones: r.observaciones }),
+      observaciones: observacionesImpresas({ cot: r.cot, observaciones: r.observaciones }),
+      ordenCarga: ordenCargaImpresa(r.orden_carga),
     });
     setTimeout(() => window.print(), 200);
   };

@@ -8,7 +8,7 @@ import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
-import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas } from "@/lib/util";
+import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -114,10 +114,11 @@ function GenerarInner({ profile }) {
       const iva = cfg.data?.find((c) => c.clave === "iva_options");
       const cal = cfg.data?.find((c) => c.clave === "calibracion_default");
       if (iva) setIvaOptions(iva.valor);
-      let calib = cal ? cal.valor : CALIBRACION_DEFAULT;
+      // Solo se respetan posiciones guardadas de la misma versión de calibración.
+      let calib = cal && cal.valor?.v === CALIBRACION_DEFAULT.v ? cal.valor : CALIBRACION_DEFAULT;
       try {
         const local = JSON.parse(localStorage.getItem("calibracion_local") || "null");
-        if (local) calib = local;
+        if (local && local.v === CALIBRACION_DEFAULT.v) calib = local;
       } catch {}
       setCalibracion(calib);
       if (trans.data) setTransportistas(trans.data);
@@ -397,7 +398,8 @@ function GenerarInner({ profile }) {
     items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, descripcion: i.desc, kgUnidad: i.kgu })),
     totalUnidades,
     totalKgs: remito.totalKgs,
-    observaciones: observacionesImpresas({ ordenCarga: remito.ordenCarga, cot: remito.cot, observaciones: remito.observaciones }),
+    observaciones: observacionesImpresas({ cot: remito.cot, observaciones: remito.observaciones }),
+    ordenCarga: ordenCargaImpresa(remito.ordenCarga),
   };
 
   const validar = () => {
@@ -986,6 +988,9 @@ function GenerarInner({ profile }) {
                 </label>
               ))}
             </div>
+            <button onClick={() => guardarCalibracion(CALIBRACION_DEFAULT)} className="text-[12.5px] text-stone-500 hover:underline mt-3 mr-4">
+              Restablecer valores de fábrica
+            </button>
             {esAdmin && (
               <button
                 onClick={async () => {
