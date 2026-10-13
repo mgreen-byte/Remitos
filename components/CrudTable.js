@@ -3,16 +3,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, up } from "@/lib/util";
+import ImportarCatalogo from "@/components/ImportarCatalogo";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1 text-sm w-full";
 
 // Tabla editable genérica.
 // columns: [{key, label, type: text|number|select|bool|multi|list, options, upper, width, placeholder}]
-export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help }) {
+export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false }) {
   const [rows, setRows] = useState([]);
   const [edit, setEdit] = useState(null); // {id|null, data}
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
+  const [importando, setImportando] = useState(false);
 
   const cargar = async () => {
     const { data, error } = await supabase.from(table).select(select).order(orderBy);
@@ -127,6 +129,11 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     <div className="space-y-3">
       {help && <div className="text-xs text-stone-500">{help}</div>}
       {msg && <div className="text-sm bg-red-50 border border-red-300 text-red-700 rounded p-2">{msg}</div>}
+      {importarCatalogo && (importando ? (
+        <ImportarCatalogo existentes={rows} onClose={() => setImportando(false)} onDone={cargar} />
+      ) : (
+        <div><button onClick={() => setImportando(true)} className="btn-secundario">Cargar catálogo desde Excel</button></div>
+      ))}
       <div className="panel overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-stone-500 bg-stone-50">

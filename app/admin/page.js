@@ -86,6 +86,7 @@ function AdminInner({ profile }) {
             table="productos"
             orderBy="nombre"
             canDelete
+            importarCatalogo
             nuevoDefault={{ categoria: "soja", grupo: "semilla" }}
             help="Todo lo que se remite: semillas, insumos y ensamblajes. Para insumos y ensamblajes elegí Categoría “Otro” y completá el Grupo. Podés editar o eliminar un producto; si ya tiene lotes cargados no se puede eliminar: desactivalo en “Activo”. Variedades/híbridos y su presentación. Los kg por unidad se usan para calcular el peso del remito (ej. Big Bag 800 / 1000 / 1089 kg: cargá una fila por cada presentación). En “Alias” poné otros nombres con los que viene el producto en el Excel de la OC, separados por coma, para que se reconozca solo."
             columns={[
