@@ -30,10 +30,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center p-6">
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-stone-200 p-8 w-full max-w-sm space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-ink-900 via-ink-800 to-emerald-800 flex items-center justify-center p-6">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-2xl border-t-4 border-emerald-600 p-8 w-full max-w-sm space-y-4">
         <div className="text-center mb-2">
-          <div className="text-xl font-semibold text-emerald-800">Remitos</div>
+          <img src="/logo-color.png" alt="Stine" className="mx-auto h-14 w-auto mb-3" />
+          <div className="text-sm font-semibold text-stone-600">Remitos y despachos</div>
           <div className="text-sm text-stone-400">Iniciá sesión para continuar</div>
         </div>
         <label className="block text-xs text-stone-500">

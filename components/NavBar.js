@@ -65,10 +65,10 @@ export default function NavBar({ profile, children }) {
 
   return (
     <div className="print-reset min-h-screen md:flex bg-stone-100">
-      <aside className="no-print md:w-60 md:flex-shrink-0 md:min-h-screen md:sticky md:top-0 md:h-screen bg-white border-b md:border-b-0 md:border-r border-stone-200 flex md:flex-col">
+      <aside className="no-print md:w-60 md:flex-shrink-0 md:min-h-screen md:sticky md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col">
         <div className="px-5 py-4 md:py-6 flex-shrink-0">
-          <div className="text-[17px] font-semibold tracking-tight text-emerald-800">Remitos</div>
-          <div className="hidden md:block text-[12px] text-stone-400 mt-0.5">Gestión de despachos</div>
+          <img src="/logo-blanco.png" alt="Stine" className="h-8 md:h-10 w-auto" />
+          <div className="hidden md:block text-[12px] text-emerald-300 mt-2">Remitos y despachos</div>
         </div>
         <nav className="flex md:flex-col gap-1 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-x-auto">
           {items.map(([href, label, icono]) => {
@@ -78,29 +78,29 @@ export default function NavBar({ profile, children }) {
                 key={href}
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-[13.5px] font-medium whitespace-nowrap transition ${
-                  activo ? "bg-emerald-50 text-emerald-800" : "text-stone-500 hover:bg-stone-50 hover:text-stone-800"
+                  activo ? "bg-emerald-600 text-white shadow-sm" : "text-stone-300 hover:bg-ink-700 hover:text-white"
                 }`}
               >
                 <Icono d={ICONOS[icono]} />
                 {label}
                 {icono === "traslados" && pendientes > 0 && (
-                  <span className="ml-auto text-[11px] font-semibold bg-amber-500 text-white rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
                 )}
                 {icono === "talonarios" && avisoTal > 0 && (
-                  <span className="ml-auto text-[11px] font-semibold bg-amber-500 text-white rounded-full px-1.5 min-w-[18px] text-center">{avisoTal}</span>
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoTal}</span>
                 )}
               </Link>
             );
           })}
         </nav>
-        <div className="hidden md:block px-5 py-4 border-t border-stone-200 text-[13px]">
-          <div className="font-medium text-stone-800 truncate">{profile?.nombre}</div>
+        <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
+          <div className="font-medium text-white truncate">{profile?.nombre}</div>
           <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo consulta" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
-          <button onClick={logout} className="text-stone-500 hover:text-stone-800 text-[12.5px]">
+          <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">
             Cerrar sesión
           </button>
         </div>
-        <button onClick={logout} className="md:hidden px-4 text-[12.5px] text-stone-500 whitespace-nowrap">
+        <button onClick={logout} className="md:hidden px-4 text-[12.5px] text-emerald-300 whitespace-nowrap">
           Salir
         </button>
       </aside>
