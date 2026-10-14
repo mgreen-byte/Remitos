@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtNum, fmtFecha, norm } from "@/lib/util";
+import { fmtNum, fmtFecha, norm, cotAtrasado } from "@/lib/util";
 
 const esBigBag = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
 
@@ -17,6 +18,7 @@ function InicioInner({ profile }) {
   const [lotes, setLotes] = useState([]);
   const [plantas, setPlantas] = useState([]);
   const [transito, setTransito] = useState([]);
+  const [cotPend, setCotPend] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [soloBB, setSoloBB] = useState(true);
@@ -44,6 +46,8 @@ function InicioInner({ profile }) {
     const { data: pl } = await supabase.from("plantas").select("id, nombre, punto_venta").eq("activa", true).order("nombre");
     const { data: tr } = await supabase.from("v_stock_en_transito").select("*").order("fecha", { ascending: false });
     setTransito(tr || []);
+    const { data: cp } = await supabase.from("v_cot_pendientes").select("remito_id, planta, created_at").limit(5000);
+    setCotPend(cp || []);
     setLotes(todos);
     setPlantas(pl || []);
     setActualizado(new Date());
@@ -136,6 +140,16 @@ function InicioInner({ profile }) {
         </div>
 
         {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">{error}</div>}
+
+        {cotPend.length > 0 && (
+          <Link href="/cot" className={`block rounded-lg border px-4 py-3 text-[13.5px] ${cotPend.some((x) => cotAtrasado(x.created_at)) ? "bg-red-50 border-red-200 text-red-800" : "bg-amber-50 border-amber-200 text-amber-900"}`}>
+            <b>{cotPend.length}</b> {cotPend.length === 1 ? "remito con COT pendiente" : "remitos con COT pendiente"}
+            {cotPend.some((x) => cotAtrasado(x.created_at)) ? ` · ${cotPend.filter((x) => cotAtrasado(x.created_at)).length} con más de un día` : ""}
+            {" · "}
+            {Object.entries(cotPend.reduce((a, x) => ({ ...a, [x.planta]: (a[x.planta] || 0) + 1 }), {})).map(([pl, n]) => `${pl}: ${n}`).join(" · ")}
+            <span className="underline ml-2">Ver</span>
+          </Link>
+        )}
 
         <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           <Tile label={soloBB ? "Big Bags en stock" : "Unidades en stock"} valor={fmtNum(totalU)} />

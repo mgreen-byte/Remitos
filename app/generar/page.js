@@ -422,7 +422,6 @@ function GenerarInner({ profile }) {
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
-    if (esBuenosAires(remito.provincia) && remito.cot.trim().length < 3) return "El destino es la provincia de Buenos Aires: generá el COT en ARBA y cargalo antes de emitir el remito.";
     const validos = itemsCalc.filter((i) => i.cant > 0);
     if (!validos.length) return "Cargá al menos un ítem con cantidad.";
     if (validos.length > 15) return "El remito preimpreso admite hasta 15 ítems. Dividilo en dos remitos.";
@@ -702,21 +701,13 @@ function GenerarInner({ profile }) {
                 <input value={remito.ordenCarga} onChange={(e) => setRemito((r) => ({ ...r, ordenCarga: up(e.target.value) }))} placeholder="OC-SF-143" className={inp} />
               </div>
               <div>
-                <label className={lab}>COT (ARBA){esBuenosAires(remito.provincia) && <span className="text-red-600"> · obligatorio</span>}</label>
-                <input
-                  value={remito.cot}
-                  onChange={(e) => setRemito((r) => ({ ...r, cot: up(e.target.value) }))}
-                  className={`${inp} ${esBuenosAires(remito.provincia) && remito.cot.trim().length < 3 ? "!border-red-400" : ""}`}
-                />
+                <label className={lab}>COT (ARBA) <span className="text-stone-400 font-normal">· opcional</span></label>
+                <input value={remito.cot} onChange={(e) => setRemito((r) => ({ ...r, cot: up(e.target.value) }))} className={inp} />
               </div>
-              {esBuenosAires(remito.provincia) && (
-                <div className="md:col-span-3 text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                  El destino es la provincia de Buenos Aires: generá el COT en ARBA y cargalo acá. Sin COT no se puede emitir el remito.
-                </div>
-              )}
-              {!esBuenosAires(remito.provincia) && esBuenosAires(planta?.provincia) && (
-                <div className="md:col-span-3 text-[12.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                  Tu planta está en la provincia de Buenos Aires: verificá si este traslado requiere COT. Si lo tenés, cargalo en el casillero.
+              {(esBuenosAires(remito.provincia) || esBuenosAires(planta?.provincia)) && (
+                <div className="md:col-span-3 text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  {esBuenosAires(remito.provincia) ? "El destino es la provincia de Buenos Aires" : "Tu planta está en la provincia de Buenos Aires"}: si lleva soja, este remito va a necesitar COT.
+                  Si todavía no lo tenés, dejá el casillero vacío: el remito se emite igual y queda como <b>COT pendiente</b>. Cuando armes el COT del camión lo cargás en la pantalla <b>COT</b> y se asigna a todos los remitos juntos.
                 </div>
               )}
             </div>

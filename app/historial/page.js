@@ -5,9 +5,10 @@ import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import RemitoSheet from "@/components/RemitoSheet";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { CALIBRACION_DEFAULT } from "@/lib/fieldCoords";
-import { fmtNum, fmtFecha, friendlyError, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { fmtNum, fmtFecha, friendlyError, observacionesImpresas, ordenCargaImpresa, cotAtrasado } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -36,6 +37,7 @@ function HistorialInner({ profile }) {
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
+  const [pend, setPend] = useState({}); // remito_id -> fecha de alta (COT pendiente)
 
   useEffect(() => {
     (async () => {
@@ -66,13 +68,22 @@ function HistorialInner({ profile }) {
       const ids2 = [...new Set((data || []).map((x) => x.remito_id))];
       ids = ids ? ids.filter((x) => ids2.includes(x)) : ids2;
     }
+    // Remitos con COT pendiente (soja, destino o planta en Buenos Aires, sin COT cargado).
+    const { data: pv } = await supabase.from("v_cot_pendientes").select("remito_id, created_at").limit(5000);
+    const mapa = {};
+    (pv || []).forEach((x) => (mapa[x.remito_id] = x.created_at));
+    setPend(mapa);
+    if (f.estado === "cot_pendiente") {
+      const idsPend = Object.keys(mapa);
+      ids = ids ? ids.filter((x) => idsPend.includes(x)) : idsPend;
+    }
     let q = supabase
       .from("remitos")
       .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre), remito_items(*)")
       .order("created_at", { ascending: false })
       .limit(300);
     if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-    if (f.estado) q = q.eq("estado", f.estado);
+    if (f.estado && f.estado !== "cot_pendiente") q = q.eq("estado", f.estado);
     if (f.desde) q = q.gte("fecha", f.desde);
     if (f.hasta) q = q.lte("fecha", f.hasta);
     if (f.planta) q = q.eq("planta_id", f.planta);
@@ -172,6 +183,7 @@ function HistorialInner({ profile }) {
             <option value="recibido">Recibidos (traslados)</option>
             <option value="rechazado">Rechazados (traslados)</option>
             <option value="anulado">Anulados</option>
+            <option value="cot_pendiente">COT pendiente</option>
           </select>
           {esAdmin && (
             <select value={f.planta} onChange={(e) => setF({ ...f, planta: e.target.value })} className={inputCls}>
@@ -244,6 +256,9 @@ function HistorialInner({ profile }) {
                     <td className="p-2 text-stone-500">{r.usuario_nombre}</td>
                     <td className="p-2">
                       <span className={`text-xs px-2 py-0.5 rounded ${ESTADO_CLS[r.estado] || "bg-stone-100 text-stone-700"}`}>{ESTADO_TXT[r.estado] || r.estado}</span>
+                      {pend[r.id] && (
+                        <span className={`ml-1.5 text-xs px-2 py-0.5 rounded font-medium ${cotAtrasado(pend[r.id]) ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>COT pendiente</span>
+                      )}
                     </td>
                   </tr>
                   {open === r.id && (
@@ -251,6 +266,11 @@ function HistorialInner({ profile }) {
                       <td colSpan={8} className="p-4 space-y-3">
                         <div className="text-xs text-stone-500 grid sm:grid-cols-2 gap-x-6 gap-y-1">
                           <div>Modalidad: <b>{r.modalidad}</b></div>
+                          {pend[r.id] && (
+                            <div className="sm:col-span-2 text-amber-800">
+                              COT pendiente: este remito todavía no tiene COT. <Link href="/cot" className="underline font-medium">Ir a la pantalla COT</Link>
+                            </div>
+                          )}
                           {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga || "—"}</b> · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
                           <div>Registrado: {new Date(r.created_at).toLocaleString("es-AR")}</div>
                           <div>Transporte: {r.transportista_nombre || "—"}</div>

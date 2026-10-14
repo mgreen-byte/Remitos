@@ -17,6 +17,8 @@ const TABLAS = [
   ["productos", "Catalogo", "id"],
   ["choferes", "Choferes", "id"],
   ["transportistas", "Transportes", "id"],
+  ["cots", "COT", "id"],
+  ["precios", "Precios", "id"],
   ["profiles", "Usuarios", "id"],
   ["configuracion", "Configuracion", "clave"],
 ];
