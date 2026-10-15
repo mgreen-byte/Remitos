@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
-import RemitoSheet from "@/components/RemitoSheet";
+import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasImpresion";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
@@ -94,6 +94,7 @@ function GenerarInner({ profile }) {
   const [items, setItems] = useState([itemVacio()]);
   const [mostrarPreview, setMostrarPreview] = useState(false);
   const [mostrarGuia, setMostrarGuia] = useState(true);
+  const [copias, setCopias] = useCopias();
   const [nuevoChofer, setNuevoChofer] = useState(null);
   const [errorChofer, setErrorChofer] = useState("");
   const [nuevoTransp, setNuevoTransp] = useState(null);
@@ -1001,6 +1002,10 @@ function GenerarInner({ profile }) {
                 <input type="checkbox" checked={mostrarGuia} onChange={(e) => setMostrarGuia(e.target.checked)} className="accent-emerald-700" />
                 Mostrar el boceto del formulario de fondo (no se imprime)
               </label>
+              <div className="mt-2">
+                <SelectorCopias copias={copias} onChange={setCopias} />
+                {copias > 1 && <span className="no-print text-[12px] text-stone-400 ml-2">se imprimen {copias} hojas iguales, una tras otra</span>}
+              </div>
             </div>
             {!bloqueado && (
               <div className="flex gap-2">
@@ -1014,7 +1019,7 @@ function GenerarInner({ profile }) {
             )}
           </div>
           <div className="print-reset bg-stone-200 rounded-xl p-6 overflow-x-auto flex justify-center">
-            <RemitoSheet d={datosHoja} calibracion={calibracion} visible={mostrarPreview} guia={mostrarGuia} />
+            <RemitoConCopias d={datosHoja} calibracion={calibracion} visible={mostrarPreview} guia={mostrarGuia} copias={copias} />
           </div>
           <details className="no-print panel p-5">
             <summary className="cursor-pointer text-[13.5px] font-medium text-stone-700">Ajustar posición de impresión</summary>

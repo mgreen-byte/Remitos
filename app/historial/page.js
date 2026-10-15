@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
-import RemitoSheet from "@/components/RemitoSheet";
+import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasImpresion";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { CALIBRACION_DEFAULT } from "@/lib/fieldCoords";
@@ -37,6 +37,7 @@ function HistorialInner({ profile }) {
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
+  const [copias, setCopias] = useCopias();
   const [pend, setPend] = useState({}); // remito_id -> fecha de alta (COT pendiente)
 
   useEffect(() => {
@@ -209,6 +210,7 @@ function HistorialInner({ profile }) {
           <button onClick={exportar} disabled={!rows.length} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded disabled:opacity-40">
             Exportar Excel
           </button>
+          {!soloLectura && <SelectorCopias copias={copias} onChange={setCopias} />}
         </div>
 
         {msg && <div className="text-sm bg-amber-50 border border-amber-300 text-amber-800 rounded p-3">{msg}</div>}
@@ -365,7 +367,7 @@ function HistorialInner({ profile }) {
       </div>
       {reimp && (
         <div className="print-reset hidden print:block">
-          <RemitoSheet d={reimp} calibracion={calibracion} visible />
+          <RemitoConCopias d={reimp} calibracion={calibracion} visible copias={copias} />
         </div>
       )}
     </NavBar>

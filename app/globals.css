@@ -62,7 +62,14 @@
   }
 }
 
+.print-extra {
+  display: none;
+}
+
 @media print {
+  .print-extra {
+    display: block !important;
+  }
   html,
   body {
     margin: 0 !important;

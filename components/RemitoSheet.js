@@ -11,7 +11,7 @@ const soloDigitos = (v) => String(v ?? "").replace(/\D/g, "");
 // Hoja A4 con los datos posicionados sobre el remito preimpreso.
 // Se alimenta de un objeto plano `d` (el mismo que se registra), así lo que
 // se imprime es exactamente lo que queda guardado.
-export default function RemitoSheet({ d, calibracion, visible = true, guia = false }) {
+export default function RemitoSheet({ d, calibracion, visible = true, guia = false, corte = false }) {
   const offset = { offsetX: calibracion.offsetX, offsetY: calibracion.offsetY };
   const fs = calibracion.fontSize;
   const [yy, mm, dd] = (d.fecha || "").split("-");
@@ -23,7 +23,7 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
   return (
     <div
       className="print-page bg-white shadow-lg relative"
-      style={{ width: "210mm", height: "297mm", flexShrink: 0, display: visible ? "block" : "none" }}
+      style={{ width: "210mm", height: "297mm", flexShrink: 0, display: visible ? "block" : "none", ...(corte ? { breakAfter: "page", pageBreakAfter: "always" } : {}) }}
     >
       {guia && <GuiaFormulario />}
       {F("fechaDD", dd, { align: "center", uppercase: false })}
