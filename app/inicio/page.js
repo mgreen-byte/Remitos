@@ -6,7 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtNum, fmtFecha, norm, cotAtrasado } from "@/lib/util";
+import { fmtNum, fmtFecha, norm, cotAtrasado, nombreConPresentacion } from "@/lib/util";
 
 const esBigBag = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
 
@@ -165,7 +165,7 @@ function InicioInner({ profile }) {
             <div className="grid gap-x-8 gap-y-1 md:grid-cols-2 text-[13px]">
               {porProducto.map((x) => (
                 <div key={x.nombre + x.presentacion} className="flex justify-between gap-3 border-b border-stone-100 py-1">
-                  <span className="truncate">{x.nombre} <span className="text-stone-400">{x.presentacion}</span></span>
+                  <span className="truncate">{x.nombre} {nombreConPresentacion(x.nombre, x.presentacion) === x.nombre ? null : <span className="text-stone-400">{x.presentacion}</span>}</span>
                   <span className="whitespace-nowrap"><b>{fmtNum(x.unidades)}</b> <span className="text-stone-400">· {fmtNum(x.kg)} kg</span></span>
                 </div>
               ))}

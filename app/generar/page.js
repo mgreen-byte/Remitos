@@ -8,7 +8,7 @@ import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
-import { up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { nombreConPresentacion, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -204,7 +204,7 @@ function GenerarInner({ profile }) {
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
     if (!p) return "";
-    return [`${p.nombre} ${p.presentacion || ""}`.trim(), l ? `LOTE ${l.lote}` : "", it.precinto ? `PRECINTO ${up(it.precinto)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
+    return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", it.precinto ? `PRECINTO ${up(it.precinto)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
@@ -267,7 +267,7 @@ function GenerarInner({ profile }) {
           ...itemVacio(),
           libre: true,
           cantidad: String(oc.cantidad || ""),
-          descripcion: up([oc.producto, oc.presentacion, oc.extra].filter(Boolean).join(" · ")),
+          descripcion: up([nombreConPresentacion(oc.producto, oc.presentacion), oc.extra].filter(Boolean).join(" · ")),
           kgUnidad: oc.cantidad && oc.kilos ? String(Math.round((oc.kilos / oc.cantidad) * 1000) / 1000) : "",
           hint: `Sin coincidencia en el catálogo: ${hint}`,
         };
@@ -875,7 +875,7 @@ function GenerarInner({ profile }) {
                                 <optgroup key={g} label={titulo}>
                                   {delGrupo.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                      {p.nombre} {p.presentacion}
+                                      {nombreConPresentacion(p.nombre, p.presentacion)}
                                     </option>
                                   ))}
                                 </optgroup>

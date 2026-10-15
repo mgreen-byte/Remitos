@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtNum, up, friendlyError } from "@/lib/util";
+import { fmtNum, up, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
@@ -180,7 +180,7 @@ function StockInner({ profile }) {
               <option value="">Producto…</option>
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {((p.grupo || "semilla") === "semilla" ? p.categoria : p.grupo).toUpperCase()} · {p.nombre} {p.presentacion}
+                  {((p.grupo || "semilla") === "semilla" ? p.categoria : p.grupo).toUpperCase()} · {nombreConPresentacion(p.nombre, p.presentacion)}
                 </option>
               ))}
             </select>
@@ -226,7 +226,7 @@ function StockInner({ profile }) {
                     <tr className="border-t border-stone-100">
                       <td className="p-2 pl-4">
                         <span className="text-[10px] uppercase text-stone-400 mr-1">{l.producto?.categoria}</span>
-                        {l.producto?.nombre} {l.producto?.presentacion}
+                        {nombreConPresentacion(l.producto?.nombre, l.producto?.presentacion)}
                       </td>
                       <td className="p-2 font-mono">{l.lote}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
-import { friendlyError, norm, up, fmtNum } from "@/lib/util";
+import { friendlyError, norm, up, fmtNum, nombreConPresentacion } from "@/lib/util";
 
 const nh = (s) => norm(s).replace(/[^a-z0-9]+/g, " ").trim();
 const ALIAS = {
@@ -211,7 +211,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
                   <tr key={f.n} className={`border-t border-stone-100 ${f.err.length ? "bg-red-50/60" : ""}`}>
                     <td className="p-2">{f.n}</td>
                     <td className="p-2">{f.planta?.nombre || f.plantaTxt}</td>
-                    <td className="p-2">{f.prod ? `${f.prod.nombre} ${f.prod.presentacion || ""}` : f.prodTxt}</td>
+                    <td className="p-2">{f.prod ? nombreConPresentacion(f.prod.nombre, f.prod.presentacion) : f.prodTxt}</td>
                     <td className="p-2 font-mono">{f.lote}</td>
                     <td className="p-2 text-right">{Number.isFinite(f.cantidad) ? fmtNum(f.cantidad) : "—"}</td>
                     <td className="p-2 text-right">{!f.err.length ? fmtNum((f.actual || 0) + f.cantidad) : ""}</td>
