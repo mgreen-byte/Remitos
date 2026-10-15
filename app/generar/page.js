@@ -7,7 +7,7 @@ import NavBar from "@/components/NavBar";
 import RemitoSheet from "@/components/RemitoSheet";
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
-import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, uid } from "@/lib/fieldCoords";
+import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
 import { nombreConPresentacion, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
@@ -82,6 +82,7 @@ function GenerarInner({ profile }) {
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [ivaOptions, setIvaOptions] = useState(IVA_DEFAULT);
+  const [empresas, setEmpresas] = useState(EMPRESAS_DEFAULT);
   const [transportistas, setTransportistas] = useState([]);
   const [choferes, setChoferes] = useState([]);
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
@@ -112,7 +113,9 @@ function GenerarInner({ profile }) {
   const choferSel = choferes.find((c) => c.id === remito.choferId);
   const patentesCambiadas = !!choferSel && (patente(choferSel.chasis) !== remito.chasis || patente(choferSel.acoplado) !== remito.acoplado);
 
-  const planta = esAdmin ? plantas.find((p) => p.id === plantaId) : profile.planta;
+  const planta0 = esAdmin ? plantas.find((p) => p.id === plantaId) : profile.planta;
+  // Datos completos de la planta (empresa, provincia) desde la lista de plantas.
+  const planta = plantas.find((p) => p.id === planta0?.id) || planta0;
   const puntoVenta = planta?.punto_venta || "";
 
   // ---------- carga de datos ----------
@@ -128,6 +131,8 @@ function GenerarInner({ profile }) {
       const iva = cfg.data?.find((c) => c.clave === "iva_options");
       const cal = cfg.data?.find((c) => c.clave === "calibracion_default");
       if (iva) setIvaOptions(iva.valor);
+      const emp = cfg.data?.find((c) => c.clave === "empresas");
+      if (emp?.valor) setEmpresas({ ...EMPRESAS_DEFAULT, ...emp.valor });
       // Solo se respetan posiciones guardadas de la misma versión de calibración.
       let calib = cal && cal.valor?.v === CALIBRACION_DEFAULT.v ? cal.valor : CALIBRACION_DEFAULT;
       try {
@@ -382,12 +387,24 @@ function GenerarInner({ profile }) {
 
   const esTraslado = modalidad === "traslado";
   const plantasDestino = plantas.filter((p) => p.id !== plantaId);
+  // Traslado entre depósitos propios: el destinatario es siempre la empresa de la planta de origen.
+  const empresaTraslado = esTraslado && planta?.empresa ? empresas[planta.empresa] : null;
+  const sinEmpresa = esTraslado && !!planta && !empresaTraslado;
+  useEffect(() => {
+    if (!esTraslado) return;
+    setRemito((r) => ({
+      ...r,
+      destinatario: empresaTraslado ? up(empresaTraslado.nombre) : "",
+      cuit: empresaTraslado ? String(empresaTraslado.cuit || "").replace(/\D/g, "") : "",
+      iva: empresaTraslado?.iva || r.iva,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esTraslado, empresaTraslado?.nombre, empresaTraslado?.cuit, empresaTraslado?.iva]);
   const elegirDestino = (id) => {
     setDestinoId(id);
     const d = plantas.find((p) => p.id === id);
     setRemito((r) => ({
       ...r,
-      destinatario: d ? up(`TRASLADO A PLANTA ${d.nombre}`) : "",
       provincia: d?.provincia ? up(d.provincia) : "",
       domicilio: d?.domicilio ? up(d.domicilio) : r.domicilio,
       entregarEn: d?.domicilio ? up(d.domicilio) : r.entregarEn,
@@ -419,6 +436,7 @@ function GenerarInner({ profile }) {
   const validar = () => {
     if (!planta) return "No hay una planta asignada. Elegí una planta (o pedile al administrador que te asigne una).";
     if (!num8(remito.numero) || /^0+$/.test(num8(remito.numero))) return "Falta el número de remito (el que viene impreso en la hoja).";
+    if (esTraslado && sinEmpresa) return "Tu planta no tiene empresa asignada (MS Technologies o Stine Seed). Pedile al administrador que la complete en Administración → Plantas.";
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
@@ -663,13 +681,20 @@ function GenerarInner({ profile }) {
 
           <Paso n="3" {...P("3")} resumen={[esTraslado ? "→ " + (plantas.find((x) => x.id === destinoId)?.nombre || "") : remito.destinatario, remito.provincia].filter(Boolean).join(" · ")} titulo="Destinatario">
             <div className="grid gap-4 md:grid-cols-3">
+              {esTraslado && (
+                <div className={`md:col-span-3 text-[12.5px] rounded-md px-3 py-2 border ${sinEmpresa ? "bg-red-50 border-red-200 text-red-700" : "bg-sky-50 border-sky-200 text-sky-800"}`}>
+                  {sinEmpresa
+                    ? "Tu planta no tiene empresa asignada. Pedile al administrador que la complete en Administración → Plantas."
+                    : `Traslado entre depósitos propios: el destinatario es siempre ${empresaTraslado ? empresaTraslado.nombre : "la empresa"}${planta?.empresa ? ` (${EMPRESAS_ETIQUETA[planta.empresa]})` : ""}. Se completa solo.`}
+                </div>
+              )}
               <div className="md:col-span-2">
                 <label className={lab}>Nombre o razón social</label>
-                <input value={remito.destinatario} onChange={(e) => setRemito((r) => ({ ...r, destinatario: up(e.target.value) }))} className={inp} />
+                <input value={remito.destinatario} onChange={(e) => setRemito((r) => ({ ...r, destinatario: up(e.target.value) }))} className={inp} disabled={esTraslado} />
               </div>
               <div>
                 <label className={lab}>CUIT</label>
-                <input value={remito.cuit} onChange={(e) => setRemito((r) => ({ ...r, cuit: up(e.target.value) }))} className={inp} />
+                <input value={remito.cuit} onChange={(e) => setRemito((r) => ({ ...r, cuit: up(e.target.value) }))} className={inp} disabled={esTraslado} />
               </div>
               <div className="md:col-span-2">
                 <label className={lab}>Domicilio</label>
@@ -677,7 +702,7 @@ function GenerarInner({ profile }) {
               </div>
               <div>
                 <label className={lab}>Condición de IVA</label>
-                <select value={remito.iva} onChange={(e) => setRemito((r) => ({ ...r, iva: e.target.value }))} className={inp}>
+                <select value={remito.iva} onChange={(e) => setRemito((r) => ({ ...r, iva: e.target.value }))} className={inp} disabled={esTraslado}>
                   {ivaOptions.map((op) => (
                     <option key={op}>{op}</option>
                   ))}

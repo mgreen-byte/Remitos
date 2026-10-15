@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import CrudTable from "@/components/CrudTable";
 import ExportarTodo from "@/components/ExportarTodo";
 import { supabase } from "@/lib/supabaseClient";
-import { MODALIDADES, IVA_DEFAULT } from "@/lib/fieldCoords";
+import { MODALIDADES, IVA_DEFAULT, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA } from "@/lib/fieldCoords";
 import { PROVINCIAS, fmtFecha, hoyISO, friendlyError, fmtMonto } from "@/lib/util";
 
 const TABS = [
@@ -50,12 +50,13 @@ function AdminInner({ profile }) {
             key="plantas"
             table="plantas"
             orderBy="nombre"
-            help="Cada planta tiene su propio punto de venta (4 dígitos) y es el que se usa en sus remitos. No se puede repetir."
+            help="Cada planta tiene su propio punto de venta (4 dígitos) y es el que se usa en sus remitos. No se puede repetir. La empresa es la del formulario en el que imprime la planta: en un traslado entre depósitos, el destinatario es siempre esa empresa."
             columns={[
               { key: "nombre", label: "Planta", type: "text", upper: true },
               { key: "punto_venta", label: "Punto de venta", type: "text", digits: 4, placeholder: "0001" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
+              { key: "empresa", label: "Empresa (formulario)", type: "select", nullable: true, options: Object.entries(EMPRESAS_ETIQUETA).map(([value, label]) => ({ value, label })) },
               { key: "activa", label: "Activa", type: "bool" },
             ]}
           />
@@ -116,10 +117,15 @@ function AdminInner({ profile }) {
 
 function Config() {
   const [iva, setIva] = useState(IVA_DEFAULT.join("\n"));
+  const [empresas, setEmpresas] = useState(EMPRESAS_DEFAULT);
   const [msg, setMsg] = useState("");
+  const [msgEmp, setMsgEmp] = useState("");
   useEffect(() => {
-    supabase.from("configuracion").select("*").eq("clave", "iva_options").maybeSingle().then(({ data }) => {
-      if (data?.valor) setIva(data.valor.join("\n"));
+    supabase.from("configuracion").select("*").in("clave", ["iva_options", "empresas"]).then(({ data }) => {
+      const i = data?.find((x) => x.clave === "iva_options");
+      const e = data?.find((x) => x.clave === "empresas");
+      if (i?.valor) setIva(i.valor.join("\n"));
+      if (e?.valor) setEmpresas({ ...EMPRESAS_DEFAULT, ...e.valor });
     });
   }, []);
   const guardar = async () => {
@@ -127,7 +133,18 @@ function Config() {
     const { error } = await supabase.from("configuracion").upsert({ clave: "iva_options", valor });
     setMsg(error ? error.message : "Guardado.");
   };
+  const setEmp = (k, campo, v) => setEmpresas((e) => ({ ...e, [k]: { ...e[k], [campo]: v } }));
+  const guardarEmpresas = async () => {
+    for (const [k, e] of Object.entries(empresas)) {
+      if (!String(e.nombre || "").trim()) return setMsgEmp(`Falta el nombre de ${EMPRESAS_ETIQUETA[k] || k}.`);
+      if (String(e.cuit || "").replace(/\D/g, "").length !== 11) return setMsgEmp(`El CUIT de ${EMPRESAS_ETIQUETA[k] || k} tiene que tener 11 dígitos.`);
+    }
+    const valor = Object.fromEntries(Object.entries(empresas).map(([k, e]) => [k, { nombre: String(e.nombre).trim().toUpperCase(), cuit: String(e.cuit).replace(/\D/g, ""), iva: e.iva || IVA_DEFAULT[0] }]));
+    const { error } = await supabase.from("configuracion").upsert({ clave: "empresas", valor });
+    setMsgEmp(error ? error.message : "Guardado.");
+  };
   return (
+    <div className="space-y-4">
     <div className="panel p-4 space-y-2 max-w-md">
       <div className="text-xs font-semibold text-stone-500 uppercase">Condiciones de IVA (una por línea)</div>
       <textarea value={iva} onChange={(e) => setIva(e.target.value)} rows={6} className="w-full border border-stone-300 rounded px-2 py-1.5 text-sm uppercase" />
@@ -136,6 +153,26 @@ function Config() {
       </button>
       {msg && <span className="text-xs text-stone-500 ml-2">{msg}</span>}
       <div className="text-xs text-stone-400 pt-2">La calibración de impresión predeterminada se guarda desde la pantalla “Generar remito”.</div>
+    </div>
+    <div className="panel p-4 space-y-3 max-w-xl">
+      <div>
+        <div className="text-xs font-semibold text-stone-500 uppercase">Empresas (destinatario de los traslados entre depósitos)</div>
+        <p className="text-[12.5px] text-stone-500 mt-1">En un traslado, el destinatario es siempre la empresa de la planta de origen (se asigna en Plantas → Empresa).</p>
+      </div>
+      {Object.entries(empresas).map(([k, e]) => (
+        <div key={k} className="grid gap-2 md:grid-cols-3 border-t border-stone-100 pt-3">
+          <div className="md:col-span-3 text-[13px] font-medium">{EMPRESAS_ETIQUETA[k] || k}</div>
+          <label className="md:col-span-2 text-[12px] text-stone-500">Razón social
+            <input value={e.nombre || ""} onChange={(ev) => setEmp(k, "nombre", ev.target.value.toUpperCase())} className="block w-full border border-stone-300 rounded px-2 py-1.5 text-sm" />
+          </label>
+          <label className="text-[12px] text-stone-500">CUIT (11 dígitos)
+            <input value={e.cuit || ""} onChange={(ev) => setEmp(k, "cuit", ev.target.value)} className="block w-full border border-stone-300 rounded px-2 py-1.5 text-sm" />
+          </label>
+        </div>
+      ))}
+      <button onClick={guardarEmpresas} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">Guardar empresas</button>
+      {msgEmp && <span className="text-xs text-stone-500 ml-2">{msgEmp}</span>}
+    </div>
     </div>
   );
 }
