@@ -6,7 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasImpresion";
 import { supabase } from "@/lib/supabaseClient";
-import { parseOrdenDeCarga, matchProducto } from "@/lib/parseOrdenDeCarga";
+import { parseOrdenDeCarga, matchProducto, matchPlanta } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
 import { nombreConPresentacion, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
@@ -81,6 +81,8 @@ function GenerarInner({ profile }) {
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [lotesPlanta, setLotesPlanta] = useState(""); // planta a la que pertenecen los lotes cargados
+  const [ocPendiente, setOcPendiente] = useState(""); // carga de la orden esperando que lleguen los lotes de su planta
   const [ivaOptions, setIvaOptions] = useState(IVA_DEFAULT);
   const [empresas, setEmpresas] = useState(EMPRESAS_DEFAULT);
   const [transportistas, setTransportistas] = useState([]);
@@ -153,7 +155,7 @@ function GenerarInner({ profile }) {
   }, []);
 
   const cargarLotes = async (pid) => {
-    if (!pid) return setLotes([]);
+    if (!pid) { setLotes([]); setLotesPlanta(""); return; }
     const { data } = await supabase
       .from("lotes")
       .select("id, lote, stock, producto_id")
@@ -162,6 +164,7 @@ function GenerarInner({ profile }) {
       .gt("stock", 0)
       .order("lote");
     setLotes(data || []);
+    setLotesPlanta(pid);
   };
 
   const cargarSugerido = async (pv) => {
@@ -199,6 +202,14 @@ function GenerarInner({ profile }) {
       (p) => conStock.has(p.id) && (modalidad === "generico" || modalidad === "traslado" || p.categoria === modalidad || p.categoria === "otro")
     );
   }, [productos, lotes, modalidad]);
+
+  useEffect(() => {
+    if (ocPendiente && lotesPlanta && lotesPlanta === plantaId) {
+      setOcPendiente("");
+      selectCliente(ocPendiente, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ocPendiente, lotesPlanta, plantaId]);
 
   const lotesDe = (productoId) => lotes.filter((l) => l.producto_id === productoId);
   const productoDe = (id) => productos.find((p) => p.id === id);
@@ -251,10 +262,26 @@ function GenerarInner({ profile }) {
     reader.readAsArrayBuffer(file); // el archivo no se sube: se procesa solo en este navegador
   };
 
-  const selectCliente = (nombre) => {
-    setClienteSel(nombre);
-    const c = ocData?.clientes.find((x) => x.cliente === nombre);
+  // Grupos de la orden (cliente + depósito). El operador solo ve los que salen de su planta;
+  // el administrador ve todos y, al elegir uno, se cambia a la planta del depósito.
+  const grupos = useMemo(() => {
+    const lista = (ocData?.clientes || []).map((c) => ({ ...c, plantaOc: matchPlanta(c.deposito, plantas) }));
+    if (esAdmin) return lista;
+    return lista.filter((c) => !c.plantaOc || c.plantaOc.id === planta?.id);
+  }, [ocData, plantas, esAdmin, planta?.id]);
+  const ocados = (ocData?.clientes.length || 0) - grupos.length;
+
+  const selectCliente = (clave, yaEnPlanta = false) => {
+    setClienteSel(clave);
+    const c = grupos.find((x) => x.clave === clave);
     if (!c) return;
+    // Si la carga sale de otra planta, primero se cambia de planta y recién cuando llegan sus lotes se arma el remito.
+    if (!yaEnPlanta && esAdmin && c.plantaOc && c.plantaOc.id !== plantaId) {
+      setOcPendiente(clave);
+      setDestinoId("");
+      setPlantaId(c.plantaOc.id);
+      return;
+    }
     const obs = [c.contacto ? `Contacto: ${c.contacto}` : "", c.telefono ? `Tel: ${c.telefono}` : ""].filter(Boolean).join(" — ");
     setRemito((r) => ({
       ...r,
@@ -262,6 +289,7 @@ function GenerarInner({ profile }) {
       destinatario: up(c.cliente),
       cuit: up(c.cuit),
       domicilio: up(c.domicilio),
+      provincia: c.provincia || r.provincia,
       entregarEn: up(c.entregarEn),
       observaciones: up(obs),
     }));
@@ -617,22 +645,28 @@ function GenerarInner({ profile }) {
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2 items-end">
                 <div>
                   <span className={lab}>Orden de carga (Excel, opcional)</span>
-                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsb,.xlsm" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
                   {fileName && <div className="text-[12px] text-stone-400 mt-1">{fileName} · no se guarda, solo se lee en este navegador</div>}
                   {parseError && <div className="text-[12px] text-red-600 mt-1">{parseError}</div>}
                 </div>
                 <div>
                   {ocData ? (
                     <>
-                      <span className={lab}>Cliente de la orden ({ocData.clientes.length})</span>
+                      <span className={lab}>Cliente de la orden ({grupos.length})</span>
                       <select value={clienteSel} onChange={(e) => selectCliente(e.target.value)} className={inp}>
                         <option value="">Elegir cliente…</option>
-                        {ocData.clientes.map((c) => (
-                          <option key={c.cliente} value={c.cliente}>
-                            {c.cliente} — {c.totalCantidad} u. / {c.totalKilos} kg
+                        {grupos.map((c) => (
+                          <option key={c.clave} value={c.clave}>
+                            {c.cliente}{c.deposito ? ` · ${c.deposito}` : ""} — {c.totalCantidad} u. / {c.totalKilos} kg
                           </option>
                         ))}
                       </select>
+                      {grupos.length === 0 && (
+                        <div className="text-[12px] text-amber-700 mt-1">
+                          {ocData.clientes.length ? "Esta orden no tiene cargas que salgan de tu planta." : "La orden no trae clientes con cantidad para cargar."}
+                        </div>
+                      )}
+                      {ocados > 0 && <div className="text-[12px] text-stone-400 mt-1">{ocados} carga(s) de otras plantas no se muestran.</div>}
                     </>
                   ) : (
                     <div className="text-[12.5px] text-stone-400">Sin Excel, cargá los datos a mano en los pasos siguientes.</div>
