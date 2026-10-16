@@ -34,6 +34,7 @@ function HistorialInner({ profile }) {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(null);
   const [anulando, setAnulando] = useState(null); // {id, motivo}
+  const [reabriendo, setReabriendo] = useState(null); // {id, motivo}  (solo administrador)
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
@@ -101,6 +102,14 @@ function HistorialInner({ profile }) {
     if (error) return setMsg(friendlyError(error));
     setAnulando(null);
     setMsg("Remito anulado. El stock fue devuelto a los lotes.");
+    buscar();
+  };
+
+  const reabrir = async () => {
+    const { error } = await supabase.rpc("reabrir_traslado", { p_remito_id: reabriendo.id, p_motivo: reabriendo.motivo });
+    if (error) return setMsg(friendlyError(error));
+    setReabriendo(null);
+    setMsg("Traslado reabierto: quedó EN TRÁNSITO y el stock volvió a su estado anterior. Andá a Traslados para confirmarlo de nuevo con los datos correctos.");
     buscar();
   };
 
@@ -318,6 +327,11 @@ function HistorialInner({ profile }) {
                             Rechazado por {r.recibido_por_nombre} el {new Date(r.recibido_at).toLocaleString("es-AR")}. Motivo: {r.motivo_rechazo}. El stock volvió a {r.planta?.nombre}.
                           </div>
                         )}
+                        {r.tipo === "traslado" && r.veces_reabierto > 0 && (
+                          <div className="text-xs text-stone-600 bg-stone-50 border border-stone-200 rounded p-2">
+                            Corregido por el administrador {r.veces_reabierto} vez/veces. Última: {r.reabierto_por_nombre}, {new Date(r.reabierto_at).toLocaleString("es-AR")}. Motivo: {r.motivo_reapertura}
+                          </div>
+                        )}
                         {r.estado === "anulado" && (
                           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
                             Anulado por {r.anulado_por_nombre} el {new Date(r.anulado_at).toLocaleString("es-AR")}. Motivo: {r.motivo_anulacion}
@@ -333,6 +347,31 @@ function HistorialInner({ profile }) {
                             <button onClick={() => setAnulando({ id: r.id, motivo: "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">
                               Anular…
                             </button>
+                          )}
+                          {profile.rol === "admin" && r.tipo === "traslado" && (r.estado === "recibido" || r.estado === "rechazado") && reabriendo?.id !== r.id && (
+                            <button onClick={() => setReabriendo({ id: r.id, motivo: "" })} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
+                              Reabrir para corregir…
+                            </button>
+                          )}
+                          {reabriendo?.id === r.id && (
+                            <div className="flex-1 min-w-[260px] space-y-2">
+                              <textarea
+                                value={reabriendo.motivo}
+                                onChange={(e) => setReabriendo({ ...reabriendo, motivo: e.target.value })}
+                                rows={2}
+                                placeholder="Qué se corrige y por qué (obligatorio)"
+                                className={`${inputCls} w-full`}
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={reabrir} className="bg-amber-600 text-white text-sm px-3 py-1.5 rounded">
+                                  Reabrir traslado
+                                </button>
+                                <button onClick={() => setReabriendo(null)} className="text-sm text-stone-500">
+                                  Cancelar
+                                </button>
+                              </div>
+                              <div className="text-xs text-stone-400">Se deshace la recepción (el stock del destino vuelve a «en tránsito») y se confirma de nuevo con los datos correctos. Si el destino ya usó ese stock, no se puede reabrir.</div>
+                            </div>
                           )}
                           {anulando?.id === r.id && (
                             <div className="flex-1 min-w-[260px] space-y-2">
