@@ -8,7 +8,7 @@ import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasI
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto, matchPlanta } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
-import { nombreConPresentacion, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -282,10 +282,15 @@ function GenerarInner({ profile }) {
       setPlantaId(c.plantaOc.id);
       return;
     }
+    aplicarGrupo(c, ocData?.ordenCarga);
+  };
+
+  // Arma el remito a partir de un grupo (cliente) de una orden: del Excel que se subió o de una orden guardada.
+  const aplicarGrupo = (c, ordenNumero) => {
     const obs = [c.contacto ? `Contacto: ${c.contacto}` : "", c.telefono ? `Tel: ${c.telefono}` : ""].filter(Boolean).join(" — ");
     setRemito((r) => ({
       ...r,
-      ordenCarga: ocData?.ordenCarga || r.ordenCarga,
+      ordenCarga: ordenNumero || r.ordenCarga,
       destinatario: up(c.cliente),
       cuit: up(c.cuit),
       domicilio: up(c.domicilio),
@@ -294,7 +299,7 @@ function GenerarInner({ profile }) {
       observaciones: up(obs),
     }));
     const nuevos = c.items.map((oc) => {
-      const prod = matchProducto(oc, productos, modalidad === "generico" ? null : modalidad);
+      const prod = (oc.productoId && productos.find((x) => x.id === oc.productoId)) || matchProducto(oc, productos, modalidad === "generico" ? null : modalidad);
       const hint = [oc.producto, oc.presentacion, oc.loteOc ? `lote OC: ${oc.loteOc}` : ""].filter(Boolean).join(" · ");
       if (!prod) {
         return {
@@ -303,7 +308,9 @@ function GenerarInner({ profile }) {
           cantidad: String(oc.cantidad || ""),
           descripcion: up([nombreConPresentacion(oc.producto, oc.presentacion), oc.extra].filter(Boolean).join(" · ")),
           kgUnidad: oc.cantidad && oc.kilos ? String(Math.round((oc.kilos / oc.cantidad) * 1000) / 1000) : "",
-          hint: `Sin coincidencia en el catálogo: ${hint}`,
+          ordenLineaId: oc.lineaId || "",
+          saldo: oc.lineaId ? oc.cantidad : null,
+          hint: `Sin coincidencia en el catálogo: ${hint}${oc.lineaId ? ` · saldo de la orden: ${fmtNum(oc.cantidad)}` : ""}`,
         };
       }
       const ls = lotesDe(prod.id);
@@ -314,11 +321,54 @@ function GenerarInner({ profile }) {
         loteId: porTexto ? porTexto.id : ls.length === 1 ? ls[0].id : "",
         cantidad: String(oc.cantidad || ""),
         extra: oc.extra || "",
-        hint,
+        ordenLineaId: oc.lineaId || "",
+        saldo: oc.lineaId ? oc.cantidad : null,
+        hint: oc.lineaId ? `${hint} · saldo de la orden: ${fmtNum(oc.cantidad)}` : hint,
       };
     });
     setItems(nuevos.length ? nuevos : [itemVacio()]);
     setMostrarPreview(false);
+  };
+
+  // ---------- órdenes de carga guardadas (soja) ----------
+  const [ocDb, setOcDb] = useState([]);
+  const [ocDbSel, setOcDbSel] = useState("");
+  const cargarOcDb = async (pid) => {
+    if (!pid || modalidad !== "soja") return setOcDb([]);
+    const { data } = await supabase
+      .from("v_ordenes_lineas_saldo")
+      .select("*")
+      .eq("planta_id", pid)
+      .eq("orden_estado", "activa")
+      .gt("saldo", 0)
+      .order("orden_numero")
+      .order("cliente");
+    setOcDb(data || []);
+  };
+  useEffect(() => {
+    setOcDbSel("");
+    cargarOcDb(plantaId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plantaId, modalidad]);
+
+  const gruposDb = useMemo(() => {
+    const m = new Map();
+    for (const l of ocDb) {
+      const k = `${l.orden_id}||${norm(l.cliente)}`;
+      if (!m.has(k)) m.set(k, { clave: k, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, items: [], total: 0 });
+      const g = m.get(k);
+      g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
+      g.total += Number(l.saldo);
+    }
+    return [...m.values()];
+  }, [ocDb]);
+
+  const elegirOcDb = (clave) => {
+    setOcDbSel(clave);
+    const g = gruposDb.find((x) => x.clave === clave);
+    if (!g) return;
+    setClienteSel("");
+    aplicarGrupo(g, g.ordenNumero);
   };
 
   // ---------- transporte / chofer ----------
@@ -403,6 +453,7 @@ function GenerarInner({ profile }) {
     setModalidad(m);
     setOcData(null);
     setClienteSel("");
+    setOcDbSel("");
     setFileName("");
     setParseError("");
     setRemito(remitoVacio());
@@ -436,7 +487,8 @@ function GenerarInner({ profile }) {
       ...r,
       provincia: d?.provincia ? up(d.provincia) : "",
       domicilio: d?.domicilio ? up(d.domicilio) : r.domicilio,
-      entregarEn: d?.domicilio ? up(d.domicilio) : r.entregarEn,
+      // ENTREGAR EN: el nombre de la planta de destino (se puede completar a mano).
+      entregarEn: d?.nombre ? up(d.nombre) : "",
     }));
   };
 
@@ -481,6 +533,10 @@ function GenerarInner({ profile }) {
         const l = loteDe(it.loteId);
         if (l && it.cant > Number(l.stock)) return `Ítem ${i + 1}: el lote ${l.lote} tiene ${fmtNum(l.stock)} disponibles y pedís ${fmtNum(it.cant)}.`;
       }
+      if (it.ordenLineaId && !esAdmin) {
+        const total = itemsCalc.filter((x) => x.ordenLineaId === it.ordenLineaId).reduce((a, x) => a + x.cant, 0);
+        if (total > Number(it.saldo)) return `Ítem ${i + 1}: la orden de carga tiene un saldo de ${fmtNum(it.saldo)} y estás remitiendo ${fmtNum(total)}. No se puede remitir más de lo que dice la orden.`;
+      }
     }
     return "";
   };
@@ -494,6 +550,14 @@ function GenerarInner({ profile }) {
     }
     const libres = itemsCalc.filter((i) => i.cant > 0 && i.libre).length;
     if (libres && modalidad !== "generico" && !window.confirm(`Hay ${libres} ítem(s) sin lote del stock: no descuentan stock. ¿Registrar de todas formas?`)) return;
+    if (esAdmin) {
+      const porLinea = {};
+      itemsCalc.filter((i) => i.ordenLineaId && i.cant > 0).forEach((i) => {
+        porLinea[i.ordenLineaId] = { cant: (porLinea[i.ordenLineaId]?.cant || 0) + i.cant, saldo: Number(i.saldo) };
+      });
+      const pasa = Object.values(porLinea).filter((x) => x.cant > x.saldo).length;
+      if (pasa && !window.confirm(`Estás remitiendo más de lo que dice la orden de carga en ${pasa} renglón(es). ¿Registrar de todas formas?`)) return;
+    }
     setSaving(true);
     const payload = {
       punto_venta: puntoVenta,
@@ -531,8 +595,11 @@ function GenerarInner({ profile }) {
         descripcion: i.desc,
         cantidad: i.cant,
         kg_unidad: i.kgu,
+        orden_linea_id: i.ordenLineaId || undefined,
       }));
-    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : "emitir_remito", { p_remito: payload, p_items: lista });
+    // Con renglones de una orden de carga guardada se usa la función que controla el saldo y deja el vínculo.
+    const deOrden = lista.some((x) => x.orden_linea_id);
+    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : deOrden ? "emitir_remito_oc" : "emitir_remito", { p_remito: payload, p_items: lista });
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
@@ -543,6 +610,7 @@ function GenerarInner({ profile }) {
     setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero) });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
+    cargarOcDb(plantaId);
     setMostrarPreview(true);
     setTimeout(() => window.print(), 200);
   };
@@ -641,10 +709,25 @@ function GenerarInner({ profile }) {
               </div>
             )}
 
+            {modalidad === "soja" && !esTraslado && (
+              <div className="mt-5 pt-5 border-t border-stone-200">
+                <span className={lab}>Orden de carga guardada ({planta?.nombre || "tu planta"})</span>
+                <select value={ocDbSel} onChange={(e) => elegirOcDb(e.target.value)} disabled={!!emitido} className={inp}>
+                  <option value="">{gruposDb.length ? "Elegir orden y cliente…" : "No hay órdenes con saldo pendiente en esta planta"}</option>
+                  {gruposDb.map((g) => (
+                    <option key={g.clave} value={g.clave}>
+                      {g.ordenNumero} · {g.cliente} — saldo {fmtNum(g.total)} u.
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[12px] text-stone-400 mt-1">Se completa todo desde la orden, con las cantidades pendientes. Solo falta el transporte, el chofer, el número de remito y los precintos. Podés remitir menos, pero no más de lo que dice la orden.</div>
+              </div>
+            )}
+
             {modalidad !== "generico" && !esTraslado && (
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2 items-end">
                 <div>
-                  <span className={lab}>Orden de carga (Excel, opcional)</span>
+                  <span className={lab}>{modalidad === "soja" ? "O subir un Excel de orden de carga (opcional)" : "Orden de carga (Excel, opcional)"}</span>
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsb,.xlsm" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
                   {fileName && <div className="text-[12px] text-stone-400 mt-1">{fileName} · no se guarda, solo se lee en este navegador</div>}
                   {parseError && <div className="text-[12px] text-red-600 mt-1">{parseError}</div>}

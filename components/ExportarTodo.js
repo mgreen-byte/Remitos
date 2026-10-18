@@ -19,6 +19,9 @@ const TABLAS = [
   ["transportistas", "Transportes", "id"],
   ["cots", "COT", "id"],
   ["precios", "Precios", "id"],
+  ["ordenes_carga", "Ordenes de carga", "id"],
+  ["ordenes_carga_lineas", "Ordenes - lineas", "id"],
+  ["ordenes_carga_log", "Ordenes - cambios", "id"],
   ["profiles", "Usuarios", "id"],
   ["configuracion", "Configuracion", "clave"],
 ];

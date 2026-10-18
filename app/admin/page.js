@@ -71,12 +71,12 @@ function AdminInner({ profile }) {
             help={
               <>
                 Para crear un usuario nuevo: Supabase → Authentication → Users → Add user (con “Auto Confirm User”). Después aparece acá y le asignás planta y permisos.
-                Operador: emite remitos y trabaja en su planta. Solo consulta: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Admin: todo.
+                Despacho de planta: emite remitos y trabaja en su planta. Solo vista: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Administrador: todo.
               </>
             }
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
-              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Operador" }, { value: "consulta", label: "Solo consulta" }, { value: "admin", label: "Admin" }] },
+              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "admin", label: "Administrador" }] },
               { key: "planta_id", label: "Planta", type: "select", nullable: true, options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "modalidades", label: "Modalidades", type: "multi", options: MODALIDADES.map((m) => ({ value: m.id, label: m.label })) },
               { key: "activo", label: "Activo", type: "bool" },

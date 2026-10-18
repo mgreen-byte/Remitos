@@ -231,6 +231,7 @@ function HistorialInner({ profile }) {
                 <th className="text-left p-2 pl-4">Remito</th>
                 <th className="text-left p-2">Fecha</th>
                 <th className="text-left p-2">Cliente</th>
+                <th className="text-left p-2">Orden de carga</th>
                 {esAdmin && <th className="text-left p-2">Planta</th>}
                 <th className="text-right p-2">Unid.</th>
                 <th className="text-right p-2">Kg</th>
@@ -241,14 +242,14 @@ function HistorialInner({ profile }) {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-stone-400">
+                  <td colSpan={9} className="p-6 text-center text-stone-400">
                     Buscando…
                   </td>
                 </tr>
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-stone-400">
+                  <td colSpan={9} className="p-6 text-center text-stone-400">
                     No hay remitos con esos filtros.
                   </td>
                 </tr>
@@ -261,6 +262,7 @@ function HistorialInner({ profile }) {
                     </td>
                     <td className="p-2">{fmtFecha(r.fecha)}</td>
                     <td className="p-2">{r.tipo === "traslado" ? <><span className="text-[11px] font-medium text-sky-700 bg-sky-50 rounded px-1.5 py-0.5 mr-1.5">TRASLADO</span>{r.planta?.nombre} → {r.destino?.nombre}</> : r.cliente_nombre}</td>
+                    <td className="p-2 font-mono text-[12px]">{r.orden_carga || <span className="text-stone-300">—</span>}</td>
                     {esAdmin && <td className="p-2">{r.planta?.nombre}</td>}
                     <td className="p-2 text-right">{fmtNum(r.total_unidades)}</td>
                     <td className="p-2 text-right">{fmtNum(r.total_kgs)}</td>
@@ -274,7 +276,7 @@ function HistorialInner({ profile }) {
                   </tr>
                   {open === r.id && (
                     <tr className="bg-stone-50">
-                      <td colSpan={8} className="p-4 space-y-3">
+                      <td colSpan={9} className="p-4 space-y-3">
                         <div className="text-xs text-stone-500 grid sm:grid-cols-2 gap-x-6 gap-y-1">
                           <div>Modalidad: <b>{r.modalidad}</b></div>
                           {pend[r.id] && (
@@ -282,7 +284,7 @@ function HistorialInner({ profile }) {
                               COT pendiente: este remito todavía no tiene COT. <Link href="/cot" className="underline font-medium">Ir a la pantalla COT</Link>
                             </div>
                           )}
-                          {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga || "—"}</b> · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
+                          {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga || "—"}</b>{r.orden_carga && r.planta?.nombre ? ` (sale de ${r.planta.nombre})` : ""} · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
                           <div>Registrado: {new Date(r.created_at).toLocaleString("es-AR")}</div>
                           <div>Transporte: {r.transportista_nombre || "—"}</div>
                           <div>Chofer: {r.chofer_nombre || "—"} {r.chofer_cuil ? `(${r.chofer_cuil})` : ""}</div>

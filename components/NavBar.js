@@ -12,6 +12,7 @@ const ICONOS = {
   generar: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
   stock: "M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8",
   historial: "M12 7v5l3 2M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4",
+  ordenes: "M9 4h6l1 2h3v15H5V6h3zM9 12h6M9 16h4",
   cot: "M6 3h9l4 4v14H6zM9 13l2 2 4-4M9 17h6",
   transportes: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   choferes: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1",
@@ -59,6 +60,7 @@ export default function NavBar({ profile, children }) {
   const items = [
     ...(rol === "admin" || rol === "consulta" ? [["/inicio", "Inicio", "inicio"]] : []),
     ...(rol !== "consulta" ? [["/generar", "Nuevo remito", "generar"]] : []),
+    ["/ordenes", "Órdenes de carga", "ordenes"],
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],
     ["/talonarios", "Talonarios", "talonarios"],
@@ -109,7 +111,7 @@ export default function NavBar({ profile, children }) {
         </nav>
         <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
           <div className="font-medium text-white truncate">{profile?.nombre}</div>
-          <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo consulta" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
+          <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">
             Cerrar sesión
           </button>
