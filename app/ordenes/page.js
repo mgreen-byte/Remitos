@@ -56,6 +56,7 @@ function OrdenesInner({ profile }) {
   const [manual, setManual] = useState(null);
   const [edit, setEdit] = useState(null); // {ordenId, lineaId|null, data, tieneRemitos}
   const [anulando, setAnulando] = useState(null);
+  const [sueltos, setSueltos] = useState(null); // remitos con número de orden y sin vincular
   const fileRef = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -160,6 +161,23 @@ function OrdenesInner({ profile }) {
     abrir(data);
     setEdit({ ordenId: data, lineaId: null, data: { ...LINEA_VACIA }, tieneRemitos: false });
     setMsg({ tipo: "ok", texto: "Orden creada. Agregá las líneas." });
+  };
+
+  // ---------- remitos hechos antes del módulo (solo administrador) ----------
+  const buscarSueltos = async () => {
+    setMsg(null);
+    const { data, error } = await supabase.from("remitos").select("id, punto_venta, numero, fecha, cliente_nombre, orden_carga, estado")
+      .not("orden_carga", "is", null).is("orden_id", null).not("estado", "in", "(anulado,rechazado)").order("created_at", { ascending: false }).limit(200);
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setSueltos((data || []).filter((r) => String(r.orden_carga).trim()));
+  };
+  const vincularSuelto = async (r) => {
+    if (!window.confirm(`Registrar el remito ${r.punto_venta}-${r.numero} en la orden ${r.orden_carga}? No cambia el stock ni el remito.`)) return;
+    const { error } = await supabase.rpc("registrar_orden_desde_remito", { p_remito_id: r.id });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: `Remito ${r.punto_venta}-${r.numero} registrado en la orden ${r.orden_carga}.` });
+    await cargar();
+    await buscarSueltos();
   };
 
   // ---------- detalle de una orden ----------
@@ -317,6 +335,23 @@ function OrdenesInner({ profile }) {
                 <button onClick={() => setManual({ numero: "", fecha: new Date().toISOString().slice(0, 10) })} className={btn2}>+ Nueva orden a mano</button>
               )}
             </div>
+            {esAdmin && (
+              <div className="border-t border-stone-200 pt-3">
+                <button onClick={() => (sueltos ? setSueltos(null) : buscarSueltos())} className={btn2}>Registrar remitos ya emitidos</button>
+                {sueltos && (
+                  <div className="mt-2 space-y-1">
+                    {sueltos.length === 0 && <div className="text-[13px] text-stone-500">No hay remitos con orden de carga sin vincular.</div>}
+                    {sueltos.map((r) => (
+                      <div key={r.id} className="flex flex-wrap items-center gap-3 text-[13px]">
+                        <span className="font-medium">{r.punto_venta}-{r.numero}</span>
+                        <span className="text-stone-600">{r.cliente_nombre} · orden {r.orden_carga}</span>
+                        <button onClick={() => vincularSuelto(r)} className={btn2}>Registrar en la orden</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {!esAdmin && <div className="text-[12px] text-stone-500">Se cargan solo las líneas de tu planta ({profile.planta?.nombre}). Si la orden ya existe, se reemplazan las de tu planta por las del archivo.</div>}
 
             {manual && esAdmin && (
