@@ -97,7 +97,12 @@ function OrdenesInner({ profile }) {
     });
   }, [ordenes, lineasDe, filtro, buscar]);
 
-  const puedeEditar = (l) => !soloVista && (esAdmin || l.planta_id === miPlanta);
+  // Una orden completada (para la planta) solo la modifica el administrador.
+  const completaPlanta = (o, pid) => {
+    const ls = (lineasDe[o.id] || []).filter((x) => x.planta_id === pid);
+    return ls.length > 0 && ls.every((x) => Number(x.saldo) <= 0);
+  };
+  const puedeEditar = (l, o) => !soloVista && (esAdmin || (l.planta_id === miPlanta && !(o && completaPlanta(o, l.planta_id))));
 
   // ---------- carga de Excel ----------
   const handleFile = (e) => {
@@ -501,7 +506,7 @@ function OrdenesInner({ profile }) {
                                   <td className={`p-2 text-right font-semibold ${Number(l.saldo) <= 0 ? "text-emerald-700" : ""}`}>{fmtNum(Math.max(0, l.saldo))}</td>
                                   <td className="p-2 text-[12px] text-stone-600">{(remitosDe[l.id] || []).join(", ") || "—"}</td>
                                   <td className="p-2 whitespace-nowrap text-right">
-                                    {o.estado !== "anulada" && puedeEditar(l) && (
+                                    {o.estado !== "anulada" && puedeEditar(l, o) && (
                                       <>
                                         <button onClick={() => editar(l)} className="text-emerald-700 hover:underline text-[12.5px] mr-3">Editar</button>
                                         {Number(l.remitido) === 0 && <button onClick={() => quitarLinea(l)} className="text-red-600 hover:underline text-[12.5px]">Quitar</button>}
@@ -603,7 +608,10 @@ function OrdenesInner({ profile }) {
                       )}
 
                       <div className="flex flex-wrap gap-2 items-start">
-                        {o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (esAdmin || ls.some((l) => l.planta_id === miPlanta)) && (
+                        {o.estado !== "anulada" && !esAdmin && !soloVista && completaPlanta(o, miPlanta) && (
+                          <span className="text-[12px] text-stone-500">Orden completada: solo el administrador puede modificarla.</span>
+                        )}
+                        {o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (esAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: esAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
                         {(esAdmin || soloVista) && (
