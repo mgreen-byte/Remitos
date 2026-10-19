@@ -281,6 +281,15 @@ function OrdenesInner({ profile }) {
     cargar();
   };
 
+  const eliminar = async (o) => {
+    if (!window.confirm(`¿Eliminar la orden ${o.numero} y todas sus líneas? No se puede deshacer. Solo se puede si no tiene remitos.`)) return;
+    const { error } = await supabase.rpc("eliminar_orden", { p_orden_id: o.id });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setAbierta(null);
+    setMsg({ tipo: "ok", texto: `Orden ${o.numero} eliminada.` });
+    cargar();
+  };
+
   if (sinPlanta)
     return (
       <NavBar profile={profile}>
@@ -619,6 +628,9 @@ function OrdenesInner({ profile }) {
                         )}
                         {esAdmin && o.estado !== "anulada" && anulando?.id !== o.id && (
                           <button onClick={() => setAnulando({ id: o.id, motivo: "" })} className="border border-red-300 text-red-700 text-[13px] px-3 py-1.5 rounded-md">Anular orden…</button>
+                        )}
+                        {esAdmin && anulando?.id !== o.id && !ls.some((l) => Number(l.remitido) > 0) && (
+                          <button onClick={() => eliminar(o)} className="bg-red-600 text-white text-[13px] px-3 py-1.5 rounded-md">Eliminar orden</button>
                         )}
                         {anulando?.id === o.id && (
                           <div className="flex-1 min-w-[260px] space-y-2">
