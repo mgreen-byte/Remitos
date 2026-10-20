@@ -41,7 +41,9 @@ function Inner({ profile }) {
     ]);
     setLoading(false);
     if (t.error) return fail(t.error);
-    setRows(t.data || []);
+    const { data: imp } = await supabase.from("talonarios").select("id, imprenta_nombre, imprenta_domicilio, imprenta_cuit, imprenta_habilitacion, fecha_impresion");
+    const porId = Object.fromEntries((imp || []).map((x) => [x.id, x]));
+    setRows((t.data || []).map((x) => ({ ...x, ...(porId[x.id] || {}) })));
     setPlantas(p.data || []);
     setControl(!!c.data?.valor?.activo);
   }, []);
@@ -63,7 +65,15 @@ function Inner({ profile }) {
   const crear = (e) => {
     e.preventDefault();
     run(
-      () => supabase.rpc("crear_talonario", { p_planta: nuevo.planta, p_desde: Number(nuevo.desde), p_hasta: Number(nuevo.hasta), p_cai: nuevo.cai, p_vencimiento: nuevo.venc, p_primero: nuevo.primero ? Number(nuevo.primero) : null }),
+      async () => {
+        const r = await supabase.rpc("crear_talonario", { p_planta: nuevo.planta, p_desde: Number(nuevo.desde), p_hasta: Number(nuevo.hasta), p_cai: nuevo.cai, p_vencimiento: nuevo.venc, p_primero: nuevo.primero ? Number(nuevo.primero) : null });
+        if (r.error || !r.data) return r;
+        if (nuevo.imp_nombre || nuevo.imp_domicilio || nuevo.imp_cuit || nuevo.imp_hab || nuevo.imp_fecha) {
+          const r2 = await supabase.rpc("set_talonario_imprenta", { p_id: r.data, p_nombre: nuevo.imp_nombre, p_domicilio: nuevo.imp_domicilio, p_cuit: nuevo.imp_cuit, p_habilitacion: nuevo.imp_hab, p_fecha: nuevo.imp_fecha || null });
+          if (r2.error) return r2;
+        }
+        return r;
+      },
       "Talonario cargado."
     );
   };
@@ -116,7 +126,7 @@ function Inner({ profile }) {
           {esAdmin && (
             <div className="flex gap-2">
               <button onClick={exportar} className="btn-secundario">Exportar Excel</button>
-              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", primero: "", cai: "", venc: "" })} className="btn-primario">Nuevo talonario</button>
+              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", primero: "", cai: "", venc: "", imp_nombre: "", imp_domicilio: "", imp_cuit: "", imp_hab: "", imp_fecha: "" })} className="btn-primario">Nuevo talonario</button>
             </div>
           )}
         </header>
@@ -161,6 +171,19 @@ function Inner({ profile }) {
               <div className="sm:col-span-2">
                 <label className="campo-etiqueta">Vencimiento del CAI</label>
                 <input required type="date" value={nuevo.venc} onChange={(e) => setNuevo({ ...nuevo, venc: e.target.value })} className={`${inputCls} w-full`} />
+              </div>
+            </div>
+            <div className="border-t border-stone-100 pt-3">
+              <div className="text-[12.5px] font-medium text-stone-600 mb-2">Imprenta (para el remito digital en PDF; opcional)</div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <input value={nuevo.imp_nombre} onChange={(e) => setNuevo({ ...nuevo, imp_nombre: e.target.value })} placeholder="Nombre de la imprenta" className={`${inputCls} sm:col-span-2`} />
+                <input value={nuevo.imp_domicilio} onChange={(e) => setNuevo({ ...nuevo, imp_domicilio: e.target.value })} placeholder="Domicilio, localidad" className={`${inputCls} sm:col-span-2`} />
+                <input value={nuevo.imp_cuit} onChange={(e) => setNuevo({ ...nuevo, imp_cuit: e.target.value })} placeholder="CUIT (30-71886435-2)" className={inputCls} />
+                <input value={nuevo.imp_hab} onChange={(e) => setNuevo({ ...nuevo, imp_hab: e.target.value })} placeholder="Habilitación municipal N°" className={inputCls} />
+                <div className="sm:col-span-2">
+                  <label className="campo-etiqueta">Fecha de impresión</label>
+                  <input type="date" value={nuevo.imp_fecha} onChange={(e) => setNuevo({ ...nuevo, imp_fecha: e.target.value })} className={`${inputCls} w-full`} />
+                </div>
               </div>
             </div>
             <div className="text-xs text-stone-400">Si la planta ya venía usando este talonario en papel, poné en “Primero a usar” el primer remito que va a emitir desde el sistema. Los anteriores se toman como usados antes de empezar.</div>
@@ -292,9 +315,26 @@ function Inner({ profile }) {
                       <input type="date" value={panel.venc} onChange={(e) => setPanel({ ...panel, venc: e.target.value })} className={`${inputCls} w-full`} />
                     </div>
                   </div>
+                  <div className="border-t border-stone-100 pt-3">
+                    <div className="text-[12.5px] font-medium text-stone-600 mb-2">Imprenta (para el remito digital en PDF)</div>
+                    <div className="grid gap-3 sm:grid-cols-4">
+                      <input value={panel.imp_nombre} onChange={(e) => setPanel({ ...panel, imp_nombre: e.target.value })} placeholder="Nombre de la imprenta" className={`${inputCls} sm:col-span-2`} />
+                      <input value={panel.imp_domicilio} onChange={(e) => setPanel({ ...panel, imp_domicilio: e.target.value })} placeholder="Domicilio, localidad" className={`${inputCls} sm:col-span-2`} />
+                      <input value={panel.imp_cuit} onChange={(e) => setPanel({ ...panel, imp_cuit: e.target.value })} placeholder="CUIT" className={inputCls} />
+                      <input value={panel.imp_hab} onChange={(e) => setPanel({ ...panel, imp_hab: e.target.value })} placeholder="Habilitación municipal N°" className={inputCls} />
+                      <div className="sm:col-span-2">
+                        <label className="campo-etiqueta">Fecha de impresión</label>
+                        <input type="date" value={panel.imp_fecha} onChange={(e) => setPanel({ ...panel, imp_fecha: e.target.value })} className={`${inputCls} w-full`} />
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => run(() => supabase.rpc("editar_talonario", { p_id: t.id, p_primero: Number(panel.primero), p_hasta: Number(panel.hasta), p_cai: panel.cai, p_vencimiento: panel.venc || null }), "Talonario actualizado.")}
+                      onClick={() => run(async () => {
+                        const r = await supabase.rpc("editar_talonario", { p_id: t.id, p_primero: Number(panel.primero), p_hasta: Number(panel.hasta), p_cai: panel.cai, p_vencimiento: panel.venc || null });
+                        if (r.error) return r;
+                        return await supabase.rpc("set_talonario_imprenta", { p_id: t.id, p_nombre: panel.imp_nombre, p_domicilio: panel.imp_domicilio, p_cuit: panel.imp_cuit, p_habilitacion: panel.imp_hab, p_fecha: panel.imp_fecha || null });
+                      }, "Talonario actualizado.")}
                       className="btn-primario"
                     >
                       Guardar cambios
@@ -328,7 +368,7 @@ function Inner({ profile }) {
                   <button onClick={() => setPanel({ id: t.id, modo: "extravio", texto: "" })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Reportar pérdida…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (
-                  <button onClick={() => setPanel({ id: t.id, modo: "editar", primero: String(primero), hasta: String(t.hasta), cai: t.cai, venc: t.cai_vencimiento })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Editar…</button>
+                  <button onClick={() => setPanel({ id: t.id, modo: "editar", primero: String(primero), hasta: String(t.hasta), cai: t.cai, venc: t.cai_vencimiento, imp_nombre: t.imprenta_nombre || "", imp_domicilio: t.imprenta_domicilio || "", imp_cuit: t.imprenta_cuit || "", imp_hab: t.imprenta_habilitacion || "", imp_fecha: t.fecha_impresion || "" })} className="border border-stone-300 text-stone-700 text-sm px-3 py-1.5 rounded">Editar…</button>
                 )}
                 {esAdmin && t.estado !== "cerrado" && !abierto && (
                   <button onClick={() => setPanel({ id: t.id, modo: "baja", texto: t.extravio_detalle || "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">Dar de baja…</button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { Fragment, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -112,6 +113,15 @@ function HistorialInner({ profile }) {
     setReabriendo(null);
     setMsg("Traslado reabierto: quedó EN TRÁNSITO y el stock volvió a su estado anterior. Andá a Traslados para confirmarlo de nuevo con los datos correctos.");
     buscar();
+  };
+
+  const bajarPdf = async (r) => {
+    setMsg("");
+    try {
+      await descargarPdfDeRemito(supabase, r, { leyenda: "REIMPRESIÓN DIGITAL" });
+    } catch (e) {
+      setMsg(e.message || friendlyError(e));
+    }
   };
 
   const reimprimir = (r) => {
@@ -270,6 +280,7 @@ function HistorialInner({ profile }) {
                     <td className="p-2 text-stone-500">{r.usuario_nombre}</td>
                     <td className="p-2">
                       <span className={`text-xs px-2 py-0.5 rounded ${ESTADO_CLS[r.estado] || "bg-stone-100 text-stone-700"}`}>{ESTADO_TXT[r.estado] || r.estado}</span>
+                      {r.digital && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 text-sky-800" title={`Emitido sin papel por ${r.digital_por_nombre || ""}`}>Digital</span>}
                       {pend[r.id] && (
                         <span className={`ml-1.5 text-xs px-2 py-0.5 rounded font-medium ${cotAtrasado(pend[r.id]) ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>COT pendiente</span>
                       )}
@@ -344,6 +355,11 @@ function HistorialInner({ profile }) {
                           {!soloLectura && (
                             <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
                               Reimprimir
+                            </button>
+                          )}
+                          {profile.rol === "admin" && r.estado !== "anulado" && (
+                            <button onClick={() => bajarPdf(r)} className="border border-stone-400 text-stone-700 text-sm px-3 py-1.5 rounded">
+                              Descargar PDF
                             </button>
                           )}
                           {puedeAnular && (r.estado === "emitido" || (r.estado === "en_transito" && (esAdmin || r.planta_id === profile.planta?.id))) && anulando?.id !== r.id && (

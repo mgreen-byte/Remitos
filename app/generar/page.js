@@ -1,5 +1,6 @@
 "use client";
 
+import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -541,7 +542,7 @@ function GenerarInner({ profile }) {
     return "";
   };
 
-  const emitir = async () => {
+  const emitir = async (modo = "papel") => {
     setError("");
     const msg = validar();
     if (msg) {
@@ -557,6 +558,15 @@ function GenerarInner({ profile }) {
       });
       const pasa = Object.values(porLinea).filter((x) => x.cant > x.saldo).length;
       if (pasa && !window.confirm(`Estás remitiendo más de lo que dice la orden de carga en ${pasa} renglón(es). ¿Registrar de todas formas?`)) return;
+    }
+    if (modo === "pdf") {
+      // Se verifica ANTES de registrar, para no gastar un número si después no se puede armar el PDF.
+      const pl = planta || planta0;
+      if (pl?.empresa !== "ms") return setError("El PDF digital está disponible solo para plantas de MS Technologies (campo Empresa de la planta).");
+      if (!pl?.domicilio_fiscal) return setError(`Falta la dirección fiscal de la planta ${pl?.nombre}: cargala en Administración → Plantas.`);
+      const { data: tals } = await supabase.from("talonarios").select("id, imprenta_nombre").eq("planta_id", pl.id).eq("estado", "activo");
+      if (!(tals || []).length) return setError("La planta no tiene un talonario activo: el PDF necesita el CAI del talonario (activá el control y cargá el talonario).");
+      if ((tals || []).every((t) => !t.imprenta_nombre)) return setError("Faltan los datos de la imprenta en el talonario: completalos en Talonarios → Editar.");
     }
     setSaving(true);
     const payload = {
@@ -607,12 +617,29 @@ function GenerarInner({ profile }) {
       if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
       else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
     }
-    setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero) });
+    setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero), pdf: modo === "pdf" });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
     cargarOcDb(plantaId);
+    if (modo === "pdf") {
+      const { error: eD } = await supabase.rpc("marcar_remito_digital", { p_remito_id: data });
+      if (eD) return setError(`El remito quedó registrado, pero no se pudo marcar como digital: ${friendlyError(eD)}`);
+      await bajarPdf(data);
+      return;
+    }
     setMostrarPreview(true);
     setTimeout(() => window.print(), 200);
+  };
+
+  const bajarPdf = async (id) => {
+    setError("");
+    try {
+      const { data: r, error: e1 } = await supabase.from("remitos").select("*, remito_items(*)").eq("id", id).single();
+      if (e1) throw e1;
+      await descargarPdfDeRemito(supabase, r);
+    } catch (e) {
+      setError(`El remito quedó registrado, pero no se pudo armar el PDF: ${e.message || friendlyError(e)}. Descargalo desde Historial cuando lo corrijas.`);
+    }
   };
 
   const guardarCalibracion = (c) => {
@@ -645,7 +672,11 @@ function GenerarInner({ profile }) {
               <div className="text-[13px] text-emerald-700">{esTraslado ? "La mercadería quedó en tránsito hasta que la planta de destino confirme la recepción. " : "El stock ya fue descontado. "}Si no salió la impresión, podés reimprimir.</div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => window.print()} className="btn-secundario">Imprimir de nuevo</button>
+              {emitido.pdf ? (
+                <button onClick={() => bajarPdf(emitido.id)} className="btn-secundario">Descargar PDF de nuevo</button>
+              ) : (
+                <button onClick={() => window.print()} className="btn-secundario">Imprimir de nuevo</button>
+              )}
               <button onClick={() => reiniciar()} className="btn-primario">Nuevo remito</button>
             </div>
           </div>
@@ -1129,7 +1160,12 @@ function GenerarInner({ profile }) {
                 <button onClick={() => { setMostrarPreview(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn-secundario">
                   Volver a editar
                 </button>
-                <button onClick={emitir} disabled={saving} className="btn-primario">
+                {esAdmin && (
+                  <button onClick={() => emitir("pdf")} disabled={saving} className="btn-secundario" title="Registra el remito y descarga el PDF digital: ese número del talonario queda usado y el formulario preimpreso no se usa.">
+                    Registrar sin papel (PDF)
+                  </button>
+                )}
+                <button onClick={() => emitir()} disabled={saving} className="btn-primario">
                   {saving ? "Registrando…" : "Registrar e imprimir"}
                 </button>
               </div>
