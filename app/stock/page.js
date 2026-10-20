@@ -14,9 +14,10 @@ export default function StockPage() {
 }
 
 function StockInner({ profile }) {
-  const esAdmin = profile.rol === "admin" || profile.rol === "consulta"; // elige planta
+  const esAdmin = profile.rol === "admin" || profile.rol === "consulta" || profile.rol === "logistica"; // elige planta
   const soloLectura = profile.rol === "consulta";
   const puedeCargar = profile.rol === "admin"; // solo el admin carga stock
+  const puedeSumar = profile.rol === "admin" || profile.rol === "logistica"; // ajustes positivos
   const [plantas, setPlantas] = useState([]);
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
@@ -168,7 +169,7 @@ function StockInner({ profile }) {
 
         {!puedeCargar && !soloLectura && (
           <div className="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded p-3">
-            El stock de tu planta lo carga el administrador o llega por traslados. Acá podés registrar bajas (mermas, roturas) con un ajuste negativo.
+            {puedeSumar ? "El stock nuevo lo carga el administrador o llega por traslados. Acá podés ajustar (sumar o restar) con motivo." : "El stock de tu planta lo carga el administrador o llega por traslados. Acá podés registrar bajas (mermas, roturas) con un ajuste negativo."}
           </div>
         )}
 
@@ -246,7 +247,7 @@ function StockInner({ profile }) {
                       <tr className="bg-amber-50">
                         <td colSpan={5} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
-                            <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeCargar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-32`} />
+                            <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-32`} />
                             <input value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} placeholder="Motivo del ajuste (obligatorio)" className={`${inputCls} flex-1 min-w-[200px]`} />
                             <button onClick={aplicarAjuste} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded">
                               Aplicar

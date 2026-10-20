@@ -11,7 +11,7 @@ import { fmtNum, fmtFecha, norm, cotAtrasado, nombreConPresentacion } from "@/li
 const esBigBag = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
 
 export default function InicioPage() {
-  return <AuthGuard roles={["admin", "consulta"]}>{(profile) => <InicioInner profile={profile} />}</AuthGuard>;
+  return <AuthGuard roles={["admin", "consulta", "logistica"]}>{(profile) => <InicioInner profile={profile} />}</AuthGuard>;
 }
 
 function InicioInner({ profile }) {

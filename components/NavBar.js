@@ -52,14 +52,14 @@ export default function NavBar({ profile, children }) {
     // Talonarios: la planta ve los que faltan confirmar; el admin, las pérdidas reportadas.
     let qt = supabase.from("talonarios").select("id", { count: "exact", head: true }).eq("estado", "activo");
     qt = profile.rol === "admin" ? qt.not("extravio_reportado_at", "is", null) : qt.is("recibido_at", null);
-    if (profile.rol === "consulta") return;
+    if (profile.rol === "consulta" || profile.rol === "logistica") return;
     qt.then(({ count }) => setAvisoTal(count || 0));
   }, [profile, pathname]);
 
   const rol = profile?.rol;
   const items = [
-    ...(rol === "admin" || rol === "consulta" ? [["/inicio", "Inicio", "inicio"]] : []),
-    ...(rol !== "consulta" ? [["/generar", "Nuevo remito", "generar"]] : []),
+    ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/inicio", "Inicio", "inicio"]] : []),
+    ...(rol !== "consulta" && rol !== "logistica" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/ordenes", "Órdenes de carga", "ordenes"],
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],
@@ -68,7 +68,7 @@ export default function NavBar({ profile, children }) {
     ["/cot", "COT", "cot"],
     // Los maestros de transportes y choferes: admin (edita) (consulta no los ve).
     ...(rol === "admin" ? [["/transportes", "Transportes", "transportes"], ["/choferes", "Choferes", "choferes"]] : []),
-    ...(rol === "admin" ? [["/admin", "Administración", "admin"]] : []),
+    ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
 
   const logout = async () => {
@@ -111,7 +111,7 @@ export default function NavBar({ profile, children }) {
         </nav>
         <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
           <div className="font-medium text-white truncate">{profile?.nombre}</div>
-          <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
+          <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">
             Cerrar sesión
           </button>

@@ -13,8 +13,8 @@ export default function TrasladosPage() {
 }
 
 function TrasladosInner({ profile }) {
-  const esAdmin = profile.rol === "admin" || profile.rol === "consulta"; // ve todas las plantas
-  const soloLectura = profile.rol === "consulta";
+  const esAdmin = profile.rol === "admin" || profile.rol === "consulta" || profile.rol === "logistica"; // ve todas las plantas
+  const soloLectura = profile.rol === "consulta" || profile.rol === "logistica";
   const miPlanta = profile.planta?.id || null;
   const [tab, setTab] = useState("entrantes");
   const [rows, setRows] = useState([]);

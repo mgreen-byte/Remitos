@@ -19,11 +19,13 @@ const TABS = [
 ];
 
 export default function AdminPage() {
-  return <AuthGuard adminOnly>{(profile) => <AdminInner profile={profile} />}</AuthGuard>;
+  return <AuthGuard roles={["admin", "logistica"]}>{(profile) => <AdminInner profile={profile} />}</AuthGuard>;
 }
 
 function AdminInner({ profile }) {
-  const [tab, setTab] = useState("plantas");
+  const esLogistica = profile.rol === "logistica"; // solo Catálogo y Respaldo
+  const tabs = esLogistica ? TABS.filter(([id]) => id === "catalogo" || id === "respaldo") : TABS;
+  const [tab, setTab] = useState(esLogistica ? "catalogo" : "plantas");
   const [plantas, setPlantas] = useState([]);
 
   useEffect(() => {
@@ -34,7 +36,7 @@ function AdminInner({ profile }) {
     <NavBar profile={profile}>
       <div className="max-w-6xl mx-auto p-6 space-y-4">
         <div className="flex gap-1 flex-wrap">
-          {TABS.map(([id, label]) => (
+          {tabs.map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -76,7 +78,7 @@ function AdminInner({ profile }) {
             }
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
-              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "admin", label: "Administrador" }] },
+              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "logistica", label: "Logística" }, { value: "admin", label: "Administrador" }] },
               { key: "planta_id", label: "Planta", type: "select", nullable: true, options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "modalidades", label: "Modalidades", type: "multi", options: MODALIDADES.map((m) => ({ value: m.id, label: m.label })) },
               { key: "activo", label: "Activo", type: "bool" },

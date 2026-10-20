@@ -35,7 +35,7 @@ export default function AuthGuard({ children, adminOnly, roles }) {
         return;
       }
       if ((adminOnly && profile.rol !== "admin") || (roles && !roles.includes(profile.rol))) {
-        router.replace(profile.rol === "consulta" ? "/inicio" : "/generar");
+        router.replace(profile.rol === "consulta" || profile.rol === "logistica" ? "/inicio" : "/generar");
         return;
       }
       setState({ loading: false, profile, notice: "" });

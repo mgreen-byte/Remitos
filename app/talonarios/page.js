@@ -17,7 +17,7 @@ export default function TalonariosPage() {
 
 function Inner({ profile }) {
   const esAdmin = profile.rol === "admin";
-  const soloLectura = profile.rol === "consulta";
+  const soloLectura = profile.rol === "consulta" || profile.rol === "logistica";
   const veTodo = esAdmin || soloLectura;
   const [rows, setRows] = useState([]);
   const [plantas, setPlantas] = useState([]);

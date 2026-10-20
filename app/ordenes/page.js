@@ -35,6 +35,7 @@ function estadoOrden(o, lineas) {
 
 function OrdenesInner({ profile }) {
   const esAdmin = profile.rol === "admin";
+  const poderAdmin = esAdmin || profile.rol === "logistica"; // Logística opera sobre todas las plantas, pero no edita órdenes completadas
   const soloVista = profile.rol === "consulta";
   const miPlanta = profile.planta?.id || null;
   const sinPlanta = profile.rol === "operador" && !miPlanta;
@@ -102,7 +103,7 @@ function OrdenesInner({ profile }) {
     const ls = (lineasDe[o.id] || []).filter((x) => x.planta_id === pid);
     return ls.length > 0 && ls.every((x) => Number(x.saldo) <= 0);
   };
-  const puedeEditar = (l, o) => !soloVista && (esAdmin || (l.planta_id === miPlanta && !(o && completaPlanta(o, l.planta_id))));
+  const puedeEditar = (l, o) => !soloVista && (esAdmin || ((poderAdmin || l.planta_id === miPlanta) && !(o && completaPlanta(o, l.planta_id))));
 
   // ---------- carga de Excel ----------
   const handleFile = (e) => {
@@ -136,7 +137,7 @@ function OrdenesInner({ profile }) {
     });
   }, [prev]);
   const nombrePlanta = (id) => plantas.find((p) => p.id === id)?.nombre || "—";
-  const deOtraPlanta = (l) => !esAdmin && l.planta_id && l.planta_id !== miPlanta;
+  const deOtraPlanta = (l) => !poderAdmin && l.planta_id && l.planta_id !== miPlanta;
   const aCargar = efectivas.filter((l) => l.planta_id && !deOtraPlanta(l));
 
   const guardarPrev = async () => {
@@ -297,7 +298,7 @@ function OrdenesInner({ profile }) {
       </NavBar>
     );
 
-  const plantasEditables = esAdmin ? plantas : plantas.filter((p) => p.id === miPlanta);
+  const plantasEditables = poderAdmin ? plantas : plantas.filter((p) => p.id === miPlanta);
 
   return (
     <NavBar profile={profile}>
@@ -345,7 +346,7 @@ function OrdenesInner({ profile }) {
                 <span className={lab}>Cargar orden desde Excel (.xlsx, .xlsb)</span>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsb,.xlsm" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
               </div>
-              {esAdmin && !manual && (
+              {poderAdmin && !manual && (
                 <button onClick={() => setManual({ numero: "", fecha: new Date().toISOString().slice(0, 10) })} className={btn2}>+ Nueva orden a mano</button>
               )}
             </div>
@@ -366,9 +367,9 @@ function OrdenesInner({ profile }) {
                 )}
               </div>
             )}
-            {!esAdmin && <div className="text-[12px] text-stone-500">Se cargan solo las líneas de tu planta ({profile.planta?.nombre}). Si la orden ya existe, se reemplazan las de tu planta por las del archivo.</div>}
+            {!poderAdmin && <div className="text-[12px] text-stone-500">Se cargan solo las líneas de tu planta ({profile.planta?.nombre}). Si la orden ya existe, se reemplazan las de tu planta por las del archivo.</div>}
 
-            {manual && esAdmin && (
+            {manual && poderAdmin && (
               <div className="grid gap-3 sm:grid-cols-3 items-end border-t border-stone-200 pt-3">
                 <div>
                   <label className={lab}>Número de orden</label>
@@ -396,7 +397,7 @@ function OrdenesInner({ profile }) {
               </div>
               <div className="text-[13px] text-stone-600">
                 Archivo: <b>{prev.archivo}</b> · {efectivas.length} línea(s) · se cargan <b>{aCargar.length}</b>
-                {!esAdmin && efectivas.some(deOtraPlanta) && ` · ${efectivas.filter(deOtraPlanta).length} de otras plantas se ignoran`}
+                {!poderAdmin && efectivas.some(deOtraPlanta) && ` · ${efectivas.filter(deOtraPlanta).length} de otras plantas se ignoran`}
               </div>
             </div>
 
@@ -543,7 +544,7 @@ function OrdenesInner({ profile }) {
                           <div className="grid gap-3 sm:grid-cols-3">
                             <div>
                               <label className={lab}>Planta (depósito)</label>
-                              <select value={edit.data.planta_id || (esAdmin ? "" : miPlanta || "")} onChange={(e) => setD({ planta_id: e.target.value })} disabled={!esAdmin || edit.tieneRemitos} className={inp}>
+                              <select value={edit.data.planta_id || (poderAdmin ? "" : miPlanta || "")} onChange={(e) => setD({ planta_id: e.target.value })} disabled={!poderAdmin || edit.tieneRemitos} className={inp}>
                                 <option value="">Elegir…</option>
                                 {plantasEditables.map((p) => (
                                   <option key={p.id} value={p.id}>{p.nombre}</option>
@@ -617,19 +618,19 @@ function OrdenesInner({ profile }) {
                       )}
 
                       <div className="flex flex-wrap gap-2 items-start">
-                        {o.estado !== "anulada" && !esAdmin && !soloVista && completaPlanta(o, miPlanta) && (
+                        {o.estado !== "anulada" && !esAdmin && !soloVista && (poderAdmin ? [...new Set(ls.map((x) => x.planta_id))] : [miPlanta]).some((pid) => completaPlanta(o, pid)) && (
                           <span className="text-[12px] text-stone-500">Orden completada: solo el administrador puede modificarla.</span>
                         )}
-                        {o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (esAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
-                          <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: esAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
+                        {o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
+                          <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
-                        {(esAdmin || soloVista) && (
+                        {(poderAdmin || soloVista) && (
                           <button onClick={() => (log?.id === o.id ? setLog(null) : verLog(o.id))} className={btn2}>{log?.id === o.id ? "Ocultar cambios" : "Ver cambios"}</button>
                         )}
-                        {esAdmin && o.estado !== "anulada" && anulando?.id !== o.id && (
+                        {poderAdmin && o.estado !== "anulada" && anulando?.id !== o.id && (
                           <button onClick={() => setAnulando({ id: o.id, motivo: "" })} className="border border-red-300 text-red-700 text-[13px] px-3 py-1.5 rounded-md">Anular orden…</button>
                         )}
-                        {esAdmin && anulando?.id !== o.id && !ls.some((l) => Number(l.remitido) > 0) && (
+                        {poderAdmin && anulando?.id !== o.id && !ls.some((l) => Number(l.remitido) > 0) && (
                           <button onClick={() => eliminar(o)} className="bg-red-600 text-white text-[13px] px-3 py-1.5 rounded-md">Eliminar orden</button>
                         )}
                         {anulando?.id === o.id && (

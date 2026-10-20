@@ -46,7 +46,7 @@ function Copiar({ valor }) {
 
 function CotInner({ profile }) {
   const esAdmin = profile.rol === "admin";
-  const soloLectura = profile.rol === "consulta";
+  const soloLectura = profile.rol === "consulta" || profile.rol === "logistica";
   const plantaId = profile.planta?.id || null;
   const sinPlanta = profile.rol === "operador" && !plantaId;
 
