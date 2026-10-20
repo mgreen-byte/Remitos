@@ -13,7 +13,7 @@ import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyErro
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
-const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", precinto: "", cantidad: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
+const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", precinto: "", cantidad: "", unidad: "", kgs: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
 
 function remitoVacio() {
   return {
@@ -217,24 +217,32 @@ function GenerarInner({ profile }) {
   const loteDe = (id) => lotes.find((l) => l.id === id);
 
   // ---------- ítems ----------
+  // Modo genérico: tabla libre (Cantidad / Unidad / Descripción / Kgs), sin stock, lote ni precinto.
+  const esGen = modalidad === "generico";
   const descripcionDe = (it) => {
-    if (it.libre) return up(it.descripcion);
+    if (it.libre || esGen) return up(it.descripcion);
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
     if (!p) return "";
     return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", it.precinto ? `PRECINTO ${up(it.precinto)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
-  const kgUnidadDe = (it) => (it.libre ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
+  const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
-  const itemsCalc = items.map((it) => ({ ...it, desc: descripcionDe(it), kgu: kgUnidadDe(it), cant: Number(it.cantidad) || 0 }));
+  const itemsCalc = items.map((it) => {
+    const cant = Number(it.cantidad) || 0;
+    const kgu = kgUnidadDe(it);
+    // Genérico: los kilos son los que se escribieron en la fila (si no, kilos por unidad × cantidad, p. ej. al leer un Excel).
+    const kgTotal = esGen && String(it.kgs ?? "").trim() !== "" ? Number(String(it.kgs).replace(",", ".")) || 0 : kgu ? cant * kgu : 0;
+    return { ...it, desc: descripcionDe(it), kgu, cant, kgTotal, libre: it.libre || esGen };
+  });
   const totalUnidades = itemsCalc.reduce((a, it) => a + it.cant, 0);
-  const totalKgsAuto = itemsCalc.reduce((a, it) => a + (it.kgu ? it.cant * it.kgu : 0), 0);
-  const todosConKg = itemsCalc.every((it) => it.cant === 0 || it.kgu);
+  const totalKgsAuto = itemsCalc.reduce((a, it) => a + it.kgTotal, 0);
+  const todosConKg = esGen ? totalKgsAuto > 0 : itemsCalc.every((it) => it.cant === 0 || it.kgu);
 
   useEffect(() => {
     setRemito((r) => ({ ...r, totalKgs: totalKgsAuto && todosConKg ? String(Math.round(totalKgsAuto * 100) / 100) : "" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(itemsCalc.map((i) => [i.cant, i.kgu]))]);
+  }, [JSON.stringify(itemsCalc.map((i) => [i.cant, i.kgu, i.kgTotal]))]);
 
   const updItem = (id, patch) => setItems((arr) => arr.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   const selProducto = (id, productoId) => {
@@ -508,7 +516,7 @@ function GenerarInner({ profile }) {
     acoplado: remito.acoplado,
     chofer: remito.chofer,
     choferDni: remito.choferDni,
-    items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, descripcion: i.desc, kgUnidad: i.kgu })),
+    items: itemsCalc.filter((i) => i.cant > 0).map((i) => ({ cantidad: i.cant, unidad: up(i.unidad), descripcion: i.desc, kgTotal: i.kgTotal > 0 ? i.kgTotal : null })),
     totalUnidades,
     totalKgs: remito.totalKgs,
     observaciones: observacionesImpresas({ cot: remito.cot, observaciones: remito.observaciones }),
@@ -522,6 +530,10 @@ function GenerarInner({ profile }) {
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
+    if (esGen) {
+      const sinCant = itemsCalc.findIndex((i) => i.cant <= 0 && (String(i.descripcion).trim() || String(i.kgs).trim() || String(i.unidad).trim()));
+      if (sinCant >= 0) return `Fila ${sinCant + 1}: falta la cantidad.`;
+    }
     const validos = itemsCalc.filter((i) => i.cant > 0);
     if (!validos.length) return "Cargá al menos un ítem con cantidad.";
     if (validos.length > 15) return "El remito preimpreso admite hasta 15 ítems. Dividilo en dos remitos.";
@@ -604,12 +616,14 @@ function GenerarInner({ profile }) {
         precinto: i.libre ? null : i.precinto,
         descripcion: i.desc,
         cantidad: i.cant,
-        kg_unidad: i.kgu,
+        kg_unidad: esGen ? null : i.kgu,
+        unidad: esGen ? up(i.unidad) || null : undefined,
+        kg_total: esGen && i.kgTotal > 0 ? i.kgTotal : undefined,
         orden_linea_id: i.ordenLineaId || undefined,
       }));
     // Con renglones de una orden de carga guardada se usa la función que controla el saldo y deja el vínculo.
     const deOrden = lista.some((x) => x.orden_linea_id);
-    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : deOrden ? "emitir_remito_oc" : "emitir_remito", { p_remito: payload, p_items: lista });
+    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : deOrden ? "emitir_remito_oc" : esGen ? "emitir_remito_generico" : "emitir_remito", { p_remito: payload, p_items: lista });
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
@@ -1020,7 +1034,56 @@ function GenerarInner({ profile }) {
             </div>
           </Paso>
 
-          <Paso n="5" {...P("5")} resumen={itemsCalc.some((i) => i.cant > 0) ? `${itemsCalc.filter((i) => i.cant > 0).length} línea(s) · ${fmtNum(totalUnidades)} unidades` : ""} titulo="Mercadería" ayuda="Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito.">
+          <Paso n="5" {...P("5")} resumen={itemsCalc.some((i) => i.cant > 0) ? `${itemsCalc.filter((i) => i.cant > 0).length} línea(s) · ${fmtNum(totalUnidades)} unidades` : ""} titulo="Mercadería" ayuda={esGen ? "Escribí las filas del remito: cantidad, unidad, descripción y kilos. No descuenta stock." : "Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito."}>
+            {esGen ? (
+              <div>
+                <div className="hidden md:grid grid-cols-[84px_130px_minmax(0,1fr)_110px_28px] gap-2 mb-1">
+                  <span className={lab}>Cantidad</span>
+                  <span className={lab}>Unidad</span>
+                  <span className={lab}>Descripción / Artículo</span>
+                  <span className={lab}>Kgs</span>
+                  <span />
+                </div>
+                <datalist id="unidades-sugeridas">
+                  {["KG", "BOLSA", "BIG BAG", "BULTO", "CAJA", "LITROS", "PALLET", "UNIDAD"].map((u) => <option key={u} value={u} />)}
+                </datalist>
+                <div className="space-y-2">
+                  {itemsCalc.map((it, idx) => {
+                    const alFinal = (e) => {
+                      if (e.key === "Enter" && idx === items.length - 1 && items.length < 15) {
+                        e.preventDefault();
+                        setItems((a) => [...a, itemVacio()]);
+                        setTimeout(() => document.querySelector(`[data-fila="${idx + 1}"][data-col="0"]`)?.focus(), 60);
+                      }
+                    };
+                    return (
+                      <div key={it.id} className="grid grid-cols-[84px_minmax(0,1fr)_28px] md:grid-cols-[84px_130px_minmax(0,1fr)_110px_28px] gap-2 items-center">
+                        <input data-fila={idx} data-col="0" value={it.cantidad} onChange={(e) => updItem(it.id, { cantidad: e.target.value.replace(",", ".") })} placeholder="0" inputMode="decimal" aria-label={`Cantidad, fila ${idx + 1}`} className={`${inp} text-right`} />
+                        <input data-fila={idx} data-col="1" list="unidades-sugeridas" value={it.unidad} onChange={(e) => updItem(it.id, { unidad: up(e.target.value) })} placeholder="Unidad" aria-label={`Unidad, fila ${idx + 1}`} className={`${inp} hidden md:block`} />
+                        <input data-fila={idx} data-col="2" value={it.descripcion} onChange={(e) => updItem(it.id, { descripcion: up(e.target.value) })} placeholder="Descripción / Artículo" aria-label={`Descripción, fila ${idx + 1}`} className={inp} />
+                        <input data-fila={idx} data-col="3" value={it.kgs} onChange={(e) => updItem(it.id, { kgs: e.target.value.replace(",", ".") })} onKeyDown={alFinal} placeholder={it.kgu && it.cant ? String(it.cant * it.kgu) : "Kgs"} inputMode="decimal" aria-label={`Kgs, fila ${idx + 1}`} className={`${inp} text-right hidden md:block`} />
+                        {items.length > 1 ? (
+                          <button type="button" onClick={() => setItems((a) => a.filter((x) => x.id !== it.id))} className="text-stone-400 hover:text-red-600 text-lg leading-none justify-self-end" aria-label={`Quitar fila ${idx + 1}`}>×</button>
+                        ) : (
+                          <span />
+                        )}
+                        <div className="md:hidden col-span-3 grid grid-cols-2 gap-2">
+                          <input list="unidades-sugeridas" value={it.unidad} onChange={(e) => updItem(it.id, { unidad: up(e.target.value) })} placeholder="Unidad" className={inp} />
+                          <input value={it.kgs} onChange={(e) => updItem(it.id, { kgs: e.target.value.replace(",", ".") })} placeholder="Kgs" inputMode="decimal" className={`${inp} text-right`} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-4 flex-wrap">
+                  <button type="button" disabled={items.length >= 15} onClick={() => setItems((a) => [...a, itemVacio()])} className="text-[13.5px] font-medium text-emerald-700 hover:text-emerald-800 disabled:text-stone-400">
+                    + Agregar fila
+                  </button>
+                  <span className="text-[12px] text-stone-400">{items.length} de 15 filas · Enter en Kgs agrega una fila nueva · todo se escribe a mano, no usa el stock</span>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_96px_28px] gap-3 mb-1">
               <span className={lab}>Producto</span>
               <span className={lab}>Lote</span>
@@ -1111,6 +1174,8 @@ function GenerarInner({ profile }) {
             <button type="button" onClick={() => setItems((a) => [...a, itemVacio()])} className="mt-3 text-[13.5px] font-medium text-emerald-700 hover:text-emerald-800">
               + Agregar ítem
             </button>
+              </>
+            )}
           </Paso>
 
           <Paso n="6" {...P("6")} resumen={[remito.cot && `COT ${remito.cot}`, remito.ordenCarga && `OC ${remito.ordenCarga}`, remito.totalKgs && `${fmtNum(remito.totalKgs)} kg`].filter(Boolean).join(" · ")} titulo="Totales y observaciones">

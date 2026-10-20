@@ -2,7 +2,7 @@
 
 import Field from "@/components/Field";
 import GuiaFormulario from "@/components/GuiaFormulario";
-import { FIELD_COORDS } from "@/lib/fieldCoords";
+import { FIELD_COORDS, FUENTE_REMITO } from "@/lib/fieldCoords";
 import { fmtNum } from "@/lib/util";
 
 // CUIT / CUIL / DNI se imprimen solo con números, sin guiones ni puntos.
@@ -16,7 +16,18 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
   const fs = calibracion.fontSize;
   const [yy, mm, dd] = (d.fecha || "").split("-");
   const items = (d.items || []).slice(0, 15);
-  const rowH = (FIELD_COORDS.tablaBottom - FIELD_COORDS.tablaTop - 3) / Math.max(items.length, 6);
+  // 15 renglones iguales; se completan de arriba hacia abajo (los que sobran quedan vacíos).
+  const rowH = (FIELD_COORDS.tablaBottom - FIELD_COORDS.tablaTop - 3) / 15;
+  const conUnidad = items.some((it) => String(it.unidad || "").trim());
+  const conKg = items.some((it) => Number(it.kgTotal) > 0);
+  const unW = FIELD_COORDS.colUnidadWidth;
+  const rotulo = (texto, left, width, align) => (
+    <div
+      style={{ position: "absolute", left: `${left + offset.offsetX}mm`, top: `${FIELD_COORDS.rotuloTop + offset.offsetY}mm`, width: `${width}mm`, fontSize: "7pt", fontWeight: 700, fontFamily: FUENTE_REMITO, color: "#111", textAlign: align, lineHeight: 1.15, padding: "0 2px" }}
+    >
+      {texto}
+    </div>
+  );
   const F = (key, value, extra = {}) => (
     <Field coords={FIELD_COORDS[key]} offset={offset} fontSize={fs} value={value ?? ""} readOnly fit={key !== "observaciones"} {...extra} />
   );
@@ -41,36 +52,27 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
       {F("acoplado", d.acoplado)}
       {F("chofer", d.chofer)}
       {F("choferDni", soloDigitos(d.choferDni))}
+      {conUnidad && rotulo("UNIDAD", FIELD_COORDS.colDescLeft, unW, "left")}
+      {conKg && rotulo("KGS", FIELD_COORDS.colDescLeft + FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, FIELD_COORDS.colKgWidth, "right")}
       {items.map((it, idx) => {
         const top = FIELD_COORDS.tablaTop + 2 + idx * rowH;
+        const descLeft = FIELD_COORDS.colDescLeft + (conUnidad ? unW + 1 : 0);
+        const descW = FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth - (conUnidad ? unW + 1 : 0);
         return (
           <div key={idx}>
+            <Field coords={{ left: FIELD_COORDS.colCantidadLeft, top, width: FIELD_COORDS.colCantidadWidth, height: rowH }} offset={offset} fontSize={fs} align="center" uppercase={false} value={fmtNum(it.cantidad)} readOnly />
+            {conUnidad && (
+              <Field coords={{ left: FIELD_COORDS.colDescLeft, top, width: unW, height: rowH }} offset={offset} fontSize={fs} value={it.unidad} readOnly fit />
+            )}
             <Field
-              coords={{ left: FIELD_COORDS.colCantidadLeft, top, width: FIELD_COORDS.colCantidadWidth, height: rowH }}
+              coords={{ left: descLeft, top, width: descW, height: rowH }}
               offset={offset}
-              fontSize={fs}
-              align="center"
-              uppercase={false}
-              value={fmtNum(it.cantidad)}
-              readOnly
-            />
-            <Field
-              coords={{ left: FIELD_COORDS.colDescLeft, top, width: FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, height: rowH }}
-              offset={offset}
-              fontSize={Math.round(fs * Math.max(0.7, Math.min(1, 46 / String(it.descripcion || "").length)) * 10) / 10}
+              fontSize={Math.round(fs * Math.max(0.7, Math.min(1, (descW / 3.1) / Math.max(1, String(it.descripcion || "").length))) * 10) / 10}
               value={it.descripcion}
               readOnly
             />
-            {Number(it.kgUnidad) > 0 && (
-              <Field
-                coords={{ left: FIELD_COORDS.colDescLeft + FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, top, width: FIELD_COORDS.colKgWidth, height: rowH }}
-                offset={offset}
-                fontSize={fs}
-                align="right"
-                uppercase={false}
-                value={`${fmtNum(it.cantidad * it.kgUnidad)} kg`}
-                readOnly
-              />
+            {Number(it.kgTotal) > 0 && (
+              <Field coords={{ left: FIELD_COORDS.colDescLeft + FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, top, width: FIELD_COORDS.colKgWidth, height: rowH }} offset={offset} fontSize={fs} align="right" uppercase={false} value={fmtNum(it.kgTotal)} readOnly />
             )}
           </div>
         );

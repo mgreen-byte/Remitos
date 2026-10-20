@@ -125,7 +125,7 @@ function HistorialInner({ profile }) {
   };
 
   const reimprimir = (r) => {
-    const items = [...(r.remito_items || [])].sort((a, b) => a.orden - b.orden).map((i) => ({ cantidad: i.cantidad, descripcion: i.descripcion, kgUnidad: i.kg_unidad }));
+    const items = [...(r.remito_items || [])].sort((a, b) => a.orden - b.orden).map((i) => ({ cantidad: i.cantidad, unidad: i.unidad, descripcion: i.descripcion, kgTotal: i.kg_total }));
     setReimp({
       fecha: r.fecha,
       destinatario: r.cliente_nombre,
