@@ -57,6 +57,7 @@ function OrdenesInner({ profile }) {
   const [manual, setManual] = useState(null);
   const [edit, setEdit] = useState(null); // {ordenId, lineaId|null, data, tieneRemitos}
   const [anulando, setAnulando] = useState(null);
+  const [renglones, setRenglones] = useState(null); // renglones de remitos sin vincular a una línea
   const [sueltos, setSueltos] = useState(null); // remitos con número de orden y sin vincular
   const fileRef = useRef(null);
 
@@ -176,6 +177,34 @@ function OrdenesInner({ profile }) {
       .not("orden_carga", "is", null).is("orden_id", null).not("estado", "in", "(anulado,rechazado)").order("created_at", { ascending: false }).limit(200);
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setSueltos((data || []).filter((r) => String(r.orden_carga).trim()));
+  };
+  const buscarRenglones = async () => {
+    setMsg(null);
+    const [it, ln] = await Promise.all([
+      supabase.from("remito_items")
+        .select("id, cantidad, lote_texto, precinto, producto_id, remito:remitos!inner(id, punto_venta, numero, orden_carga, orden_id, estado, planta_id)")
+        .is("orden_linea_id", null).not("producto_id", "is", null).not("remito.orden_carga", "is", null).not("remito.estado", "in", "(anulado,rechazado)").limit(300),
+      supabase.from("v_ordenes_lineas_saldo").select("id, orden_numero, cliente, producto_id, lote_texto, planta_id, saldo, cantidad").gt("saldo", 0).limit(1000),
+    ]);
+    if (it.error || ln.error) return setMsg({ tipo: "error", texto: friendlyError(it.error || ln.error) });
+    const lineas = ln.data || [];
+    setRenglones(
+      (it.data || [])
+        .filter((x) => String(x.remito?.orden_carga || "").trim())
+        .map((x) => {
+          const cand = lineas.filter((l) => l.producto_id === x.producto_id && l.planta_id === x.remito.planta_id);
+          const buenas = cand.filter((l) => String(l.orden_numero).toUpperCase() === String(x.remito.orden_carga).trim().toUpperCase() && String(l.lote_texto).toUpperCase() === String(x.lote_texto || "").toUpperCase());
+          return { ...x, cand, elegida: buenas.length === 1 ? buenas[0].id : "" };
+        })
+    );
+  };
+  const vincularRenglon = async (x) => {
+    if (!x.elegida) return;
+    const { error } = await supabase.rpc("vincular_renglon_remito", { p_item_id: x.id, p_linea_id: x.elegida });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: `Renglón del remito ${x.remito.punto_venta}-${x.remito.numero} vinculado a la orden.` });
+    await cargar();
+    await buscarRenglones();
   };
   const vincularSuelto = async (r) => {
     if (!window.confirm(`Registrar el remito ${r.punto_venta}-${r.numero} en la orden ${r.orden_carga}? No cambia el stock ni el remito.`)) return;
@@ -361,6 +390,29 @@ function OrdenesInner({ profile }) {
                         <span className="font-medium">{r.punto_venta}-{r.numero}</span>
                         <span className="text-stone-600">{r.cliente_nombre} · orden {r.orden_carga}</span>
                         <button onClick={() => vincularSuelto(r)} className={btn2}>Registrar en la orden</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {poderAdmin && (
+              <div className="border-t border-stone-200 pt-3">
+                <button onClick={() => (renglones ? setRenglones(null) : buscarRenglones())} className={btn2}>Vincular renglones de remitos sin orden</button>
+                {renglones && (
+                  <div className="mt-2 space-y-2">
+                    {renglones.length === 0 && <div className="text-[13px] text-stone-500">No hay renglones de remitos con orden de carga sin vincular.</div>}
+                    {renglones.map((x) => (
+                      <div key={x.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                        <span className="font-medium">{x.remito.punto_venta}-{x.remito.numero}</span>
+                        <span className="text-stone-600">orden {x.remito.orden_carga} · lote {x.lote_texto} · {fmtNum(x.cantidad)} u.{x.precinto ? ` · ${String(x.precinto).slice(0, 40)}` : ""}</span>
+                        <select value={x.elegida} onChange={(e) => setRenglones((a) => a.map((y) => (y.id === x.id ? { ...y, elegida: e.target.value } : y)))} className="border border-stone-300 rounded px-1 py-1 text-[12px] max-w-[360px]">
+                          <option value="">{x.cand.length ? "Elegir línea de la orden…" : "No hay líneas con saldo para este producto"}</option>
+                          {x.cand.map((l) => (
+                            <option key={l.id} value={l.id}>{l.orden_numero} · {l.cliente} · lote {l.lote_texto} · saldo {fmtNum(l.saldo)}</option>
+                          ))}
+                        </select>
+                        <button disabled={!x.elegida} onClick={() => vincularRenglon(x)} className={btn2}>Vincular</button>
                       </div>
                     ))}
                   </div>
