@@ -1199,6 +1199,16 @@ function GenerarInner({ profile }) {
                             <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Otro detalle (opcional)" className="px-2 py-1 text-[12px] w-44" />
                           </>
                         )}
+                        {!it.libre && it.loteId && items.length < 15 && (
+                          <button
+                            type="button"
+                            title="Para precintos no consecutivos: crea otro renglón del mismo lote (y de la misma orden)"
+                            onClick={() => setItems((a) => { const i = a.findIndex((x) => x.id === it.id); const copia = { ...itemVacio(), productoId: it.productoId, loteId: it.loteId, ordenLineaId: it.ordenLineaId, saldo: it.saldo, hint: it.hint }; return [...a.slice(0, i + 1), copia, ...a.slice(i + 1)]; })}
+                            className="text-emerald-700 hover:underline"
+                          >
+                            Dividir renglón
+                          </button>
+                        )}
                         {!esTraslado && (
                           <button type="button" onClick={() => updItem(it.id, { libre: !it.libre, productoId: "", loteId: "" })} className="text-emerald-700 hover:underline">
                             {it.libre ? "Elegir del stock" : "Cargar sin stock"}
