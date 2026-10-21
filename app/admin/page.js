@@ -13,6 +13,7 @@ const TABS = [
   ["plantas", "Plantas"],
   ["usuarios", "Usuarios"],
   ["catalogo", "Catálogo"],
+  ["prefijos", "Prefijos de precinto"],
   ["precios", "Precios"],
   ["config", "Configuración"],
   ["respaldo", "Respaldo"],
@@ -108,6 +109,8 @@ function AdminInner({ profile }) {
           />
         )}
 
+        {tab === "prefijos" && <Prefijos />}
+
         {tab === "precios" && <Precios profile={profile} />}
 
         {tab === "config" && <Config />}
@@ -181,6 +184,60 @@ function Config() {
 }
 
 // Precio del kg de soja. Cada remito usa el precio vigente a su fecha (el más reciente que ya rige).
+function Prefijos() {
+  const [rows, setRows] = useState([]);
+  const [nuevo, setNuevo] = useState("");
+  const [msg, setMsg] = useState("");
+  const cargar = async () => {
+    const { data } = await supabase.from("prefijos_precinto").select("*").order("prefijo");
+    setRows(data || []);
+  };
+  useEffect(() => {
+    cargar();
+  }, []);
+  const guardar = async (prefijo, activo) => {
+    setMsg("");
+    const { error } = await supabase.rpc("guardar_prefijo", { p_prefijo: prefijo, p_activo: activo });
+    if (error) return setMsg(friendlyError(error));
+    if (prefijo === nuevo) setNuevo("");
+    cargar();
+  };
+  return (
+    <div className="panel p-5 space-y-4 max-w-xl">
+      <div>
+        <h2 className="paso-titulo">Prefijos de precinto</h2>
+        <p className="text-[13px] text-stone-500 mt-1">
+          Lista que ve el operador al remitir: elige el prefijo y escribe los números “desde” y “hasta”. Los prefijos del reporte de stock se agregan solos al cargarlo. Si desactivás uno, deja de ofrecerse (los remitos ya emitidos no cambian).
+        </p>
+      </div>
+      <div className="flex gap-2 items-end">
+        <input value={nuevo} onChange={(e) => setNuevo(e.target.value.toUpperCase())} placeholder="26MST - STA" className="border border-stone-300 rounded px-2 py-1.5 text-sm w-56" />
+        <button disabled={!nuevo.trim()} onClick={() => guardar(nuevo, true)} className="btn-primario">Agregar</button>
+      </div>
+      {msg && <div className="text-sm text-red-700">{msg}</div>}
+      <table className="w-full text-sm">
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t border-stone-100">
+              <td className={`py-1.5 font-mono ${r.activo ? "" : "text-stone-400 line-through"}`}>{r.prefijo}</td>
+              <td className="py-1.5 text-right">
+                <button onClick={() => guardar(r.prefijo, !r.activo)} className="text-[13px] text-stone-600 underline">
+                  {r.activo ? "Desactivar" : "Activar"}
+                </button>
+              </td>
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td className="py-2 text-stone-400">Todavía no hay prefijos. Se cargan solos al subir el reporte de stock.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Precios({ profile }) {
   const [rows, setRows] = useState([]);
   const [precio, setPrecio] = useState("");

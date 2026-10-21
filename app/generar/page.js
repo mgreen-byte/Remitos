@@ -13,7 +13,7 @@ import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyErro
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
-const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", precinto: "", cantidad: "", unidad: "", kgs: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
+const itemVacio = () => ({ id: uid(), libre: false, productoId: "", loteId: "", precinto: "", precPref: "", precDesde: "", precHasta: "", cantidad: "", unidad: "", kgs: "", descripcion: "", kgUnidad: "", extra: "", hint: "" });
 
 function remitoVacio() {
   return {
@@ -79,6 +79,7 @@ function GenerarInner({ profile }) {
 
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
   const [plantas, setPlantas] = useState([]);
+  const [prefijos, setPrefijos] = useState([]);
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
@@ -125,13 +126,15 @@ function GenerarInner({ profile }) {
   // ---------- carga de datos ----------
   useEffect(() => {
     (async () => {
-      const [cfg, trans, chof, prods, pls] = await Promise.all([
+      const [cfg, trans, chof, prods, pls, prefs] = await Promise.all([
         supabase.from("configuracion").select("*"),
         supabase.from("transportistas").select("*").order("nombre"),
         supabase.from("choferes").select("*").order("nombre"),
         supabase.from("productos").select("*").eq("activo", true).order("nombre"),
         supabase.from("plantas").select("*").eq("activa", true).order("nombre"),
+        supabase.from("prefijos_precinto").select("prefijo").eq("activo", true).order("prefijo"),
       ]);
+      if (prefs.data) setPrefijos(prefs.data.map((x) => x.prefijo));
       const iva = cfg.data?.find((c) => c.clave === "iva_options");
       const cal = cfg.data?.find((c) => c.clave === "calibracion_default");
       if (iva) setIvaOptions(iva.valor);
@@ -219,12 +222,28 @@ function GenerarInner({ profile }) {
   // ---------- ítems ----------
   // Modo genérico: tabla libre (Cantidad / Unidad / Descripción / Kgs), sin stock, lote ni precinto.
   const esGen = modalidad === "generico";
+  // Precinto: prefijo (lista) + "desde" y "hasta". Si todavía no hay prefijos cargados se escribe a mano.
+  const usaPrefijos = prefijos.length > 0;
+  const numPrec = (v) => (/^\d+$/.test(String(v ?? "").trim()) ? Number(String(v).trim()) : null);
+  const cantPrecintos = (it) => {
+    const d = numPrec(it.precDesde);
+    const h = String(it.precHasta ?? "").trim() === "" ? d : numPrec(it.precHasta);
+    return d === null || h === null || h < d ? null : h - d + 1;
+  };
+  const pad4 = (v) => (String(v ?? "").trim() ? String(v).trim().padStart(4, "0") : ""); // 20 -> 0020, 120 -> 0120
+  const precintoTxt = (it) => {
+    if (!usaPrefijos) return up(it.precinto || "").trim();
+    const d = pad4(it.precDesde);
+    const h = pad4(it.precHasta);
+    if (!it.precPref || !d) return "";
+    return `${it.precPref} ${d}${h && h !== d ? ` AL ${h}` : ""}`;
+  };
   const descripcionDe = (it) => {
     if (it.libre || esGen) return up(it.descripcion);
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
     if (!p) return "";
-    return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", it.precinto ? `PRECINTO ${up(it.precinto)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
+    return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
@@ -542,7 +561,13 @@ function GenerarInner({ profile }) {
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
         if (!it.loteId) return `Ítem ${i + 1}: elegí el lote.`;
-        if (!it.precinto.trim()) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
+        if (!precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
+        if (usaPrefijos) {
+          if (!it.precPref) return `Ítem ${i + 1}: elegí el prefijo del precinto.`;
+          const cp = cantPrecintos(it);
+          if (cp === null) return `Ítem ${i + 1}: los números de precinto "desde" y "hasta" tienen que ser números, y "hasta" no puede ser menor que "desde".`;
+          if (cp !== it.cant) return `Ítem ${i + 1}: los precintos cargados son ${fmtNum(cp)} y las unidades a despachar son ${fmtNum(it.cant)}. Tienen que coincidir (si los precintos no son seguidos, cargá otro renglón del mismo lote).`;
+        }
         const l = loteDe(it.loteId);
         if (l && it.cant > Number(l.stock)) return `Ítem ${i + 1}: el lote ${l.lote} tiene ${fmtNum(l.stock)} disponibles y pedís ${fmtNum(it.cant)}.`;
       }
@@ -613,7 +638,7 @@ function GenerarInner({ profile }) {
       .map((i) => ({
         producto_id: i.libre ? null : i.productoId,
         lote_id: i.libre ? null : i.loteId,
-        precinto: i.libre ? null : i.precinto,
+        precinto: i.libre ? null : precintoTxt(i),
         descripcion: i.desc,
         cantidad: i.cant,
         kg_unidad: esGen ? null : i.kgu,
@@ -1151,12 +1176,26 @@ function GenerarInner({ profile }) {
                       <div className="flex gap-x-4 gap-y-1 flex-wrap">
                         {!it.libre && (
                           <>
-                            <input
-                              value={it.precinto}
-                              onChange={(e) => updItem(it.id, { precinto: up(e.target.value) })}
-                              placeholder="Precinto (obligatorio)"
-                              className={`px-2 py-1 text-[12px] w-48 ${!it.precinto.trim() && it.cant > 0 ? "!border-red-400" : ""}`}
-                            />
+                            {usaPrefijos ? (
+                              <span className="flex items-center gap-1.5 flex-wrap">
+                                <select value={it.precPref} onChange={(e) => updItem(it.id, { precPref: e.target.value })} className={`px-2 py-1 text-[12px] ${!it.precPref && it.cant > 0 ? "!border-red-400" : ""}`}>
+                                  <option value="">Prefijo del precinto…</option>
+                                  {prefijos.map((x) => <option key={x} value={x}>{x}</option>)}
+                                </select>
+                                <input value={it.precDesde} onChange={(e) => updItem(it.id, { precDesde: e.target.value.replace(/\D/g, "") })} onBlur={() => updItem(it.id, { precDesde: pad4(it.precDesde) })} inputMode="numeric" placeholder="Desde" className={`px-2 py-1 text-[12px] w-20 ${!it.precDesde && it.cant > 0 ? "!border-red-400" : ""}`} />
+                                <input value={it.precHasta} onChange={(e) => updItem(it.id, { precHasta: e.target.value.replace(/\D/g, "") })} onBlur={() => updItem(it.id, { precHasta: pad4(it.precHasta) })} inputMode="numeric" placeholder="Hasta" className="px-2 py-1 text-[12px] w-20" />
+                                {it.precDesde && it.cant > 0 && (cantPrecintos(it) === it.cant
+                                  ? <span className="text-emerald-700">{fmtNum(cantPrecintos(it))} precintos ✓</span>
+                                  : <span className="text-red-600">{cantPrecintos(it) === null ? "Revisá los números" : `${fmtNum(cantPrecintos(it))} precintos ≠ ${fmtNum(it.cant)} unidades`}</span>)}
+                              </span>
+                            ) : (
+                              <input
+                                value={it.precinto}
+                                onChange={(e) => updItem(it.id, { precinto: up(e.target.value) })}
+                                placeholder="Precinto (obligatorio)"
+                                className={`px-2 py-1 text-[12px] w-48 ${!it.precinto.trim() && it.cant > 0 ? "!border-red-400" : ""}`}
+                              />
+                            )}
                             <input value={it.extra} onChange={(e) => updItem(it.id, { extra: up(e.target.value) })} placeholder="Otro detalle (opcional)" className="px-2 py-1 text-[12px] w-44" />
                           </>
                         )}
