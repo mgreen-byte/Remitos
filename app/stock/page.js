@@ -25,6 +25,7 @@ function StockInner({ profile }) {
   const [verAgotados, setVerAgotados] = useState(false);
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
+  const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
   const [importando, setImportando] = useState(false);
@@ -95,6 +96,15 @@ function StockInner({ profile }) {
     if (error) return fail(error);
     ok("Ajuste registrado.");
     setAjuste(null);
+    cargar();
+  };
+
+  const aplicarReasignacion = async () => {
+    setMsg({ tipo: "", texto: "" });
+    const { error } = await supabase.rpc("reasignar_lote_producto", { p_lote_id: reasig.loteId, p_producto_id: reasig.productoId });
+    if (error) return fail(error);
+    ok("Lote reasignado al nuevo producto.");
+    setReasig(null);
     cargar();
   };
 
@@ -240,6 +250,11 @@ function StockInner({ profile }) {
                             Ajustar
                           </button>
                         )}
+                        {profile.rol === "admin" && (
+                          <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
+                            Cambiar producto
+                          </button>
+                        )}
                         <button onClick={() => verMovs(l.id)} className="text-xs text-stone-500 hover:underline">
                           Movimientos
                         </button>
@@ -259,6 +274,30 @@ function StockInner({ profile }) {
                             </button>
                           </div>
                           <div className="text-xs text-stone-500 mt-1">Ej.: −5 por bolsa dañada, +10 por conteo físico. Queda registrado quién lo hizo.</div>
+                        </td>
+                      </tr>
+                    )}
+                    {reasig && reasig.loteId === l.id && (
+                      <tr className="bg-amber-50">
+                        <td colSpan={6} className="p-3">
+                          <div className="flex gap-2 flex-wrap items-center">
+                            <span className="text-sm">Pasar el lote <b className="font-mono">{l.lote}</b> a:</span>
+                            <select value={reasig.productoId} onChange={(e) => setReasig({ ...reasig, productoId: e.target.value })} className={`${inputCls} min-w-[280px]`}>
+                              <option value="">Elegir producto…</option>
+                              {productos.filter((p) => p.activo !== false).map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {nombreConPresentacion(p.nombre, p.presentacion)}{p.kg_por_unidad ? ` · ${fmtNum(p.kg_por_unidad)} kg` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <button disabled={!reasig.productoId} onClick={aplicarReasignacion} className="bg-emerald-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50">
+                              Reasignar
+                            </button>
+                            <button onClick={() => setReasig(null)} className="text-sm text-stone-500">
+                              Cancelar
+                            </button>
+                          </div>
+                          <div className="text-xs text-stone-500 mt-1">El lote conserva su stock y su historial; los remitos ya emitidos no cambian.</div>
                         </td>
                       </tr>
                     )}
