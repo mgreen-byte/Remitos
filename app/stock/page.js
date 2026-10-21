@@ -25,6 +25,7 @@ function StockInner({ profile }) {
   const [verAgotados, setVerAgotados] = useState(false);
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
+  const [sel, setSel] = useState({}); // lotes tildados para eliminar
   const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
@@ -105,6 +106,18 @@ function StockInner({ profile }) {
     if (error) return fail(error);
     ok("Lote reasignado al nuevo producto.");
     setReasig(null);
+    cargar();
+  };
+
+  const eliminarSel = async () => {
+    const ids = Object.keys(sel).filter((k) => sel[k]);
+    if (!ids.length) return;
+    if (!confirm(`¿Eliminar ${ids.length} lote(s) cargado(s) por error? Se borran con su stock y su historial. No se puede deshacer.`)) return;
+    setMsg({ tipo: "", texto: "" });
+    const { data, error } = await supabase.rpc("eliminar_lotes", { p_ids: ids });
+    if (error) return fail(error);
+    ok(`Se eliminaron ${data} lote(s).`);
+    setSel({});
     cargar();
   };
 
@@ -222,7 +235,7 @@ function StockInner({ profile }) {
                   <th className="text-right p-2">Kg x unidad</th>
                   <th className="text-right p-2">Stock (u.)</th>
                   <th className="text-right p-2">Kg</th>
-                  <th className="p-2"></th>
+                  <th className="p-2 text-right">{profile.rol === "admin" && Object.values(sel).some(Boolean) ? <button onClick={eliminarSel} className="text-xs text-red-700 font-semibold underline">Eliminar ({Object.values(sel).filter(Boolean).length})</button> : null}</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,6 +262,12 @@ function StockInner({ profile }) {
                           <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
                             Ajustar
                           </button>
+                        )}
+                        {profile.rol === "admin" && (
+                          <label className="text-xs text-red-700 mr-3 cursor-pointer">
+                            <input type="checkbox" className="mr-1 align-middle" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} />
+                            Eliminar
+                          </label>
                         )}
                         {profile.rol === "admin" && (
                           <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
