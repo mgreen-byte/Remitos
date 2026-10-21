@@ -121,8 +121,23 @@ function StockInner({ profile }) {
     cargar();
   };
 
+  const eliminarMov = async (m, loteId) => {
+    if (!confirm(`¿Eliminar este ${m.tipo} de ${fmtNum(m.cantidad)} unidades? El stock del lote se corrige en ${fmtNum(-m.cantidad)}.`)) return;
+    const motivo = window.prompt("Motivo (opcional, queda registrado):", "Carga duplicada");
+    if (motivo === null) return;
+    setMsg({ tipo: "", texto: "" });
+    const { error } = await supabase.rpc("eliminar_movimiento_stock", { p_mov_id: m.id, p_motivo: motivo });
+    if (error) return fail(error);
+    ok("Movimiento eliminado y stock corregido.");
+    await cargar();
+    await cargarMovs(loteId);
+  };
+
   const verMovs = async (loteId) => {
     if (movs.loteId === loteId) return setMovs({ loteId: null, rows: [] });
+    await cargarMovs(loteId);
+  };
+  const cargarMovs = async (loteId) => {
     const { data } = await supabase
       .from("movimientos_stock")
       .select("*, remito:remitos(punto_venta, numero)")
@@ -333,6 +348,11 @@ function StockInner({ profile }) {
                                   <td className="pr-2 text-right text-stone-500">→ {fmtNum(m.stock_resultante)}</td>
                                   <td className="pr-2">{m.remito ? `Remito ${m.remito.punto_venta}-${m.remito.numero}` : m.motivo || ""}</td>
                                   <td className="text-stone-400">{m.usuario_nombre}</td>
+                                  <td className="pl-2 text-right">
+                                    {profile.rol === "admin" && !m.remito_id && ["ingreso", "ajuste"].includes(m.tipo) && (
+                                      <button onClick={() => eliminarMov(m, l.id)} className="text-red-700 hover:underline">Eliminar</button>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
