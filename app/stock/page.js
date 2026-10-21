@@ -209,6 +209,7 @@ function StockInner({ profile }) {
                 <tr>
                   <th className="text-left p-2 pl-4">Producto</th>
                   <th className="text-left p-2">Lote</th>
+                  <th className="text-right p-2">Kg x unidad</th>
                   <th className="text-right p-2">Stock (u.)</th>
                   <th className="text-right p-2">Kg</th>
                   <th className="p-2"></th>
@@ -217,7 +218,7 @@ function StockInner({ profile }) {
               <tbody>
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-stone-400">
+                    <td colSpan={6} className="p-6 text-center text-stone-400">
                       No hay lotes cargados.
                     </td>
                   </tr>
@@ -230,6 +231,7 @@ function StockInner({ profile }) {
                         {nombreConPresentacion(l.producto?.nombre, l.producto?.presentacion)}
                       </td>
                       <td className="p-2 font-mono">{l.lote}</td>
+                      <td className="p-2 text-right text-stone-600">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right whitespace-nowrap">
@@ -245,7 +247,7 @@ function StockInner({ profile }) {
                     </tr>
                     {ajuste && ajuste.loteId === l.id && (
                       <tr className="bg-amber-50">
-                        <td colSpan={5} className="p-3">
+                        <td colSpan={6} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
                             <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-32`} />
                             <input value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} placeholder="Motivo del ajuste (obligatorio)" className={`${inputCls} flex-1 min-w-[200px]`} />
@@ -262,7 +264,7 @@ function StockInner({ profile }) {
                     )}
                     {movs.loteId === l.id && (
                       <tr className="bg-stone-50">
-                        <td colSpan={5} className="p-3">
+                        <td colSpan={6} className="p-3">
                           <table className="w-full text-xs">
                             <tbody>
                               {movs.rows.map((m) => (
