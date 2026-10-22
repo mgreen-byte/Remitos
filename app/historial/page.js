@@ -40,6 +40,9 @@ function HistorialInner({ profile }) {
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
+  const [editT, setEditT] = useState(null); // edición de transporte/chofer (solo administrador)
+  const [transportistas, setTransportistas] = useState([]);
+  const [choferes, setChoferes] = useState([]);
   const [copias, setCopias] = useCopias();
   const [pend, setPend] = useState({}); // remito_id -> fecha de alta (COT pendiente)
 
@@ -122,6 +125,35 @@ function HistorialInner({ profile }) {
     } catch (e) {
       setMsg(e.message || friendlyError(e));
     }
+  };
+
+  const abrirEditT = async (r) => {
+    if (!transportistas.length) {
+      const [t, c] = await Promise.all([supabase.from("transportistas").select("*").order("nombre"), supabase.from("choferes").select("*").order("nombre")]);
+      setTransportistas(t.data || []);
+      setChoferes(c.data || []);
+    }
+    setEditT({
+      id: r.id,
+      transportista_id: r.transportista_id || "",
+      transportista_nombre: r.transportista_nombre || "",
+      transportista_cuit: r.transportista_cuit || "",
+      transportista_domicilio: r.transportista_domicilio || "",
+      chofer_id: r.chofer_id || "",
+      chofer_nombre: r.chofer_nombre || "",
+      chofer_cuil: r.chofer_cuil || "",
+      chasis: r.chasis || "",
+      acoplado: r.acoplado || "",
+    });
+  };
+  const guardarEditT = async () => {
+    setMsg("");
+    const { id, ...datos } = editT;
+    const { error } = await supabase.rpc("editar_remito_transporte", { p_remito_id: id, p_datos: datos });
+    if (error) return setMsg(friendlyError(error));
+    setEditT(null);
+    await buscar();
+    setMsg("Datos del remito actualizados. Si ya lo imprimiste, reimprimilo con los datos nuevos.");
   };
 
   const reimprimir = (r) => {
@@ -351,10 +383,43 @@ function HistorialInner({ profile }) {
                             Anulado por {r.anulado_por_nombre} el {new Date(r.anulado_at).toLocaleString("es-AR")}. Motivo: {r.motivo_anulacion}
                           </div>
                         )}
+                        {editT?.id === r.id && (
+                          <div className="border border-amber-300 bg-amber-50 rounded p-3 space-y-2 text-sm">
+                            <div className="font-medium text-amber-900">Corregir transporte y chofer del remito {r.punto_venta}-{r.numero}</div>
+                            <div className="grid sm:grid-cols-3 gap-2">
+                              <select value={editT.transportista_id} onChange={(e) => { const t = transportistas.find((x) => x.id === e.target.value); setEditT({ ...editT, transportista_id: e.target.value, ...(t ? { transportista_nombre: t.nombre || "", transportista_cuit: t.cuit || "", transportista_domicilio: t.domicilio || "" } : {}) }); }} className="border border-stone-300 rounded px-2 py-1.5 sm:col-span-3">
+                                <option value="">Transportista: elegir de la lista (o escribir abajo)…</option>
+                                {transportistas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                              </select>
+                              <input value={editT.transportista_nombre} onChange={(e) => setEditT({ ...editT, transportista_id: "", transportista_nombre: e.target.value })} placeholder="Transportista" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <input value={editT.transportista_cuit} onChange={(e) => setEditT({ ...editT, transportista_cuit: e.target.value })} placeholder="CUIT transportista" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <input value={editT.transportista_domicilio} onChange={(e) => setEditT({ ...editT, transportista_domicilio: e.target.value })} placeholder="Domicilio transportista" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <select value={editT.chofer_id} onChange={(e) => { const c = choferes.find((x) => x.id === e.target.value); setEditT({ ...editT, chofer_id: e.target.value, ...(c ? { chofer_nombre: c.nombre || "", chofer_cuil: c.cuil || "", chasis: c.chasis || editT.chasis, acoplado: c.acoplado || editT.acoplado } : {}) }); }} className="border border-stone-300 rounded px-2 py-1.5 sm:col-span-3">
+                                <option value="">Chofer: elegir de la lista (o escribir abajo)…</option>
+                                {choferes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                              </select>
+                              <input value={editT.chofer_nombre} onChange={(e) => setEditT({ ...editT, chofer_id: "", chofer_nombre: e.target.value })} placeholder="Chofer" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <input value={editT.chofer_cuil} onChange={(e) => setEditT({ ...editT, chofer_cuil: e.target.value })} placeholder="CUIL / DNI" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <span />
+                              <input value={editT.chasis} onChange={(e) => setEditT({ ...editT, chasis: e.target.value })} placeholder="Chasis" className="border border-stone-300 rounded px-2 py-1.5" />
+                              <input value={editT.acoplado} onChange={(e) => setEditT({ ...editT, acoplado: e.target.value })} placeholder="Acoplado" className="border border-stone-300 rounded px-2 py-1.5" />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={guardarEditT} className="bg-emerald-700 text-white px-3 py-1.5 rounded">Guardar cambios</button>
+                              <button onClick={() => setEditT(null)} className="text-stone-600 px-2">Cancelar</button>
+                            </div>
+                            <div className="text-xs text-stone-500">No cambia el stock, los kilos ni la mercadería. Queda registrado quién lo modificó y cómo estaba antes.</div>
+                          </div>
+                        )}
                         <div className="flex gap-2 items-start flex-wrap">
                           {!soloLectura && (
                             <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
                               Reimprimir
+                            </button>
+                          )}
+                          {profile.rol === "admin" && r.estado !== "anulado" && editT?.id !== r.id && (
+                            <button onClick={() => abrirEditT(r)} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
+                              Corregir transporte / chofer
                             </button>
                           )}
                           {profile.rol === "admin" && r.estado !== "anulado" && (
