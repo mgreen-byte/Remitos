@@ -13,6 +13,7 @@ const TABS = [
   ["plantas", "Plantas"],
   ["usuarios", "Usuarios"],
   ["catalogo", "Catálogo"],
+  ["destinatarios", "Destinatarios"],
   ["prefijos", "Prefijos de precinto"],
   ["precios", "Precios"],
   ["config", "Configuración"],
@@ -104,6 +105,23 @@ function AdminInner({ profile }) {
               { key: "presentacion", label: "Presentación", type: "text", upper: true, placeholder: "BIG BAG 1000 KG" },
               { key: "kg_por_unidad", label: "Kg por unidad", type: "number" },
               { key: "alias", label: "Alias (Excel)", type: "list", placeholder: "nombre 1, nombre 2" },
+              { key: "activo", label: "Activo", type: "bool" },
+            ]}
+          />
+        )}
+
+        {tab === "destinatarios" && (
+          <CrudTable
+            key="destinatarios"
+            table="destinatarios"
+            orderBy="nombre"
+            canDelete
+            help="Destinatarios guardados: al escribir el nombre en un remito, se completan solos el CUIT, el domicilio y la condición de IVA. También se agregan desde la pantalla de remitos con el tilde “Guardar para próximos remitos”. Solo el administrador los edita."
+            columns={[
+              { key: "nombre", label: "Nombre o razón social", type: "text", upper: true },
+              { key: "cuit", label: "CUIT", type: "text" },
+              { key: "domicilio", label: "Domicilio", type: "text", upper: true },
+              { key: "iva", label: "Condición de IVA", type: "select", nullable: true, options: IVA_DEFAULT.map((x) => ({ value: x, label: x })) },
               { key: "activo", label: "Activo", type: "bool" },
             ]}
           />

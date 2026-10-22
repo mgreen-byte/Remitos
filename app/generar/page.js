@@ -80,6 +80,8 @@ function GenerarInner({ profile }) {
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
   const [plantas, setPlantas] = useState([]);
   const [prefijos, setPrefijos] = useState([]);
+  const [destinatarios, setDestinatarios] = useState([]);
+  const [guardarDest, setGuardarDest] = useState(true);
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
@@ -126,14 +128,16 @@ function GenerarInner({ profile }) {
   // ---------- carga de datos ----------
   useEffect(() => {
     (async () => {
-      const [cfg, trans, chof, prods, pls, prefs] = await Promise.all([
+      const [cfg, trans, chof, prods, pls, prefs, dests] = await Promise.all([
         supabase.from("configuracion").select("*"),
         supabase.from("transportistas").select("*").order("nombre"),
         supabase.from("choferes").select("*").order("nombre"),
         supabase.from("productos").select("*").eq("activo", true).order("nombre"),
         supabase.from("plantas").select("*").eq("activa", true).order("nombre"),
         supabase.from("prefijos_precinto").select("prefijo").eq("activo", true).order("prefijo"),
+        supabase.from("destinatarios").select("*").eq("activo", true).order("nombre"),
       ]);
+      if (dests.data) setDestinatarios(dests.data);
       if (prefs.data) setPrefijos(prefs.data.map((x) => x.prefijo));
       const iva = cfg.data?.find((c) => c.clave === "iva_options");
       const cal = cfg.data?.find((c) => c.clave === "calibracion_default");
@@ -246,6 +250,12 @@ function GenerarInner({ profile }) {
     return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
+
+  // Maestro de destinatarios: el administrador puede guardarlo (o actualizarlo) desde el propio remito.
+  const destGuardado = destinatarios.find((d) => up(d.nombre) === up(remito.destinatario).trim()) || null;
+  const destPorGuardar =
+    profile.rol === "admin" && modalidad !== "traslado" && !!remito.destinatario.trim() && !!remito.cuit.trim() &&
+    (!destGuardado || (destGuardado.cuit || "") !== remito.cuit.trim() || (destGuardado.domicilio || "") !== remito.domicilio.trim() || (destGuardado.iva || "") !== remito.iva);
 
   const itemsCalc = items.map((it) => {
     const cant = Number(it.cantidad) || 0;
@@ -656,6 +666,10 @@ function GenerarInner({ profile }) {
       if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
       else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
     }
+    if (destPorGuardar && guardarDest) {
+      const { data: did } = await supabase.rpc("guardar_destinatario", { p_nombre: remito.destinatario, p_cuit: remito.cuit, p_domicilio: remito.domicilio, p_iva: remito.iva });
+      if (did) supabase.from("destinatarios").select("*").eq("activo", true).order("nombre").then((r) => r.data && setDestinatarios(r.data));
+    }
     setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero), pdf: modo === "pdf" });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
@@ -878,7 +892,20 @@ function GenerarInner({ profile }) {
               )}
               <div className="md:col-span-2">
                 <label className={lab}>Nombre o razón social</label>
-                <input value={remito.destinatario} onChange={(e) => setRemito((r) => ({ ...r, destinatario: up(e.target.value) }))} className={inp} disabled={esTraslado} />
+                <input
+                  value={remito.destinatario}
+                  list="destinatarios-guardados"
+                  onChange={(e) => {
+                    const v = up(e.target.value);
+                    const g = destinatarios.find((d) => up(d.nombre) === v);
+                    setRemito((r) => ({ ...r, destinatario: v, ...(g ? { cuit: g.cuit || "", domicilio: g.domicilio || "", iva: g.iva && ivaOptions.includes(g.iva) ? g.iva : r.iva } : {}) }));
+                  }}
+                  className={inp}
+                  disabled={esTraslado}
+                />
+                <datalist id="destinatarios-guardados">
+                  {destinatarios.map((d) => <option key={d.id} value={d.nombre} />)}
+                </datalist>
               </div>
               <div>
                 <label className={lab}>CUIT</label>
@@ -900,6 +927,12 @@ function GenerarInner({ profile }) {
                 <label className={lab}>Entregar en</label>
                 <input value={remito.entregarEn} onChange={(e) => setRemito((r) => ({ ...r, entregarEn: up(e.target.value) }))} className={inp} />
               </div>
+              {destPorGuardar && (
+                <label className="md:col-span-3 flex items-center gap-2 text-[13px] text-stone-700">
+                  <input type="checkbox" checked={guardarDest} onChange={(e) => setGuardarDest(e.target.checked)} />
+                  {destGuardado ? "Actualizar este destinatario guardado con los datos de este remito" : "Guardar para próximos remitos (se completa solo al escribir el nombre)"}
+                </label>
+              )}
               <div>
                 <label className={lab}>Provincia de destino</label>
                 <select value={remito.provincia} onChange={(e) => setRemito((r) => ({ ...r, provincia: e.target.value }))} className={inp} disabled={esTraslado}>
