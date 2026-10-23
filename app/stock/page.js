@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtNum, up, friendlyError, nombreConPresentacion } from "@/lib/util";
+import { fmtNum, up, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
@@ -25,6 +25,8 @@ function StockInner({ profile }) {
   const [verAgotados, setVerAgotados] = useState(false);
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
+  const [abiertos, setAbiertos] = useState({}); // productos desplegados
+  const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState({}); // lotes tildados para eliminar
   const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
@@ -51,7 +53,7 @@ function StockInner({ profile }) {
     if (!plantaId) return setLotes([]);
     const { data } = await supabase
       .from("lotes")
-      .select("id, lote, stock, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
+      .select("id, lote, stock, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
       .eq("planta_id", plantaId)
       .order("lote");
     setLotes(data || []);
@@ -147,7 +149,24 @@ function StockInner({ profile }) {
     setMovs({ loteId, rows: data || [] });
   };
 
-  const visibles = lotes.filter((l) => verAgotados || Number(l.stock) > 0);
+  const q = norm(busqueda);
+  const visibles = lotes
+    .filter((l) => verAgotados || Number(l.stock) > 0)
+    .filter((l) => !q || norm(`${l.producto?.nombre || ""} ${l.producto?.presentacion || ""} ${l.lote}`).includes(q));
+  // Agrupados por producto: producto -> lotes -> movimientos.
+  const grupos = [];
+  for (const l of visibles) {
+    let g = grupos.find((x) => x.id === l.producto_id);
+    if (!g) {
+      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, kg: 0 };
+      grupos.push(g);
+    }
+    g.lotes.push(l);
+    g.unidades += Number(l.stock);
+    g.kg += Number(l.stock) * Number(l.producto?.kg_por_unidad || 0);
+  }
+  grupos.sort((a, b) => nombreConPresentacion(a.producto?.nombre, a.producto?.presentacion).localeCompare(nombreConPresentacion(b.producto?.nombre, b.producto?.presentacion)));
+  const abierto = (g) => !!q || !!abiertos[g.id];
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
   const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * Number(l.producto?.kg_por_unidad || 0), 0);
 
@@ -237,6 +256,11 @@ function StockInner({ profile }) {
             <div className="text-sm text-stone-600">
               {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg
             </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar variedad o lote…" className={`${inputCls} w-56`} />
+              <button type="button" onClick={() => setAbiertos(Object.fromEntries(grupos.map((g) => [g.id, true])))} className="text-xs text-emerald-700 hover:underline">Abrir todo</button>
+              <button type="button" onClick={() => setAbiertos({})} className="text-xs text-emerald-700 hover:underline">Cerrar todo</button>
+            </div>
             <label className="text-xs text-stone-500 flex items-center gap-1">
               <input type="checkbox" checked={verAgotados} onChange={(e) => setVerAgotados(e.target.checked)} /> Mostrar agotados
             </label>
@@ -261,14 +285,28 @@ function StockInner({ profile }) {
                     </td>
                   </tr>
                 )}
-                {visibles.map((l) => (
+                {grupos.map((g) => (
+                  <Fragment key={g.id}>
+                    <tr className="border-t border-stone-200 bg-stone-50/70 cursor-pointer hover:bg-stone-100" onClick={() => setAbiertos({ ...abiertos, [g.id]: !abiertos[g.id] })}>
+                      <td className="p-2 pl-4 whitespace-nowrap font-medium">
+                        <span className="inline-block w-4 text-stone-400">{abierto(g) ? "▾" : "▸"}</span>
+                        <span className="text-[10px] uppercase text-stone-400 mr-1">{g.producto?.categoria}</span>
+                        {nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion)}
+                      </td>
+                      <td className="p-2 text-stone-500 text-xs">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}</td>
+                      <td className="p-2 text-right text-stone-600">{g.producto?.kg_por_unidad ? fmtNum(g.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right font-semibold">{fmtNum(g.unidades)}</td>
+                      <td className="p-2 text-right">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
+                      <td className="p-2"></td>
+                    </tr>
+                    {abierto(g) && g.lotes.map((l) => (
                   <Fragment key={l.id}>
                     <tr className="border-t border-stone-100">
-                      <td className="p-2 pl-4 whitespace-nowrap">
-                        <span className="text-[10px] uppercase text-stone-400 mr-1">{l.producto?.categoria}</span>
-                        {nombreConPresentacion(l.producto?.nombre, l.producto?.presentacion)}
+                      <td className="p-2 pl-10 text-xs text-stone-400">lote</td>
+                      <td className="p-2 font-mono cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
+                        <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
+                        {l.lote}
                       </td>
-                      <td className="p-2 font-mono">{l.lote}</td>
                       <td className="p-2 text-right text-stone-600">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
@@ -289,9 +327,7 @@ function StockInner({ profile }) {
                             Cambiar<br />producto
                           </button>
                         )}
-                        <button onClick={() => verMovs(l.id)} className="text-xs text-stone-500 hover:underline">
-                          Movimientos
-                        </button>
+
                       </td>
                     </tr>
                     {ajuste && ajuste.loteId === l.id && (
@@ -360,6 +396,8 @@ function StockInner({ profile }) {
                         </td>
                       </tr>
                     )}
+                  </Fragment>
+                    ))}
                   </Fragment>
                 ))}
               </tbody>
