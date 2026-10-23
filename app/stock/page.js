@@ -22,6 +22,7 @@ function StockInner({ profile }) {
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [ocLineas, setOcLineas] = useState([]); // líneas de órdenes activas con saldo (comprometido)
   const [verAgotados, setVerAgotados] = useState(false);
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
@@ -57,6 +58,13 @@ function StockInner({ profile }) {
       .eq("planta_id", plantaId)
       .order("lote");
     setLotes(data || []);
+    const { data: ln } = await supabase
+      .from("v_ordenes_lineas_saldo")
+      .select("id, producto_id, lote_texto, planta_id, saldo, orden_numero")
+      .eq("planta_id", plantaId)
+      .eq("orden_estado", "activa")
+      .gt("saldo", 0);
+    setOcLineas(ln || []);
   };
   const cargarTransito = async () => {
     if (!plantaId) return setTransito([]);
@@ -149,6 +157,19 @@ function StockInner({ profile }) {
     setMovs({ loteId, rows: data || [] });
   };
 
+  // Comprometido = saldo pendiente de las órdenes de carga activas (no toca el stock). Se asocia por planta + producto + lote.
+  const loteKey = (pid, lote) => `${pid}|${norm(lote)}`;
+  const clavesLotes = new Set(lotes.map((l) => loteKey(l.producto_id, l.lote)));
+  const compPorLote = {};
+  const compSinLote = {}; // producto -> saldo de líneas que no encajan con ningún lote
+  let compSinProducto = 0;
+  for (const ln of ocLineas) {
+    const sal = Number(ln.saldo) || 0;
+    if (!ln.producto_id) compSinProducto += sal;
+    else if (ln.lote_texto && clavesLotes.has(loteKey(ln.producto_id, ln.lote_texto))) compPorLote[loteKey(ln.producto_id, ln.lote_texto)] = (compPorLote[loteKey(ln.producto_id, ln.lote_texto)] || 0) + sal;
+    else compSinLote[ln.producto_id] = (compSinLote[ln.producto_id] || 0) + sal;
+  }
+  const compDe = (l) => compPorLote[loteKey(l.producto_id, l.lote)] || 0;
   const q = norm(busqueda);
   const visibles = lotes
     .filter((l) => verAgotados || Number(l.stock) > 0)
@@ -158,16 +179,18 @@ function StockInner({ profile }) {
   for (const l of visibles) {
     let g = grupos.find((x) => x.id === l.producto_id);
     if (!g) {
-      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, kg: 0 };
+      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, kg: 0, comp: 0, sinLote: compSinLote[l.producto_id] || 0 };
       grupos.push(g);
     }
     g.lotes.push(l);
     g.unidades += Number(l.stock);
+    g.comp += compDe(l);
     g.kg += Number(l.stock) * Number(l.producto?.kg_por_unidad || 0);
   }
   grupos.sort((a, b) => nombreConPresentacion(a.producto?.nombre, a.producto?.presentacion).localeCompare(nombreConPresentacion(b.producto?.nombre, b.producto?.presentacion)));
   const abierto = (g) => !!q || !!abiertos[g.id];
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
+  const totalComp = grupos.reduce((a, g) => a + g.comp + g.sinLote, 0);
   const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * Number(l.producto?.kg_por_unidad || 0), 0);
 
   return (
@@ -254,7 +277,7 @@ function StockInner({ profile }) {
         <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm text-stone-600">
-              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg
+              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg · comprometido <b>{fmtNum(totalComp)}</b> · disponible <b className={totalUnidades - totalComp < 0 ? "text-red-600" : ""}>{fmtNum(totalUnidades - totalComp)}</b>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar variedad o lote…" className={`${inputCls} w-56`} />
@@ -265,6 +288,9 @@ function StockInner({ profile }) {
               <input type="checkbox" checked={verAgotados} onChange={(e) => setVerAgotados(e.target.checked)} /> Mostrar agotados
             </label>
           </div>
+          {compSinProducto > 0 && (
+            <div className="px-4 pb-2 text-xs text-amber-800">Hay {fmtNum(compSinProducto)} unidades en órdenes de carga de esta planta sin producto identificado: no se descuentan de ningún lote.</div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs text-stone-500 bg-stone-50">
@@ -273,6 +299,8 @@ function StockInner({ profile }) {
                   <th className="text-left p-2">Lote</th>
                   <th className="text-right p-2">Kg x unidad</th>
                   <th className="text-right p-2">Stock (u.)</th>
+                  <th className="text-right p-2" title="Saldo pendiente de las órdenes de carga activas. No modifica el stock.">Comprometido</th>
+                  <th className="text-right p-2">Disponible</th>
                   <th className="text-right p-2">Kg</th>
                   <th className="p-2 text-right">{profile.rol === "admin" && Object.values(sel).some(Boolean) ? <button onClick={eliminarSel} className="text-xs text-red-700 font-semibold underline">Eliminar ({Object.values(sel).filter(Boolean).length})</button> : null}</th>
                 </tr>
@@ -280,7 +308,7 @@ function StockInner({ profile }) {
               <tbody>
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-stone-400">
+                    <td colSpan={8} className="p-6 text-center text-stone-400">
                       No hay lotes cargados.
                     </td>
                   </tr>
@@ -296,6 +324,11 @@ function StockInner({ profile }) {
                       <td className="p-2 text-stone-500 text-xs">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}</td>
                       <td className="p-2 text-right text-stone-600">{g.producto?.kg_por_unidad ? fmtNum(g.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right font-semibold">{fmtNum(g.unidades)}</td>
+                      <td className="p-2 text-right text-amber-800" title={g.sinLote ? `Incluye ${fmtNum(g.sinLote)} de órdenes sin lote asignado (no coinciden con ningún lote de esta planta)` : ""}>
+                        {g.comp + g.sinLote > 0 ? fmtNum(g.comp + g.sinLote) : "—"}
+                        {g.sinLote > 0 && <div className="text-[10.5px] text-amber-700 font-normal">{fmtNum(g.sinLote)} sin lote asignado</div>}
+                      </td>
+                      <td className={`p-2 text-right font-semibold ${g.unidades - g.comp - g.sinLote < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(g.unidades - g.comp - g.sinLote)}</td>
                       <td className="p-2 text-right">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
                       <td className="p-2"></td>
                     </tr>
@@ -303,12 +336,14 @@ function StockInner({ profile }) {
                   <Fragment key={l.id}>
                     <tr className="border-t border-stone-100">
                       <td className="p-2 pl-10 text-xs text-stone-400">lote</td>
-                      <td className="p-2 font-mono cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
+                      <td className="p-2 font-mono whitespace-nowrap cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
                         <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
                         {l.lote}
                       </td>
                       <td className="p-2 text-right text-stone-600">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
+                      <td className="p-2 text-right text-amber-800">{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
+                      <td className={`p-2 text-right ${Number(l.stock) - compDe(l) < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}`}>{fmtNum(Number(l.stock) - compDe(l))}</td>
                       <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right whitespace-nowrap">
                         {!soloLectura && (
@@ -332,7 +367,7 @@ function StockInner({ profile }) {
                     </tr>
                     {ajuste && ajuste.loteId === l.id && (
                       <tr className="bg-amber-50">
-                        <td colSpan={6} className="p-3">
+                        <td colSpan={8} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
                             <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-32`} />
                             <input value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} placeholder="Motivo del ajuste (obligatorio)" className={`${inputCls} flex-1 min-w-[200px]`} />
@@ -349,7 +384,7 @@ function StockInner({ profile }) {
                     )}
                     {reasig && reasig.loteId === l.id && (
                       <tr className="bg-amber-50">
-                        <td colSpan={6} className="p-3">
+                        <td colSpan={8} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
                             <span className="text-sm">Pasar el lote <b className="font-mono">{l.lote}</b> a:</span>
                             <select value={reasig.productoId} onChange={(e) => setReasig({ ...reasig, productoId: e.target.value })} className={`${inputCls} min-w-[280px]`}>
@@ -373,7 +408,7 @@ function StockInner({ profile }) {
                     )}
                     {movs.loteId === l.id && (
                       <tr className="bg-stone-50">
-                        <td colSpan={6} className="p-3">
+                        <td colSpan={8} className="p-3">
                           <table className="w-full text-xs">
                             <tbody>
                               {movs.rows.map((m) => (

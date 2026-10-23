@@ -25,6 +25,7 @@ export default function OrdenesPage() {
 
 function estadoOrden(o, lineas) {
   if (o.estado === "anulada") return { txt: "Anulada", cls: "bg-red-50 text-red-700 border-red-200" };
+  if (o.estado === "cerrada") return { txt: "Cerrada", cls: "bg-stone-200 text-stone-700 border-stone-300" };
   if (!lineas.length) return { txt: "Sin líneas", cls: "bg-stone-100 text-stone-600 border-stone-200" };
   const saldo = lineas.reduce((a, l) => a + Math.max(0, Number(l.saldo)), 0);
   const rem = lineas.reduce((a, l) => a + Number(l.remitido), 0);
@@ -93,7 +94,7 @@ function OrdenesInner({ profile }) {
     const q = norm(buscar);
     return ordenes.filter((o) => {
       const ls = lineasDe[o.id] || [];
-      if (filtro === "pendientes" && (o.estado === "anulada" || !ls.some((l) => Number(l.saldo) > 0))) return false;
+      if (filtro === "pendientes" && (o.estado === "anulada" || o.estado === "cerrada" || !ls.some((l) => Number(l.saldo) > 0))) return false;
       if (q && !(norm(o.numero).includes(q) || ls.some((l) => norm(l.cliente).includes(q) || norm(l.producto_texto).includes(q) || norm(l.lote_texto).includes(q)))) return false;
       return true;
     });
@@ -303,6 +304,21 @@ function OrdenesInner({ profile }) {
     cargar();
   };
 
+  const cerrarOrden = async (o) => {
+    const motivo = window.prompt(`Cerrar la orden ${o.numero}: deja de comprometer stock y de ofrecerse al remitir. Lo ya remitido no cambia. Motivo (opcional):`, "");
+    if (motivo === null) return;
+    const { error } = await supabase.rpc("cerrar_orden", { p_orden_id: o.id, p_motivo: motivo });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: `Orden ${o.numero} cerrada.` });
+    await cargar();
+  };
+  const reabrirOrden = async (o) => {
+    if (!window.confirm(`¿Reabrir la orden ${o.numero}? Vuelve a comprometer stock con su saldo pendiente.`)) return;
+    const { error } = await supabase.rpc("reabrir_orden", { p_orden_id: o.id });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: `Orden ${o.numero} reabierta.` });
+    await cargar();
+  };
   const anular = async () => {
     const { error } = await supabase.rpc("anular_orden", { p_orden_id: anulando.id, p_motivo: anulando.motivo });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
@@ -540,6 +556,9 @@ function OrdenesInner({ profile }) {
                   </button>
                   {open && (
                     <div className="border-t border-stone-200 px-4 py-3 space-y-3">
+                      {o.estado === "cerrada" && (
+                        <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
+                      )}
                       {o.estado === "anulada" && (
                         <div className="text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded p-2">Anulada por {o.anulada_por_nombre} el {new Date(o.anulada_at).toLocaleString("es-AR")}. Motivo: {o.motivo_anulacion}</div>
                       )}
@@ -678,6 +697,12 @@ function OrdenesInner({ profile }) {
                         )}
                         {(poderAdmin || soloVista) && (
                           <button onClick={() => (log?.id === o.id ? setLog(null) : verLog(o.id))} className={btn2}>{log?.id === o.id ? "Ocultar cambios" : "Ver cambios"}</button>
+                        )}
+                        {poderAdmin && o.estado === "activa" && (
+                          <button onClick={() => cerrarOrden(o)} className={btn2}>Cerrar orden</button>
+                        )}
+                        {poderAdmin && o.estado === "cerrada" && (
+                          <button onClick={() => reabrirOrden(o)} className={btn2}>Reabrir orden</button>
                         )}
                         {poderAdmin && o.estado !== "anulada" && anulando?.id !== o.id && (
                           <button onClick={() => setAnulando({ id: o.id, motivo: "" })} className="border border-red-300 text-red-700 text-[13px] px-3 py-1.5 rounded-md">Anular orden…</button>
