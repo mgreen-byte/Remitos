@@ -153,7 +153,7 @@ function StockInner({ profile }) {
 
   return (
     <NavBar profile={profile}>
-      <div className="max-w-5xl mx-auto p-6 space-y-5">
+      <div className="max-w-[1400px] mx-auto p-6 space-y-5">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-lg font-semibold">Stock por lote</h1>
           {esAdmin ? (
@@ -264,7 +264,7 @@ function StockInner({ profile }) {
                 {visibles.map((l) => (
                   <Fragment key={l.id}>
                     <tr className="border-t border-stone-100">
-                      <td className="p-2 pl-4">
+                      <td className="p-2 pl-4 whitespace-nowrap">
                         <span className="text-[10px] uppercase text-stone-400 mr-1">{l.producto?.categoria}</span>
                         {nombreConPresentacion(l.producto?.nombre, l.producto?.presentacion)}
                       </td>
@@ -285,8 +285,8 @@ function StockInner({ profile }) {
                           </label>
                         )}
                         {profile.rol === "admin" && (
-                          <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
-                            Cambiar producto
+                          <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3 inline-block align-middle text-left leading-tight">
+                            Cambiar<br />producto
                           </button>
                         )}
                         <button onClick={() => verMovs(l.id)} className="text-xs text-stone-500 hover:underline">
