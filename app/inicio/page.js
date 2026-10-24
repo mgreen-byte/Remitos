@@ -95,6 +95,16 @@ function InicioInner({ profile }) {
   const transitoU = enCamino.reduce((a, t) => a + Number(t.cantidad || 0), 0);
   const transitoKg = enCamino.reduce((a, t) => a + Number(t.kg_total || 0), 0);
 
+  const gruposTransito = (() => {
+    const m = new Map();
+    for (const t of enCamino) {
+      if (!m.has(t.remito_id)) m.set(t.remito_id, { ...t, items: [], u: 0, kg: 0 });
+      const g = m.get(t.remito_id);
+      g.items.push(t); g.u += Number(t.cantidad || 0); g.kg += Number(t.kg_total || 0);
+    }
+    return [...m.values()];
+  })();
+
   const totalU = filas.reduce((a, l) => a + Number(l.stock), 0);
   const totalKg = filas.reduce((a, l) => a + (l.kg || 0), 0);
   const plantasConStock = porPlanta.filter((p) => p.lotes.length).length;
@@ -179,39 +189,27 @@ function InicioInner({ profile }) {
               <h2 className="paso-titulo">En tránsito entre plantas</h2>
               <span className="md:ml-auto text-[13px] text-stone-600"><b>{fmtNum(transitoU)}</b> {soloBB ? "BB" : "u."} · {fmtNum(transitoKg)} kg · aún no confirmado por la planta de destino</span>
             </div>
-            <div className="md:hidden divide-y divide-stone-100 border-t border-stone-100">
-              {enCamino.map((t, i) => (
-                <div key={t.remito_id + "-m" + i} className="px-4 py-2.5 space-y-0.5 text-[13px]">
-                  <div className="flex justify-between gap-3"><span className="font-medium">{t.punto_venta}-{t.numero} <span className="text-stone-400 font-normal">{fmtFecha(t.fecha)}</span></span><span className="font-semibold whitespace-nowrap">{fmtNum(t.cantidad)} u.{t.kg_total != null ? <span className="text-stone-400 font-normal"> · {fmtNum(t.kg_total)} kg</span> : null}</span></div>
-                  <div className="text-stone-600">{t.planta_origen} → {t.planta_destino}</div>
-                  <div className="text-stone-500 break-words">{t.descripcion} · <span className="font-mono">{t.lote || "—"}</span></div>
-                </div>
+            <div className="border-t border-stone-100 divide-y divide-stone-100">
+              {gruposTransito.map((g) => (
+                <details key={g.remito_id} className="group">
+                  <summary className="cursor-pointer list-none px-4 md:px-5 py-2.5 hover:bg-amber-50/40 flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[13px]">
+                    <span className="text-stone-400 group-open:rotate-90 transition-transform">▸</span>
+                    <span className="font-semibold">{g.punto_venta}-{g.numero}</span>
+                    <span className="text-stone-400">{fmtFecha(g.fecha)}</span>
+                    <span className="text-stone-700">{g.planta_origen} → {g.planta_destino}</span>
+                    <span className="md:ml-auto font-semibold whitespace-nowrap">{fmtNum(g.u)} {soloBB ? "BB" : "u."}<span className="text-stone-400 font-normal"> · {fmtNum(g.kg)} kg · {g.items.length} {g.items.length === 1 ? "renglón" : "renglones"}</span></span>
+                  </summary>
+                  <div className="px-4 md:px-5 pb-2.5 pl-8 md:pl-10 space-y-1">
+                    {g.items.map((t, i) => (
+                      <div key={i} className="flex justify-between gap-3 text-[13px] border-t border-stone-50 pt-1">
+                        <span className="min-w-0 break-words">{t.descripcion} <span className="font-mono text-[12px] text-stone-500">· {t.lote || "—"}</span></span>
+                        <span className="whitespace-nowrap shrink-0"><b>{fmtNum(t.cantidad)}</b>{t.kg_total != null ? <span className="text-stone-400"> · {fmtNum(t.kg_total)} kg</span> : null}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               ))}
             </div>
-            <table className="w-full text-[13px] hidden md:table">
-              <thead>
-                <tr className="text-left text-[12px]">
-                  <th className="px-5 py-2 font-medium">Remito</th>
-                  <th className="px-3 py-2 font-medium">Origen → Destino</th>
-                  <th className="px-3 py-2 font-medium">Producto</th>
-                  <th className="px-3 py-2 font-medium">Lote</th>
-                  <th className="px-3 py-2 font-medium text-right">Cantidad</th>
-                  <th className="px-5 py-2 font-medium text-right">Kg</th>
-                </tr>
-              </thead>
-              <tbody>
-                {enCamino.map((t, i) => (
-                  <tr key={t.remito_id + "-" + i} className="border-t border-stone-100">
-                    <td className="px-5 py-1.5 whitespace-nowrap">{t.punto_venta}-{t.numero} <span className="text-stone-400">{fmtFecha(t.fecha)}</span></td>
-                    <td className="px-3 py-1.5">{t.planta_origen} → {t.planta_destino}</td>
-                    <td className="px-3 py-1.5">{t.descripcion}</td>
-                    <td className="px-3 py-1.5 font-mono">{t.lote || "—"}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold">{fmtNum(t.cantidad)}</td>
-                    <td className="px-5 py-1.5 text-right">{t.kg_total != null ? fmtNum(t.kg_total) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </section>
         )}
 
