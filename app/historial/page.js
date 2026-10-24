@@ -40,6 +40,7 @@ function HistorialInner({ profile }) {
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
+  const [editL, setEditL] = useState(null); // corrección de lote de un renglón (solo administrador)
   const [editT, setEditT] = useState(null); // edición de transporte/chofer (solo administrador)
   const [transportistas, setTransportistas] = useState([]);
   const [choferes, setChoferes] = useState([]);
@@ -145,6 +146,19 @@ function HistorialInner({ profile }) {
       chasis: r.chasis || "",
       acoplado: r.acoplado || "",
     });
+  };
+  const abrirEditL = async (r, i) => {
+    setMsg("");
+    const { data } = await supabase.from("lotes").select("id, lote, stock").eq("planta_id", r.planta_id).eq("producto_id", i.producto_id).order("lote");
+    setEditL({ remitoId: r.id, itemId: i.id, cant: Number(i.cantidad), actual: i.lote_texto, lotes: (data || []).filter((x) => x.id !== i.lote_id), loteId: "", motivo: "", precinto: "", conPrecinto: false, precintoActual: i.precinto || "" });
+  };
+  const guardarEditL = async () => {
+    setMsg("");
+    const { data, error } = await supabase.rpc("corregir_lote_remito", { p_item_id: editL.itemId, p_lote_nuevo: editL.loteId, p_motivo: editL.motivo, p_precinto: editL.conPrecinto ? editL.precinto : null });
+    if (error) return setMsg(friendlyError(error));
+    setEditL(null);
+    await buscar();
+    setMsg(`Lote corregido: ${data?.lote_anterior} → ${data?.lote_nuevo}. El stock se movió entre los dos lotes. Reimprimí el remito con el lote nuevo.${data?.aviso ? " " + data.aviso : ""}`);
   };
   const guardarEditT = async () => {
     setMsg("");
@@ -346,20 +360,58 @@ function HistorialInner({ profile }) {
                               <th className="text-left">Precinto</th>
                               {r.tipo === "traslado" && <th className="text-right pr-3">Recibido</th>}
                               <th className="text-right">Kg</th>
+                              {profile.rol === "admin" && <th></th>}
                             </tr>
                           </thead>
                           <tbody>
                             {[...(r.remito_items || [])]
                               .sort((a, b) => a.orden - b.orden)
                               .map((i) => (
-                                <tr key={i.id} className="border-t border-stone-200">
+                                <Fragment key={i.id}>
+                                <tr className="border-t border-stone-200">
                                   <td className="text-right pr-3">{fmtNum(i.cantidad)}</td>
                                   <td>{i.descripcion}</td>
                                   <td className="font-mono">{i.lote_texto || "—"}</td>
                                   <td className="font-mono">{i.precinto || "—"}</td>
                                   {r.tipo === "traslado" && <td className="text-right pr-3">{i.cantidad_recibida == null ? "—" : fmtNum(i.cantidad_recibida)}</td>}
                                   <td className="text-right">{fmtNum(i.kg_total)}</td>
+                                  {profile.rol === "admin" && (
+                                    <td className="text-right pl-2">
+                                      {i.lote_id && i.producto_id && (r.estado === "emitido" || r.estado === "en_transito") && editL?.itemId !== i.id && (
+                                        <button onClick={() => abrirEditL(r, i)} className="text-amber-800 hover:underline whitespace-nowrap">Corregir lote</button>
+                                      )}
+                                    </td>
+                                  )}
                                 </tr>
+                                {editL?.itemId === i.id && (
+                                  <tr><td colSpan={7} className="pb-3">
+                                    <div className="border border-amber-300 bg-amber-50/50 rounded p-3 space-y-2 text-[13px]">
+                                      <div className="font-medium">Corregir lote del renglón ({fmtNum(i.cantidad)} u., hoy lote {editL.actual})</div>
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        <select value={editL.loteId} onChange={(e) => setEditL({ ...editL, loteId: e.target.value })} className="border border-stone-300 rounded px-2 py-1.5 bg-white">
+                                          <option value="">Lote correcto (mismo producto y planta)…</option>
+                                          {editL.lotes.map((x) => (
+                                            <option key={x.id} value={x.id} disabled={Number(x.stock) < editL.cant}>{x.lote} · stock {fmtNum(x.stock)}{Number(x.stock) < editL.cant ? " (no alcanza)" : ""}</option>
+                                          ))}
+                                        </select>
+                                        <input value={editL.motivo} onChange={(e) => setEditL({ ...editL, motivo: e.target.value })} placeholder="Motivo (obligatorio)" className="border border-stone-300 rounded px-2 py-1.5" />
+                                      </div>
+                                      <label className="flex items-center gap-2 text-stone-600">
+                                        <input type="checkbox" checked={editL.conPrecinto} onChange={(e) => setEditL({ ...editL, conPrecinto: e.target.checked })} />
+                                        Corregir también el precinto (hoy: {editL.precintoActual || "—"})
+                                      </label>
+                                      {editL.conPrecinto && (
+                                        <input value={editL.precinto} onChange={(e) => setEditL({ ...editL, precinto: e.target.value.toUpperCase() })} placeholder="Ej: 26MST - STA 0101 AL 0124" className="border border-stone-300 rounded px-2 py-1.5 w-full font-mono" />
+                                      )}
+                                      <div className="flex gap-2">
+                                        <button onClick={guardarEditL} disabled={!editL.loteId || editL.motivo.trim().length < 3 || (editL.conPrecinto && !editL.precinto.trim())} className="bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-50">Guardar corrección</button>
+                                        <button onClick={() => setEditL(null)} className="text-stone-600 px-2">Cancelar</button>
+                                      </div>
+                                      <div className="text-xs text-stone-500">El stock vuelve al lote anterior y se descuenta del nuevo; queda registrado en Movimientos y en el historial de cambios del remito.</div>
+                                    </div>
+                                  </td></tr>
+                                )}
+                                </Fragment>
                               ))}
                           </tbody>
                         </table>
