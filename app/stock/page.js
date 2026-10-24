@@ -230,19 +230,33 @@ function StockInner({ profile }) {
         {transito.length > 0 && (
           <div className="panel p-4 space-y-2 border-amber-200 bg-amber-50/50">
             <div className="text-xs font-semibold text-amber-800 uppercase">Mercadería en tránsito (sigue siendo de la empresa)</div>
-            <table className="w-full text-[13px]">
-              <tbody>
-                {transito.map((t, i) => (
-                  <tr key={i} className="border-t border-amber-100">
-                    <td className="py-1 font-mono">{t.punto_venta}-{t.numero}</td>
-                    <td>{t.descripcion}</td>
-                    <td className="font-mono">{t.lote}</td>
-                    <td className="text-right">{fmtNum(t.cantidad)}</td>
-                    <td className="pl-3 text-stone-500">{t.planta_id === plantaId ? `hacia ${t.planta_destino}` : `desde ${t.planta_origen}`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="divide-y divide-amber-100">
+              {(() => {
+                const m = new Map();
+                for (const t of transito) {
+                  if (!m.has(t.remito_id)) m.set(t.remito_id, { ...t, items: [], u: 0 });
+                  const g = m.get(t.remito_id); g.items.push(t); g.u += Number(t.cantidad || 0);
+                }
+                return [...m.values()].map((g) => (
+                  <details key={g.remito_id} className="group">
+                    <summary className="cursor-pointer list-none py-2 flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[13px]">
+                      <span className="text-stone-400 group-open:rotate-90 transition-transform">▸</span>
+                      <span className="font-mono font-semibold">{g.punto_venta}-{g.numero}</span>
+                      <span className="text-stone-600">{g.planta_id === plantaId ? `hacia ${g.planta_destino}` : `desde ${g.planta_origen}`}</span>
+                      <span className="ml-auto font-semibold whitespace-nowrap">{fmtNum(g.u)} u.<span className="text-stone-400 font-normal"> · {g.items.length} {g.items.length === 1 ? "renglón" : "renglones"}</span></span>
+                    </summary>
+                    <div className="pl-6 pb-2 space-y-1">
+                      {g.items.map((t, i) => (
+                        <div key={i} className="flex justify-between gap-3 text-[13px]">
+                          <span className="min-w-0 break-words">{t.descripcion} <span className="font-mono text-[12px] text-stone-500">· {t.lote}</span></span>
+                          <span className="font-semibold shrink-0">{fmtNum(t.cantidad)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ));
+              })()}
+            </div>
             <div className="text-xs text-stone-500">Lo que viene desde otra planta se suma a tu stock cuando confirmás la recepción en Traslados.</div>
           </div>
         )}
@@ -291,7 +305,104 @@ function StockInner({ profile }) {
           {compSinProducto > 0 && (
             <div className="px-4 pb-2 text-xs text-amber-800">Hay {fmtNum(compSinProducto)} unidades en órdenes de carga de esta planta sin producto identificado: no se descuentan de ningún lote.</div>
           )}
-          <div className="overflow-x-auto">
+          <div className="md:hidden border-t border-stone-200 divide-y divide-stone-200">
+            {profile.rol === "admin" && Object.values(sel).some(Boolean) && (
+              <div className="px-4 py-2 bg-red-50"><button onClick={eliminarSel} className="text-sm text-red-700 font-semibold underline">Eliminar seleccionados ({Object.values(sel).filter(Boolean).length})</button></div>
+            )}
+            {visibles.length === 0 && <div className="p-6 text-center text-stone-400 text-sm">No hay lotes cargados.</div>}
+            {grupos.map((g) => {
+              const disp = g.unidades - g.comp - g.sinLote;
+              return (
+                <div key={g.id}>
+                  <button type="button" onClick={() => setAbiertos({ ...abiertos, [g.id]: !abiertos[g.id] })} className="w-full text-left px-4 py-3 bg-stone-50/70 active:bg-stone-100">
+                    <div className="flex items-start gap-2">
+                      <span className="text-stone-400 mt-0.5">{abierto(g) ? "▾" : "▸"}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-[14px] break-words">{nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion)}</div>
+                        <div className="text-[12px] text-stone-500 mt-0.5">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}{g.producto?.kg_por_unidad ? ` · ${fmtNum(g.kg)} kg` : ""}</div>
+                      </div>
+                      <div className="text-right shrink-0 text-[12px] leading-snug">
+                        <div><b className="text-[15px]">{fmtNum(g.unidades)}</b> <span className="text-stone-400">stock</span></div>
+                        <div className="text-amber-800">{g.comp + g.sinLote > 0 ? `${fmtNum(g.comp + g.sinLote)} compr.` : ""}</div>
+                        <div className={`font-semibold ${disp < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(disp)} disp.</div>
+                      </div>
+                    </div>
+                    {g.sinLote > 0 && <div className="text-[11px] text-amber-700 mt-1 pl-5">{fmtNum(g.sinLote)} comprometidas sin lote asignado</div>}
+                  </button>
+                  {abierto(g) && g.lotes.map((l) => {
+                    const dl = Number(l.stock) - compDe(l);
+                    return (
+                      <div key={l.id} className="pl-9 pr-4 py-2.5 border-t border-stone-100 space-y-1.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <button type="button" onClick={() => verMovs(l.id)} className="font-mono text-[13px] text-left py-1">
+                            <span className="text-stone-400 mr-1">{movs.loteId === l.id ? "▾" : "▸"}</span>{l.lote}
+                          </button>
+                          <div className="text-[12.5px] text-right whitespace-nowrap">
+                            <b className={Number(l.stock) === 0 ? "text-stone-300" : ""}>{fmtNum(l.stock)}</b>
+                            {compDe(l) > 0 && <span className="text-amber-800"> · {fmtNum(compDe(l))} compr.</span>}
+                            <span className={dl < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}> · {fmtNum(dl)} disp.</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                          {!soloLectura && <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-[13px] text-emerald-700 py-1">Ajustar</button>}
+                          {profile.rol === "admin" && <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-[13px] text-emerald-700 py-1">Cambiar producto</button>}
+                          {profile.rol === "admin" && (
+                            <label className="text-[13px] text-red-700 py-1 flex items-center gap-1">
+                              <input type="checkbox" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} /> Eliminar
+                            </label>
+                          )}
+                        </div>
+                        {ajuste && ajuste.loteId === l.id && (
+                          <div className="bg-amber-50 rounded p-3 space-y-2 -ml-3">
+                            <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-full`} />
+                            <input value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} placeholder="Motivo del ajuste (obligatorio)" className={`${inputCls} w-full`} />
+                            <div className="flex gap-3 items-center">
+                              <button onClick={aplicarAjuste} className="bg-emerald-700 text-white text-sm px-4 py-2 rounded">Aplicar</button>
+                              <button onClick={() => setAjuste(null)} className="text-sm text-stone-500">Cancelar</button>
+                            </div>
+                            <div className="text-xs text-stone-500">Ej.: −5 por bolsa dañada, +10 por conteo físico.</div>
+                          </div>
+                        )}
+                        {reasig && reasig.loteId === l.id && (
+                          <div className="bg-amber-50 rounded p-3 space-y-2 -ml-3">
+                            <div className="text-sm">Pasar el lote <b className="font-mono">{l.lote}</b> a:</div>
+                            <select value={reasig.productoId} onChange={(e) => setReasig({ ...reasig, productoId: e.target.value })} className={`${inputCls} w-full`}>
+                              <option value="">Elegir producto…</option>
+                              {productos.filter((p) => p.activo !== false).map((p) => (
+                                <option key={p.id} value={p.id}>{nombreConPresentacion(p.nombre, p.presentacion)}{p.kg_por_unidad ? ` · ${fmtNum(p.kg_por_unidad)} kg` : ""}</option>
+                              ))}
+                            </select>
+                            <div className="flex gap-3 items-center">
+                              <button disabled={!reasig.productoId} onClick={aplicarReasignacion} className="bg-emerald-700 text-white text-sm px-4 py-2 rounded disabled:opacity-50">Reasignar</button>
+                              <button onClick={() => setReasig(null)} className="text-sm text-stone-500">Cancelar</button>
+                            </div>
+                          </div>
+                        )}
+                        {movs.loteId === l.id && (
+                          <div className="bg-stone-50 rounded p-2 -ml-3 space-y-1.5">
+                            {movs.rows.map((m) => (
+                              <div key={m.id} className="text-[12px] border-b border-stone-100 pb-1">
+                                <div className="flex justify-between gap-2">
+                                  <span className="uppercase text-stone-600">{String(m.tipo).replace("traslado_", "traslado ")}</span>
+                                  <span><b className={m.cantidad < 0 ? "text-red-600" : "text-emerald-700"}>{fmtNum(m.cantidad)}</b> <span className="text-stone-500">→ {fmtNum(m.stock_resultante)}</span></span>
+                                </div>
+                                <div className="text-stone-500">{m.remito ? `Remito ${m.remito.punto_venta}-${m.remito.numero}` : m.motivo || ""}</div>
+                                <div className="text-stone-400">{new Date(m.created_at).toLocaleString("es-AR")} · {m.usuario_nombre}</div>
+                                {profile.rol === "admin" && !m.remito_id && ["ingreso", "ajuste"].includes(m.tipo) && (
+                                  <button onClick={() => eliminarMov(m, l.id)} className="text-red-700 py-1">Eliminar movimiento</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-sm">
               <thead className="text-xs text-stone-500 bg-stone-50">
                 <tr>
