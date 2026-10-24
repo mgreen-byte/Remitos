@@ -297,11 +297,11 @@ function StockInner({ profile }) {
                 <tr>
                   <th className="text-left p-2 pl-4">Producto</th>
                   <th className="text-left p-2">Lote</th>
-                  <th className="text-right p-2">Kg x unidad</th>
+                  <th className="text-right p-2 hidden md:table-cell">Kg x unidad</th>
                   <th className="text-right p-2">Stock (u.)</th>
-                  <th className="text-right p-2" title="Saldo pendiente de las órdenes de carga activas. No modifica el stock.">Comprometido</th>
+                  <th className="text-right p-1.5 md:p-2" title="Saldo pendiente de las órdenes de carga activas. No modifica el stock."><span className="md:hidden">Compr.</span><span className="hidden md:inline">Comprometido</span></th>
                   <th className="text-right p-2">Disponible</th>
-                  <th className="text-right p-2">Kg</th>
+                  <th className="text-right p-2 hidden md:table-cell">Kg</th>
                   <th className="p-2 text-right">{profile.rol === "admin" && Object.values(sel).some(Boolean) ? <button onClick={eliminarSel} className="text-xs text-red-700 font-semibold underline">Eliminar ({Object.values(sel).filter(Boolean).length})</button> : null}</th>
                 </tr>
               </thead>
@@ -316,36 +316,36 @@ function StockInner({ profile }) {
                 {grupos.map((g) => (
                   <Fragment key={g.id}>
                     <tr className="border-t border-stone-200 bg-stone-50/70 cursor-pointer hover:bg-stone-100" onClick={() => setAbiertos({ ...abiertos, [g.id]: !abiertos[g.id] })}>
-                      <td className="p-2 pl-4 whitespace-nowrap font-medium">
+                      <td className="p-2 pl-3 md:pl-4 md:whitespace-nowrap font-medium">
                         <span className="inline-block w-4 text-stone-400">{abierto(g) ? "▾" : "▸"}</span>
                         <span className="text-[10px] uppercase text-stone-400 mr-1">{g.producto?.categoria}</span>
                         {nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion)}
                       </td>
                       <td className="p-2 text-stone-500 text-xs">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}</td>
-                      <td className="p-2 text-right text-stone-600">{g.producto?.kg_por_unidad ? fmtNum(g.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right text-stone-600 hidden md:table-cell">{g.producto?.kg_por_unidad ? fmtNum(g.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right font-semibold">{fmtNum(g.unidades)}</td>
                       <td className="p-2 text-right text-amber-800" title={g.sinLote ? `Incluye ${fmtNum(g.sinLote)} de órdenes sin lote asignado (no coinciden con ningún lote de esta planta)` : ""}>
                         {g.comp + g.sinLote > 0 ? fmtNum(g.comp + g.sinLote) : "—"}
                         {g.sinLote > 0 && <div className="text-[10.5px] text-amber-700 font-normal">{fmtNum(g.sinLote)} sin lote asignado</div>}
                       </td>
                       <td className={`p-2 text-right font-semibold ${g.unidades - g.comp - g.sinLote < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(g.unidades - g.comp - g.sinLote)}</td>
-                      <td className="p-2 text-right">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
+                      <td className="p-2 text-right hidden md:table-cell">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
                       <td className="p-2"></td>
                     </tr>
                     {abierto(g) && g.lotes.map((l) => (
                   <Fragment key={l.id}>
                     <tr className="border-t border-stone-100">
-                      <td className="p-2 pl-10 text-xs text-stone-400">lote</td>
+                      <td className="p-2 pl-6 md:pl-10 text-xs text-stone-400">lote</td>
                       <td className="p-2 font-mono whitespace-nowrap cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
                         <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
                         {l.lote}
                       </td>
-                      <td className="p-2 text-right text-stone-600">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right text-stone-600 hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className="p-2 text-right text-amber-800">{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
                       <td className={`p-2 text-right ${Number(l.stock) - compDe(l) < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}`}>{fmtNum(Number(l.stock) - compDe(l))}</td>
-                      <td className="p-2 text-right">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
-                      <td className="p-2 text-right whitespace-nowrap">
+                      <td className="p-2 text-right hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right md:whitespace-nowrap">
                         {!soloLectura && (
                           <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
                             Ajustar

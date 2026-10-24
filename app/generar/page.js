@@ -109,6 +109,7 @@ function GenerarInner({ profile }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [emitido, setEmitido] = useState(null); // {id, pv, numero}
+  const [salidaOrden, setSalidaOrden] = useState(null); // traslado desde una orden: n° de salida (estimado antes de emitir, real después)
   const [abiertos, setAbiertos] = useState(["1"]); // secciones desplegadas
   const TODOS = ["1", "2", "3", "4", "5", "6"];
   const P = (id) => ({ abierto: abiertos.includes(id), onToggle: () => setAbiertos((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id])) });
@@ -389,6 +390,7 @@ function GenerarInner({ profile }) {
   }, [emitido]);
   useEffect(() => {
     setOcDbSel("");
+    setSalidaOrden(null);
     cargarOcDb(plantaId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plantaId, modalidad]);
@@ -423,6 +425,8 @@ function GenerarInner({ profile }) {
     setOcDbSel(clave);
     const g = gruposTr.find((x) => x.clave === clave);
     if (!g) return;
+    supabase.from("remitos").select("orden_salida").eq("orden_id", clave).not("orden_salida", "is", null).order("orden_salida", { ascending: false }).limit(1)
+      .then(({ data }) => setSalidaOrden(((data && data[0] && data[0].orden_salida) || 0) + 1));
     aplicarGrupo({ ...g, cliente: empresaTraslado ? empresaTraslado.nombre : "", cuit: empresaTraslado ? String(empresaTraslado.cuit || "").replace(/\D/g, "") : "" }, g.ordenNumero);
     elegirDestino(g.destinoId);
   };
@@ -518,6 +522,7 @@ function GenerarInner({ profile }) {
     setOcData(null);
     setClienteSel("");
     setOcDbSel("");
+    setSalidaOrden(null);
     setFileName("");
     setParseError("");
     setRemito(remitoVacio());
@@ -575,7 +580,7 @@ function GenerarInner({ profile }) {
     totalUnidades,
     totalKgs: remito.totalKgs,
     observaciones: observacionesImpresas({ cot: remito.cot, observaciones: remito.observaciones }),
-    ordenCarga: ordenCargaImpresa(remito.ordenCarga),
+    ordenCarga: ordenCargaImpresa(remito.ordenCarga, esTraslado ? salidaOrden : null),
   };
 
   const validar = () => {
@@ -696,6 +701,10 @@ function GenerarInner({ profile }) {
       const { data: did } = await supabase.rpc("guardar_destinatario", { p_nombre: remito.destinatario, p_cuit: remito.cuit, p_domicilio: remito.domicilio, p_iva: remito.iva });
       if (did) supabase.from("destinatarios").select("*").eq("activo", true).order("nombre").then((r) => r.data && setDestinatarios(r.data));
     }
+    if (esTraslado && deOrden) {
+      const { data: rs } = await supabase.from("remitos").select("orden_salida").eq("id", data).maybeSingle();
+      if (rs?.orden_salida) setSalidaOrden(rs.orden_salida);
+    }
     setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero), pdf: modo === "pdf" });
     cargarLotes(plantaId);
     cargarSugerido(puntoVenta);
@@ -806,7 +815,7 @@ function GenerarInner({ profile }) {
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <span className={lab}>Orden de traslado guardada ({planta?.nombre || "tu planta"})</span>
-                  <select value={ocDbSel} onChange={(e) => (e.target.value ? elegirOcTr(e.target.value) : (setOcDbSel(""), setDestinoId(""), setItems([itemVacio()]), setRemito((r) => ({ ...r, ordenCarga: "" }))))} disabled={!!emitido} className={inp}>
+                  <select value={ocDbSel} onChange={(e) => (e.target.value ? elegirOcTr(e.target.value) : (setOcDbSel(""), setSalidaOrden(null), setDestinoId(""), setItems([itemVacio()]), setRemito((r) => ({ ...r, ordenCarga: "" }))))} disabled={!!emitido} className={inp}>
                     <option value="">{gruposTr.length ? "Sin orden (traslado libre) o elegir una…" : "No hay órdenes de traslado con saldo pendiente en esta planta"}</option>
                     {gruposTr.map((g) => (
                       <option key={g.clave} value={g.clave}>

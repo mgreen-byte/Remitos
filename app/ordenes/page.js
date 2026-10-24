@@ -786,7 +786,35 @@ function OrdenesInner({ profile }) {
                         </>
                       ) : (
                         <>
-                      <div className="overflow-x-auto">
+                      <div className="md:hidden divide-y divide-stone-100">
+                        {ls.map((l) => (
+                          <div key={l.id} className="py-2.5 space-y-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-medium text-[14px] break-words">{l.cliente}</div>
+                                <div className="text-[12px] text-stone-400">{[l.domicilio, l.provincia].filter(Boolean).join(" · ")}</div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className={`text-[15px] font-semibold ${Number(l.saldo) <= 0 ? "text-emerald-700" : ""}`}>{fmtNum(Math.max(0, l.saldo))}</div>
+                                <div className="text-[11px] text-stone-400">saldo</div>
+                              </div>
+                            </div>
+                            <div className="text-[13px] text-stone-700">
+                              {l.producto_texto}{!l.producto_id && <span className="ml-1 text-[11px] text-amber-700">(sin catálogo)</span>}
+                              <span className="font-mono text-stone-500"> · {l.lote_texto || "sin lote"}</span>{l.ov ? <span className="text-stone-500"> · O/V {l.ov}</span> : null}
+                            </div>
+                            <div className="text-[12.5px] text-stone-500">{l.planta_nombre} · Pedido {fmtNum(l.cantidad)} · Remitido {fmtNum(l.remitido)}{(remitosDe[l.id] || []).length ? ` · ${(remitosDe[l.id] || []).join(", ")}` : ""}</div>
+                            {o.estado !== "anulada" && puedeEditar(l, o) && (
+                              <div className="flex gap-4 pt-0.5">
+                                <button onClick={() => editar(l)} className="text-emerald-700 text-[13.5px] py-1">Editar</button>
+                                {Number(l.remitido) === 0 && <button onClick={() => quitarLinea(l)} className="text-red-600 text-[13.5px] py-1">Quitar</button>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {ls.length === 0 && <div className="p-3 text-stone-500 text-[13px]">La orden todavía no tiene líneas.</div>}
+                      </div>
+                      <div className="overflow-x-auto hidden md:block">
                         <table className="w-full text-[13px]">
                           <thead>
                             <tr className="text-left text-stone-500 border-b border-stone-200">

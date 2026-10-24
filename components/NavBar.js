@@ -32,9 +32,11 @@ export default function NavBar({ profile, children }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const [menu, setMenu] = useState(false); // menú desplegable del celular
   const [pendientes, setPendientes] = useState(0);
   const [avisoTal, setAvisoTal] = useState(0);
   const [avisoCot, setAvisoCot] = useState(0);
+  useEffect(() => { setMenu(false); }, [pathname]);
   useEffect(() => {
     if (!profile) return;
     // COT pendientes: el operador ve los de su planta; admin y consulta, todos.
@@ -71,6 +73,10 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
 
+  const titulo = (items.find(([href]) => href === pathname) || [])[1] || "";
+  const hayAvisos = pendientes + avisoCot + avisoTal > 0;
+  const rolTxt = profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta";
+
   const logout = async () => {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -78,12 +84,19 @@ export default function NavBar({ profile, children }) {
 
   return (
     <div className="print-reset min-h-screen md:flex bg-stone-100">
-      <aside className="no-print md:w-60 md:flex-shrink-0 md:min-h-screen md:sticky md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col">
+      <aside className="no-print sticky top-0 z-40 md:z-auto md:w-60 md:flex-shrink-0 md:min-h-screen md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col">
         <div className="px-5 py-4 md:py-6 flex-shrink-0">
           <img src="/logo-blanco.png" alt="Stine" className="h-8 md:h-10 w-auto" />
           <div className="hidden md:block text-[12px] text-emerald-300 mt-2">Remitos y despachos</div>
         </div>
-        <nav className="flex md:flex-col gap-1 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-x-auto">
+        <div className="md:hidden flex-1 flex items-center justify-end gap-3 pr-3 min-w-0">
+          <span className="text-[14px] font-medium text-white truncate">{titulo}</span>
+          <button onClick={() => setMenu(true)} aria-label="Abrir menú" className="relative p-2.5 -mr-1 rounded-md text-white active:bg-ink-700">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+            {hayAvisos && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-400" />}
+          </button>
+        </div>
+        <nav className="hidden md:flex md:flex-col gap-1 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-x-auto">
           {items.map(([href, label, icono]) => {
             const activo = pathname === href;
             return (
@@ -116,9 +129,33 @@ export default function NavBar({ profile, children }) {
             Cerrar sesión
           </button>
         </div>
-        <button onClick={logout} className="md:hidden px-4 text-[12.5px] text-emerald-300 whitespace-nowrap">
-          Salir
-        </button>
+        {menu && (
+          <div className="md:hidden fixed inset-0 z-50 flex justify-end">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setMenu(false)} />
+            <div className="relative w-[82%] max-w-xs h-full bg-ink-900 flex flex-col overflow-y-auto">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-ink-700">
+                <div>
+                  <div className="font-medium text-white">{profile?.nombre}</div>
+                  <div className="text-stone-400 text-[12.5px]">{rolTxt}</div>
+                </div>
+                <button onClick={() => setMenu(false)} aria-label="Cerrar menú" className="p-2 text-stone-300 text-2xl leading-none">×</button>
+              </div>
+              <nav className="flex-1 p-2 space-y-1">
+                {items.map(([href, label, icono]) => {
+                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : 0;
+                  return (
+                    <Link key={href} href={href} className={`flex items-center gap-3 px-4 py-3.5 rounded-md text-[16px] font-medium ${pathname === href ? "bg-emerald-600 text-white" : "text-stone-200 active:bg-ink-700"}`}>
+                      <Icono d={ICONOS[icono]} />
+                      {label}
+                      {n > 0 && <span className="ml-auto text-[12px] font-semibold bg-amber-400 text-ink-900 rounded-full px-2 min-w-[20px] text-center">{n}</span>}
+                    </Link>
+                  );
+                })}
+              </nav>
+              <button onClick={logout} className="m-4 text-left px-4 py-3 rounded-md border border-ink-700 text-emerald-300 text-[15px]">Cerrar sesión</button>
+            </div>
+          </div>
+        )}
       </aside>
       <main className="print-reset flex-1 min-w-0">{children}</main>
     </div>

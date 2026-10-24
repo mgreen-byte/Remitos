@@ -233,7 +233,7 @@ function HistorialInner({ profile }) {
       totalUnidades: r.total_unidades,
       totalKgs: r.total_kgs,
       observaciones: observacionesImpresas({ cot: r.cot, observaciones: r.observaciones }),
-      ordenCarga: ordenCargaImpresa(r.orden_carga),
+      ordenCarga: ordenCargaImpresa(r.orden_carga, r.orden_salida),
     });
     setTimeout(() => window.print(), 200);
   };
@@ -325,8 +325,8 @@ function HistorialInner({ profile }) {
         {msg && <div className="text-sm bg-amber-50 border border-amber-300 text-amber-800 rounded p-3">{msg}</div>}
 
         <div className="panel overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-stone-500 bg-stone-50">
+          <table className="w-full text-sm block md:table">
+            <thead className="text-xs text-stone-500 bg-stone-50 hidden md:table-header-group">
               <tr>
                 <th className="text-left p-2 pl-4">Remito</th>
                 <th className="text-left p-2">Fecha</th>
@@ -339,7 +339,7 @@ function HistorialInner({ profile }) {
                 <th className="text-left p-2">Estado</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block md:table-row-group">
               {loading && (
                 <tr>
                   <td colSpan={9} className="p-6 text-center text-stone-400">
@@ -356,18 +356,18 @@ function HistorialInner({ profile }) {
               )}
               {rows.map((r) => (
                 <Fragment key={r.id}>
-                  <tr onClick={() => setOpen(open === r.id ? null : r.id)} className="border-t border-stone-100 cursor-pointer hover:bg-stone-50">
-                    <td className="p-2 pl-4 font-mono">
+                  <tr onClick={() => setOpen(open === r.id ? null : r.id)} className="border-t border-stone-100 cursor-pointer hover:bg-stone-50 flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2.5 md:p-0 md:table-row">
+                    <td className="md:p-2 md:pl-4 font-mono font-semibold md:font-normal order-1">
                       {r.punto_venta}-{r.numero}
                     </td>
-                    <td className="p-2">{fmtFecha(r.fecha)}</td>
-                    <td className="p-2">{r.tipo === "traslado" ? <><span className="text-[11px] font-medium text-sky-700 bg-sky-50 rounded px-1.5 py-0.5 mr-1.5">TRASLADO</span>{r.planta?.nombre} → {r.destino?.nombre}</> : r.cliente_nombre}</td>
-                    <td className="p-2 font-mono text-[12px]">{r.orden_carga || <span className="text-stone-300">—</span>}</td>
-                    {esAdmin && <td className="p-2">{r.planta?.nombre}</td>}
-                    <td className="p-2 text-right">{fmtNum(r.total_unidades)}</td>
-                    <td className="p-2 text-right">{fmtNum(r.total_kgs)}</td>
-                    <td className="p-2 text-stone-500">{r.usuario_nombre}</td>
-                    <td className="p-2">
+                    <td className="md:p-2 order-4 text-stone-500 md:text-stone-800 text-[13px] md:text-sm">{fmtFecha(r.fecha)}</td>
+                    <td className="md:p-2 order-3 w-full md:w-auto">{r.tipo === "traslado" ? <><span className="text-[11px] font-medium text-sky-700 bg-sky-50 rounded px-1.5 py-0.5 mr-1.5">TRASLADO</span>{r.planta?.nombre} → {r.destino?.nombre}</> : r.cliente_nombre}</td>
+                    <td className={`md:p-2 font-mono text-[12px] order-7 ${r.orden_carga ? "" : "hidden md:table-cell"}`}>{r.orden_carga ? `${r.orden_carga}${r.orden_salida ? ` · ${r.orden_salida}` : ""}` : <span className="text-stone-300">—</span>}</td>
+                    {esAdmin && <td className="hidden md:table-cell md:p-2">{r.planta?.nombre}</td>}
+                    <td className="md:p-2 md:text-right order-5 text-[13px] md:text-sm">{fmtNum(r.total_unidades)}<span className="md:hidden"> u.</span></td>
+                    <td className="md:p-2 md:text-right order-6 text-[13px] md:text-sm">{fmtNum(r.total_kgs)}<span className="md:hidden"> kg</span></td>
+                    <td className="hidden md:table-cell md:p-2 text-stone-500">{r.usuario_nombre}</td>
+                    <td className="md:p-2 order-2 ml-auto md:ml-0">
                       <span className={`text-xs px-2 py-0.5 rounded ${ESTADO_CLS[r.estado] || "bg-stone-100 text-stone-700"}`}>{ESTADO_TXT[r.estado] || r.estado}</span>
                       {r.digital && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 text-sky-800" title={`Emitido sin papel por ${r.digital_por_nombre || ""}`}>Digital</span>}
                       {pend[r.id] && (
@@ -376,8 +376,8 @@ function HistorialInner({ profile }) {
                     </td>
                   </tr>
                   {open === r.id && (
-                    <tr className="bg-stone-50">
-                      <td colSpan={9} className="p-4 space-y-3">
+                    <tr className="bg-stone-50 block md:table-row">
+                      <td colSpan={9} className="p-3 md:p-4 space-y-3 block md:table-cell">
                         <div className="text-xs text-stone-500 grid sm:grid-cols-2 gap-x-6 gap-y-1">
                           <div>Modalidad: <b>{r.modalidad}</b></div>
                           {pend[r.id] && (
@@ -385,7 +385,7 @@ function HistorialInner({ profile }) {
                               COT pendiente: este remito todavía no tiene COT. <Link href="/cot" className="underline font-medium">Ir a la pantalla COT</Link>
                             </div>
                           )}
-                          {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga || "—"}</b>{r.orden_carga && r.planta?.nombre ? ` (sale de ${r.planta.nombre})` : ""} · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
+                          {(r.orden_carga || r.cot) && <div>Orden de carga: <b>{r.orden_carga ? `${r.orden_carga}${r.orden_salida ? ` · ${r.orden_salida}` : ""}` : "—"}</b>{r.orden_carga && r.planta?.nombre ? ` (sale de ${r.planta.nombre})` : ""} · COT: <b>{r.cot || "—"}</b> ({r.cliente_provincia || "—"})</div>}
                           <div>Registrado: {new Date(r.created_at).toLocaleString("es-AR")}</div>
                           <div>Transporte: {r.transportista_nombre || "—"}</div>
                           <div>Chofer: {r.chofer_nombre || "—"} {r.chofer_cuil ? `(${r.chofer_cuil})` : ""}</div>
@@ -426,7 +426,7 @@ function HistorialInner({ profile }) {
                                     </td>
                                   )}
                                 </tr>
-                                {editL?.itemId === i.id && (() => {
+                                {editL && editL.itemId === i.id && (() => {
                                   const c = editLCalc(editL);
                                   const inpL = "border border-stone-300 rounded px-2 py-1.5 bg-white";
                                   const mostrarPrec = c.parcial || editL.conPrecinto;

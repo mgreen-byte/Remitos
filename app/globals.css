@@ -38,6 +38,22 @@
   }
 }
 
+/* Celular: campos de 16 px (evita el zoom automático de iPhone) y alto cómodo para el dedo. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.field-print),
+  select:not(.field-print),
+  textarea:not(.field-print) {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+  main button:not(.field-print) {
+    min-height: 40px;
+  }
+  main table {
+    font-size: 13px;
+  }
+}
+
 @layer components {
   .panel {
     @apply bg-white border border-stone-200 border-t-2 border-t-emerald-600 rounded-xl shadow-soft;
