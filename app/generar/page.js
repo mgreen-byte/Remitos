@@ -338,7 +338,7 @@ function GenerarInner({ profile }) {
     }));
     const nuevos = c.items.map((oc) => {
       const prod = (oc.productoId && productos.find((x) => x.id === oc.productoId)) || matchProducto(oc, productos, modalidad === "generico" ? null : modalidad);
-      const hint = [oc.producto, oc.presentacion, oc.loteOc ? `lote OC: ${oc.loteOc}` : ""].filter(Boolean).join(" · ");
+      const hint = [oc.prio ? `PRIORIDAD ${oc.prio}` : "", oc.producto, oc.presentacion, oc.loteOc ? `lote OC: ${oc.loteOc}` : ""].filter(Boolean).join(" · ");
       if (!prod) {
         return {
           ...itemVacio(),
@@ -372,17 +372,21 @@ function GenerarInner({ profile }) {
   const [ocDb, setOcDb] = useState([]);
   const [ocDbSel, setOcDbSel] = useState("");
   const cargarOcDb = async (pid) => {
-    if (!pid || modalidad !== "soja") return setOcDb([]);
-    const { data } = await supabase
+    if (!pid || (modalidad !== "soja" && modalidad !== "traslado")) return setOcDb([]);
+    let q = supabase
       .from("v_ordenes_lineas_saldo")
       .select("*")
       .eq("planta_id", pid)
       .eq("orden_estado", "activa")
-      .gt("saldo", 0)
-      .order("orden_numero")
-      .order("cliente");
+      .gt("saldo", 0);
+    q = modalidad === "traslado" ? q.eq("orden_modalidad", "traslado") : q.neq("orden_modalidad", "traslado");
+    const { data } = await q.order("orden_numero").order("prioridad", { nullsFirst: false }).order("cliente");
     setOcDb(data || []);
   };
+  useEffect(() => {
+    if (!emitido) cargarOcDb(plantaId); // al terminar un remito se recarga el saldo de las órdenes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emitido]);
   useEffect(() => {
     setOcDbSel("");
     cargarOcDb(plantaId);
@@ -400,6 +404,28 @@ function GenerarInner({ profile }) {
     }
     return [...m.values()];
   }, [ocDb]);
+
+  // Órdenes de traslado guardadas (una orden = un destino). Los renglones salen ordenados por prioridad (1 = más urgente).
+  const gruposTr = useMemo(() => {
+    if (modalidad !== "traslado") return [];
+    const m = new Map();
+    for (const l of ocDb) {
+      if (!m.has(l.orden_id)) m.set(l.orden_id, { clave: l.orden_id, ordenNumero: l.orden_numero, destinoId: l.orden_planta_destino_id, cliente: "", items: [], total: 0 });
+      const g = m.get(l.orden_id);
+      g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: null, prio: l.prioridad });
+      g.total += Number(l.saldo);
+    }
+    for (const g of m.values()) g.items.sort((a, b) => (a.prio ?? 9999) - (b.prio ?? 9999));
+    return [...m.values()];
+  }, [ocDb, modalidad]);
+
+  const elegirOcTr = (clave) => {
+    setOcDbSel(clave);
+    const g = gruposTr.find((x) => x.clave === clave);
+    if (!g) return;
+    aplicarGrupo({ ...g, cliente: empresaTraslado ? empresaTraslado.nombre : "", cuit: empresaTraslado ? String(empresaTraslado.cuit || "").replace(/\D/g, "") : "" }, g.ordenNumero);
+    elegirDestino(g.destinoId);
+  };
 
   const elegirOcDb = (clave) => {
     setOcDbSel(clave);
@@ -658,7 +684,7 @@ function GenerarInner({ profile }) {
       }));
     // Con renglones de una orden de carga guardada se usa la función que controla el saldo y deja el vínculo.
     const deOrden = lista.some((x) => x.orden_linea_id);
-    const { data, error: err } = await supabase.rpc(esTraslado ? "emitir_traslado" : deOrden ? "emitir_remito_oc" : esGen ? "emitir_remito_generico" : "emitir_remito", { p_remito: payload, p_items: lista });
+    const { data, error: err } = await supabase.rpc(esTraslado ? (deOrden ? "emitir_traslado_oc" : "emitir_traslado") : deOrden ? "emitir_remito_oc" : esGen ? "emitir_remito_generico" : "emitir_remito", { p_remito: payload, p_items: lista });
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
@@ -778,9 +804,21 @@ function GenerarInner({ profile }) {
 
             {esTraslado && (
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <span className={lab}>Orden de traslado guardada ({planta?.nombre || "tu planta"})</span>
+                  <select value={ocDbSel} onChange={(e) => (e.target.value ? elegirOcTr(e.target.value) : (setOcDbSel(""), setDestinoId(""), setItems([itemVacio()]), setRemito((r) => ({ ...r, ordenCarga: "" }))))} disabled={!!emitido} className={inp}>
+                    <option value="">{gruposTr.length ? "Sin orden (traslado libre) o elegir una…" : "No hay órdenes de traslado con saldo pendiente en esta planta"}</option>
+                    {gruposTr.map((g) => (
+                      <option key={g.clave} value={g.clave}>
+                        {g.ordenNumero} → {plantas.find((p) => p.id === g.destinoId)?.nombre || "?"} · {g.items.length} lote(s) · saldo {fmtNum(g.total)}
+                      </option>
+                    ))}
+                  </select>
+                  {ocDbSel && <div className="text-[12px] text-stone-500 mt-1">Los renglones vienen ordenados por prioridad (1 = más urgente). El destino lo fija la orden.</div>}
+                </div>
                 <div>
                   <span className={lab}>Planta de destino</span>
-                  <select value={destinoId} onChange={(e) => elegirDestino(e.target.value)} className={inp}>
+                  <select value={destinoId} onChange={(e) => elegirDestino(e.target.value)} disabled={!!ocDbSel} className={inp}>
                     <option value="">Elegir planta…</option>
                     {plantasDestino.map((p) => (
                       <option key={p.id} value={p.id}>{p.nombre}</option>

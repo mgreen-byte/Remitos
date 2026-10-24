@@ -60,6 +60,10 @@ function OrdenesInner({ profile }) {
   const [anulando, setAnulando] = useState(null);
   const [renglones, setRenglones] = useState(null); // renglones de remitos sin vincular a una línea
   const [sueltos, setSueltos] = useState(null); // remitos con número de orden y sin vincular
+  const [vista, setVista] = useState("clientes"); // clientes | traslados
+  const [nuevoT, setNuevoT] = useState(null); // {origen, destino}
+  const [lineaT, setLineaT] = useState(null); // {ordenId, lineaId|null, producto_id, lote_texto, cantidad, prioridad}
+  const [lotesOrigen, setLotesOrigen] = useState([]);
   const fileRef = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -93,12 +97,13 @@ function OrdenesInner({ profile }) {
   const lista = useMemo(() => {
     const q = norm(buscar);
     return ordenes.filter((o) => {
+      if ((o.modalidad === "traslado") !== (vista === "traslados")) return false;
       const ls = lineasDe[o.id] || [];
       if (filtro === "pendientes" && (o.estado === "anulada" || o.estado === "cerrada" || !ls.some((l) => Number(l.saldo) > 0))) return false;
       if (q && !(norm(o.numero).includes(q) || ls.some((l) => norm(l.cliente).includes(q) || norm(l.producto_texto).includes(q) || norm(l.lote_texto).includes(q)))) return false;
       return true;
     });
-  }, [ordenes, lineasDe, filtro, buscar]);
+  }, [ordenes, lineasDe, filtro, buscar, vista]);
 
   // Una orden completada (para la planta) solo la modifica el administrador.
   const completaPlanta = (o, pid) => {
@@ -169,6 +174,52 @@ function OrdenesInner({ profile }) {
     abrir(data);
     setEdit({ ordenId: data, lineaId: null, data: { ...LINEA_VACIA }, tieneRemitos: false });
     setMsg({ tipo: "ok", texto: "Orden creada. Agregá las líneas." });
+  };
+
+  // ---------- órdenes de traslado (Administrador y Logística) ----------
+  const nombrePlantaT = (id) => plantas.find((p) => p.id === id)?.nombre || "—";
+  const crearTraslado = async () => {
+    setMsg(null);
+    const { data, error } = await supabase.rpc("crear_orden_traslado", { p_origen: nuevoT.origen, p_destino: nuevoT.destino, p_fecha: null });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    const origen = nuevoT.origen;
+    setNuevoT(null);
+    await cargar();
+    await abrir(data);
+    await abrirLineaT(data, origen, null);
+    setMsg({ tipo: "ok", texto: "Orden de traslado creada. Agregá los lotes." });
+  };
+  const abrirLineaT = async (ordenId, origenId, l) => {
+    const { data } = await supabase.from("lotes").select("producto_id, lote, stock").eq("planta_id", origenId).gt("stock", 0).order("lote");
+    setLotesOrigen(data || []);
+    setLineaT(
+      l
+        ? { ordenId, lineaId: l.id, producto_id: l.producto_id || "", lote_texto: l.lote_texto, cantidad: String(l.cantidad), prioridad: String(l.prioridad ?? ""), tieneRemitos: Number(l.remitido) > 0 }
+        : { ordenId, lineaId: null, producto_id: "", lote_texto: "", cantidad: "", prioridad: "", tieneRemitos: false }
+    );
+  };
+  const guardarLineaT = async () => {
+    setMsg(null);
+    const d = lineaT;
+    const cantidad = Number(String(d.cantidad).replace(",", "."));
+    const { error } = d.lineaId
+      ? await supabase.rpc("guardar_orden_linea", { p_linea_id: d.lineaId, p_data: { cantidad } })
+      : await supabase.rpc("agregar_linea_traslado", { p_orden_id: d.ordenId, p_data: { producto_id: d.producto_id, lote_texto: d.lote_texto, cantidad, prioridad: d.prioridad === "" ? null : Number(d.prioridad) } });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: d.lineaId ? "Cantidad guardada." : "Lote agregado a la orden." });
+    const id = d.ordenId;
+    setLineaT(null);
+    await cargar();
+    cargarRemitos(id);
+  };
+  const cambiarPrioridad = async (l, valor) => {
+    const n = Number(valor);
+    if (!Number.isInteger(n) || n < 1) return setMsg({ tipo: "error", texto: "La prioridad es un número entero desde 1 (1 = más urgente)." });
+    if (n === Number(l.prioridad)) return;
+    const { error } = await supabase.rpc("cambiar_prioridad_linea", { p_linea_id: l.id, p_prioridad: n });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: `Prioridad de ${l.producto_texto} · ${l.lote_texto} → ${n}.` });
+    await cargar();
   };
 
   // ---------- remitos hechos antes del módulo (solo administrador) ----------
@@ -349,10 +400,16 @@ function OrdenesInner({ profile }) {
     <NavBar profile={profile}>
       <div className="max-w-6xl mx-auto p-6 space-y-5">
         <div>
-          <h1 className="text-[22px] font-semibold">Órdenes de carga</h1>
+          <h1 className="text-[22px] font-semibold">{vista === "traslados" ? "Órdenes de traslado" : "Órdenes de carga"}</h1>
           <p className="text-[13px] text-stone-500 mt-1 max-w-3xl">
             Las órdenes quedan guardadas acá. Cada planta ve las suyas y, al hacer un remito, elige la orden y sale precargado. Cargar o editar una orden no mueve stock: el stock baja al emitir el remito.
           </p>
+        </div>
+
+        <div className="flex gap-2">
+          {[["clientes", "Despacho a clientes"], ["traslados", "Traslados entre plantas"]].map(([k, t]) => (
+            <button key={k} onClick={() => { setVista(k); setAbierta(null); setEdit(null); setLineaT(null); }} className={`px-4 py-2 rounded-md text-[13.5px] border ${vista === k ? "bg-emerald-700 text-white border-emerald-700" : "border-stone-300 text-stone-700 hover:bg-stone-50"}`}>{t}</button>
+          ))}
         </div>
 
         {msg && (
@@ -384,7 +441,37 @@ function OrdenesInner({ profile }) {
           </div>
         )}
 
-        {!soloVista && (
+        {vista === "traslados" && poderAdmin && (
+          <div className="panel p-4 space-y-3">
+            {!nuevoT ? (
+              <button onClick={() => setNuevoT({ origen: "", destino: "" })} className={btn2}>+ Nueva orden de traslado</button>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-3 items-end">
+                <div>
+                  <label className={lab}>Planta de origen (sale el stock)</label>
+                  <select value={nuevoT.origen} onChange={(e) => setNuevoT({ ...nuevoT, origen: e.target.value, destino: nuevoT.destino === e.target.value ? "" : nuevoT.destino })} className={inp}>
+                    <option value="">Elegir…</option>
+                    {plantas.map((p) => (<option key={p.id} value={p.id}>{p.nombre}{p.prefijo ? ` (${p.prefijo})` : " — sin prefijo"}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className={lab}>Planta de destino</label>
+                  <select value={nuevoT.destino} onChange={(e) => setNuevoT({ ...nuevoT, destino: e.target.value })} className={inp}>
+                    <option value="">Elegir…</option>
+                    {plantas.filter((p) => p.id !== nuevoT.origen).map((p) => (<option key={p.id} value={p.id}>{p.nombre}</option>))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={crearTraslado} disabled={!nuevoT.origen || !nuevoT.destino} className={btn}>Crear y agregar lotes</button>
+                  <button onClick={() => setNuevoT(null)} className={btn2}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            <div className="text-[12px] text-stone-500">Una orden va de una planta a otra. El número sale solo: OC-(prefijo de la planta de origen)-001, correlativo por planta. Cada renglón es un lote, con su prioridad (1 = más urgente), que se puede cambiar en cualquier momento.</div>
+          </div>
+        )}
+
+        {vista === "clientes" && !soloVista && (
           <div className="panel p-4 space-y-3">
             <div className="flex flex-wrap items-end gap-4">
               <div>
@@ -551,7 +638,8 @@ function OrdenesInner({ profile }) {
                     <span className="font-semibold text-[15px]">{o.numero}</span>
                     <span className={`text-[11px] font-medium border rounded px-1.5 py-0.5 ${est.cls}`}>{est.txt}</span>
                     <span className="text-[12.5px] text-stone-500">{fmtFecha(o.fecha)} · {o.origen === "manual" ? "creada a mano" : "desde Excel"}{o.creado_por_nombre ? ` · ${o.creado_por_nombre}` : ""}</span>
-                    <span className="text-[12.5px] text-stone-500">{plantasOrden.join(", ")}</span>
+                    <span className="text-[12.5px] text-stone-500">{o.modalidad === "traslado" ? `${nombrePlantaT(o.planta_origen_id)} → ${nombrePlantaT(o.planta_destino_id)}` : plantasOrden.join(", ")}</span>
+                    {o.modalidad === "traslado" && miPlanta && o.planta_destino_id === miPlanta && <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-violet-50 text-violet-800 border-violet-200">Llega a tu planta</span>}
                     <span className="ml-auto text-[13px] text-stone-700">Pedido {fmtNum(ped)} · Remitido {fmtNum(rem)} · Saldo <b>{fmtNum(Math.max(0, ped - rem))}</b></span>
                   </button>
                   {open && (
@@ -562,6 +650,99 @@ function OrdenesInner({ profile }) {
                       {o.estado === "anulada" && (
                         <div className="text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded p-2">Anulada por {o.anulada_por_nombre} el {new Date(o.anulada_at).toLocaleString("es-AR")}. Motivo: {o.motivo_anulacion}</div>
                       )}
+                      {o.modalidad === "traslado" ? (
+                        <>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                              <thead>
+                                <tr className="text-left text-stone-500 border-b border-stone-200">
+                                  <th className="p-2 w-24">Prioridad</th><th className="p-2">Producto</th><th className="p-2">Lote</th>
+                                  <th className="p-2 text-right">Pedido</th><th className="p-2 text-right">Remitido</th><th className="p-2 text-right">Saldo</th><th className="p-2">Remitos</th><th className="p-2"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[...ls].sort((a, b) => (a.prioridad ?? 9999) - (b.prioridad ?? 9999) || String(a.lote_texto).localeCompare(String(b.lote_texto))).map((l) => (
+                                  <tr key={l.id} className="border-b border-stone-100 align-top">
+                                    <td className="p-2">
+                                      {poderAdmin && o.estado !== "anulada" ? (
+                                        <input key={`${l.id}-${l.prioridad}`} type="number" min="1" step="1" defaultValue={l.prioridad ?? ""} aria-label="Prioridad"
+                                          onBlur={(e) => e.target.value !== String(l.prioridad ?? "") && cambiarPrioridad(l, e.target.value)}
+                                          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                                          className="w-16 border border-stone-300 rounded px-2 py-1 text-[13px] text-center" />
+                                      ) : (
+                                        <span className="font-semibold">{l.prioridad ?? "—"}</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2">{l.producto_texto}{l.presentacion ? <span className="text-stone-400"> · {l.presentacion}</span> : null}</td>
+                                    <td className="p-2 font-mono">{l.lote_texto}</td>
+                                    <td className="p-2 text-right">{fmtNum(l.cantidad)}</td>
+                                    <td className="p-2 text-right">{fmtNum(l.remitido)}</td>
+                                    <td className={`p-2 text-right font-semibold ${Number(l.saldo) <= 0 ? "text-emerald-700" : ""}`}>{fmtNum(Math.max(0, l.saldo))}</td>
+                                    <td className="p-2 text-[12px] text-stone-600">{(remitosDe[l.id] || []).join(", ") || "—"}</td>
+                                    <td className="p-2 whitespace-nowrap text-right">
+                                      {poderAdmin && o.estado === "activa" && (
+                                        <>
+                                          <button onClick={() => abrirLineaT(o.id, o.planta_origen_id, l)} className="text-emerald-700 hover:underline text-[12.5px] mr-3">Editar cantidad</button>
+                                          {Number(l.remitido) === 0 && <button onClick={() => quitarLinea(l)} className="text-red-600 hover:underline text-[12.5px]">Quitar</button>}
+                                        </>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                                {ls.length === 0 && <tr><td colSpan={8} className="p-3 text-stone-500">La orden todavía no tiene lotes.</td></tr>}
+                              </tbody>
+                            </table>
+                          </div>
+                          {!poderAdmin && !soloVista && miPlanta === o.planta_destino_id && (
+                            <div className="text-[12.5px] text-stone-500">Esta orden llega a tu planta: es solo informativa. Cuando salga el remito de traslado, lo confirmás al recibirlo.</div>
+                          )}
+                          {!poderAdmin && !soloVista && miPlanta === o.planta_origen_id && o.estado === "activa" && (
+                            <div className="text-[12.5px] text-stone-500">Para despachar: Remito → Traslado entre plantas → elegí esta orden.</div>
+                          )}
+                          {lineaT && lineaT.ordenId === o.id && (
+                            <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
+                              <div className="font-medium text-[14px]">{lineaT.lineaId ? "Editar cantidad" : "Agregar lote"}</div>
+                              {lineaT.lineaId ? (
+                                <div className="text-[13px] text-stone-600">{productos.find((x) => x.id === lineaT.producto_id)?.nombre} · lote {lineaT.lote_texto}{lineaT.tieneRemitos ? " · ya tiene remitos: la cantidad no puede quedar por debajo de lo remitido" : ""}</div>
+                              ) : (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <label className={lab}>Producto (con stock en el origen)</label>
+                                    <select value={lineaT.producto_id} onChange={(e) => setLineaT({ ...lineaT, producto_id: e.target.value, lote_texto: "" })} className={inp}>
+                                      <option value="">— elegir —</option>
+                                      {productos.filter((p) => lotesOrigen.some((x) => x.producto_id === p.id)).map((p) => (<option key={p.id} value={p.id}>{p.nombre}{p.presentacion ? ` · ${p.presentacion}` : ""}</option>))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className={lab}>Lote</label>
+                                    <select value={lineaT.lote_texto} onChange={(e) => setLineaT({ ...lineaT, lote_texto: e.target.value })} disabled={!lineaT.producto_id} className={inp}>
+                                      <option value="">— elegir —</option>
+                                      {lotesOrigen.filter((x) => x.producto_id === lineaT.producto_id).map((x) => (<option key={x.lote} value={x.lote}>{x.lote} · stock {fmtNum(x.stock)}</option>))}
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                  <label className={lab}>Cantidad (unidades)</label>
+                                  <input value={lineaT.cantidad} onChange={(e) => setLineaT({ ...lineaT, cantidad: e.target.value.replace(/[^0-9.,]/g, "") })} inputMode="decimal" className={inp} />
+                                </div>
+                                {!lineaT.lineaId && (
+                                  <div>
+                                    <label className={lab}>Prioridad (1 = más urgente; vacío = al final)</label>
+                                    <input value={lineaT.prioridad} onChange={(e) => setLineaT({ ...lineaT, prioridad: e.target.value.replace(/\D/g, "") })} inputMode="numeric" className={inp} />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={guardarLineaT} disabled={!lineaT.cantidad || (!lineaT.lineaId && (!lineaT.producto_id || !lineaT.lote_texto))} className={btn}>Guardar</button>
+                                <button onClick={() => setLineaT(null)} className={btn2}>Cancelar</button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
                       <div className="overflow-x-auto">
                         <table className="w-full text-[13px]">
                           <thead>
@@ -688,11 +869,17 @@ function OrdenesInner({ profile }) {
                         </div>
                       )}
 
+                        </>
+                      )}
+
                       <div className="flex flex-wrap gap-2 items-start">
-                        {o.estado !== "anulada" && !esAdmin && !soloVista && (poderAdmin ? [...new Set(ls.map((x) => x.planta_id))] : [miPlanta]).some((pid) => completaPlanta(o, pid)) && (
+                        {o.modalidad !== "traslado" && o.estado !== "anulada" && !esAdmin && !soloVista && (poderAdmin ? [...new Set(ls.map((x) => x.planta_id))] : [miPlanta]).some((pid) => completaPlanta(o, pid)) && (
                           <span className="text-[12px] text-stone-500">Orden completada: solo el administrador puede modificarla.</span>
                         )}
-                        {o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
+                        {o.modalidad === "traslado" && poderAdmin && o.estado === "activa" && (!lineaT || lineaT.ordenId !== o.id) && (
+                          <button onClick={() => abrirLineaT(o.id, o.planta_origen_id, null)} className={btn2}>+ Agregar lote</button>
+                        )}
+                        {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
                         {(poderAdmin || soloVista) && (
