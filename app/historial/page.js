@@ -147,18 +147,61 @@ function HistorialInner({ profile }) {
       acoplado: r.acoplado || "",
     });
   };
+  const pad4 = (v) => (String(v ?? "").trim() ? String(v).trim().padStart(4, "0") : "");
+  const parsePrec = (t) => {
+    const m = String(t || "").trim().match(/^(.*?\S)\s+(\d+)(?:\s+AL\s+(\d+))?\s*$/i);
+    return m ? { pref: m[1], d: Number(m[2]), h: Number(m[3] || m[2]) } : null;
+  };
   const abrirEditL = async (r, i) => {
     setMsg("");
-    const { data } = await supabase.from("lotes").select("id, lote, stock").eq("planta_id", r.planta_id).eq("producto_id", i.producto_id).order("lote");
-    setEditL({ remitoId: r.id, itemId: i.id, cant: Number(i.cantidad), actual: i.lote_texto, lotes: (data || []).filter((x) => x.id !== i.lote_id), loteId: "", motivo: "", precinto: "", conPrecinto: false, precintoActual: i.precinto || "" });
+    const [{ data }, { data: pf }] = await Promise.all([
+      supabase.from("lotes").select("id, lote, stock").eq("planta_id", r.planta_id).eq("producto_id", i.producto_id).order("lote"),
+      supabase.from("prefijos_precinto").select("prefijo").eq("activo", true).order("prefijo"),
+    ]);
+    const pp = parsePrec(i.precinto);
+    setEditL({
+      remitoId: r.id, itemId: i.id, total: Number(i.cantidad), cantStr: String(i.cantidad), actual: i.lote_texto,
+      lotes: (data || []).filter((x) => x.id !== i.lote_id), loteId: "", motivo: "", precintoActual: i.precinto || "",
+      puedePartir: !!pp && pp.h - pp.d + 1 === Number(i.cantidad), rango: pp,
+      repDesde: "", repHasta: "",
+      prefijos: (pf || []).map((x) => x.prefijo), pref: pp?.pref || "", pd: "", ph: "", conPrecinto: false,
+    });
+  };
+  const editLCalc = (e) => {
+    const cant = Number(String(e.cantStr).replace(",", "."));
+    const parcial = cant > 0 && cant < e.total;
+    const rd = e.repDesde === "" ? null : Number(e.repDesde);
+    const rh = e.repHasta === "" ? rd : Number(e.repHasta);
+    const cntNuevo = e.pd === "" ? null : (e.ph === "" ? 1 : Number(e.ph) - Number(e.pd) + 1);
+    const precNuevo = e.pd === "" || !e.pref ? "" : `${e.pref} ${pad4(e.pd)}${e.ph !== "" && Number(e.ph) !== Number(e.pd) ? ` AL ${pad4(e.ph)}` : ""}`;
+    let err = "";
+    if (!(cant > 0) || cant > e.total) err = `La cantidad tiene que estar entre 1 y ${e.total}.`;
+    else if (parcial) {
+      if (!e.puedePartir) err = "El precinto de este renglón no tiene el formato prefijo + desde AL hasta (o no coincide con las unidades): no se puede partir. Cambiá el renglón entero o anulá y rehacé el remito.";
+      else if (rd == null || !Number.isFinite(rd) || !Number.isFinite(rh)) err = "Indicá qué precintos se reemplazan (desde / hasta).";
+      else if (rd < e.rango.d || rh > e.rango.h || rh < rd) err = `Los precintos reemplazados tienen que estar entre ${e.rango.d} y ${e.rango.h}.`;
+      else if (rh - rd + 1 !== cant) err = `Los precintos reemplazados son ${rh - rd + 1} y las unidades a cambiar son ${cant}.`;
+      else if (!precNuevo) err = "Indicá el precinto del renglón nuevo.";
+      else if (cntNuevo !== cant) err = `Los precintos nuevos son ${cntNuevo} y las unidades a cambiar son ${cant}.`;
+    } else if (e.conPrecinto) {
+      if (!precNuevo) err = "Indicá el precinto nuevo.";
+      else if (cntNuevo !== cant) err = `Los precintos nuevos son ${cntNuevo} y las unidades son ${cant}.`;
+    }
+    return { cant, parcial, rd, rh, precNuevo, err };
   };
   const guardarEditL = async () => {
     setMsg("");
-    const { data, error } = await supabase.rpc("corregir_lote_remito", { p_item_id: editL.itemId, p_lote_nuevo: editL.loteId, p_motivo: editL.motivo, p_precinto: editL.conPrecinto ? editL.precinto : null });
+    const c = editLCalc(editL);
+    if (c.err) return setMsg(c.err);
+    const { data, error } = await supabase.rpc("corregir_lote_remito", {
+      p_item_id: editL.itemId, p_lote_nuevo: editL.loteId, p_motivo: editL.motivo,
+      p_precinto: c.parcial || editL.conPrecinto ? c.precNuevo : null,
+      p_cantidad: c.parcial ? c.cant : null, p_rep_desde: c.parcial ? c.rd : null, p_rep_hasta: c.parcial ? c.rh : null,
+    });
     if (error) return setMsg(friendlyError(error));
     setEditL(null);
     await buscar();
-    setMsg(`Lote corregido: ${data?.lote_anterior} → ${data?.lote_nuevo}. El stock se movió entre los dos lotes. Reimprimí el remito con el lote nuevo.${data?.aviso ? " " + data.aviso : ""}`);
+    setMsg(`Lote corregido: ${fmtNum(data?.cantidad)} u. del lote ${data?.lote_anterior} → ${data?.lote_nuevo}. El stock se movió entre los dos lotes. Reimprimí el remito.${data?.aviso ? " " + data.aviso : ""}`);
   };
   const guardarEditT = async () => {
     setMsg("");
@@ -383,34 +426,72 @@ function HistorialInner({ profile }) {
                                     </td>
                                   )}
                                 </tr>
-                                {editL?.itemId === i.id && (
+                                {editL?.itemId === i.id && (() => {
+                                  const c = editLCalc(editL);
+                                  const inpL = "border border-stone-300 rounded px-2 py-1.5 bg-white";
+                                  const mostrarPrec = c.parcial || editL.conPrecinto;
+                                  return (
                                   <tr><td colSpan={7} className="pb-3">
                                     <div className="border border-amber-300 bg-amber-50/50 rounded p-3 space-y-2 text-[13px]">
-                                      <div className="font-medium">Corregir lote del renglón ({fmtNum(i.cantidad)} u., hoy lote {editL.actual})</div>
-                                      <div className="grid gap-2 sm:grid-cols-2">
-                                        <select value={editL.loteId} onChange={(e) => setEditL({ ...editL, loteId: e.target.value })} className="border border-stone-300 rounded px-2 py-1.5 bg-white">
+                                      <div className="font-medium">Corregir lote del renglón ({fmtNum(i.cantidad)} u., hoy lote {editL.actual}, precinto {editL.precintoActual || "—"})</div>
+                                      <div className="grid gap-2 sm:grid-cols-3">
+                                        <select value={editL.loteId} onChange={(e) => setEditL({ ...editL, loteId: e.target.value })} className={inpL}>
                                           <option value="">Lote correcto (mismo producto y planta)…</option>
                                           {editL.lotes.map((x) => (
-                                            <option key={x.id} value={x.id} disabled={Number(x.stock) < editL.cant}>{x.lote} · stock {fmtNum(x.stock)}{Number(x.stock) < editL.cant ? " (no alcanza)" : ""}</option>
+                                            <option key={x.id} value={x.id} disabled={Number(x.stock) < (c.cant || 1)}>{x.lote} · stock {fmtNum(x.stock)}{Number(x.stock) < (c.cant || 1) ? " (no alcanza)" : ""}</option>
                                           ))}
                                         </select>
-                                        <input value={editL.motivo} onChange={(e) => setEditL({ ...editL, motivo: e.target.value })} placeholder="Motivo (obligatorio)" className="border border-stone-300 rounded px-2 py-1.5" />
+                                        <label className="flex items-center gap-2">
+                                          <span className="text-stone-600 whitespace-nowrap">Unidades que cambian</span>
+                                          <input value={editL.cantStr} onChange={(e) => setEditL({ ...editL, cantStr: e.target.value.replace(/[^0-9.,]/g, "") })} inputMode="decimal" className={`${inpL} w-20`} />
+                                          <span className="text-stone-400">de {fmtNum(editL.total)}</span>
+                                        </label>
+                                        <input value={editL.motivo} onChange={(e) => setEditL({ ...editL, motivo: e.target.value })} placeholder="Motivo (obligatorio)" className={inpL} />
                                       </div>
-                                      <label className="flex items-center gap-2 text-stone-600">
-                                        <input type="checkbox" checked={editL.conPrecinto} onChange={(e) => setEditL({ ...editL, conPrecinto: e.target.checked })} />
-                                        Corregir también el precinto (hoy: {editL.precintoActual || "—"})
-                                      </label>
-                                      {editL.conPrecinto && (
-                                        <input value={editL.precinto} onChange={(e) => setEditL({ ...editL, precinto: e.target.value.toUpperCase() })} placeholder="Ej: 26MST - STA 0101 AL 0124" className="border border-stone-300 rounded px-2 py-1.5 w-full font-mono" />
+                                      {c.parcial && (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="text-stone-600">Precintos que se reemplazan (dentro de {editL.rango ? `${editL.rango.d} a ${editL.rango.h}` : "—"}):</span>
+                                          <input value={editL.repDesde} onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setEditL({ ...editL, repDesde: v, repHasta: v !== "" && c.cant ? String(Number(v) + c.cant - 1) : "" }); }} placeholder="desde" className={`${inpL} w-24`} />
+                                          <span>al</span>
+                                          <input value={editL.repHasta} onChange={(e) => setEditL({ ...editL, repHasta: e.target.value.replace(/\D/g, "") })} placeholder="hasta" className={`${inpL} w-24`} />
+                                          {c.rd != null && Number.isFinite(c.rd) && c.rd >= (editL.rango?.d ?? 0) && c.rh <= (editL.rango?.h ?? 0) && (
+                                            <span className="text-stone-500">Queda: {[c.rd > editL.rango.d ? `${editL.rango.d}–${c.rd - 1}` : null, c.rh < editL.rango.h ? `${c.rh + 1}–${editL.rango.h}` : null].filter(Boolean).join(" y ")} en el lote {editL.actual}</span>
+                                          )}
+                                        </div>
                                       )}
+                                      {!c.parcial && (
+                                        <label className="flex items-center gap-2 text-stone-600">
+                                          <input type="checkbox" checked={editL.conPrecinto} onChange={(e) => setEditL({ ...editL, conPrecinto: e.target.checked })} />
+                                          Corregir también el precinto
+                                        </label>
+                                      )}
+                                      {mostrarPrec && (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="text-stone-600">{c.parcial ? "Precinto del renglón nuevo:" : "Precinto nuevo:"}</span>
+                                          {editL.prefijos.length > 0 ? (
+                                            <select value={editL.pref} onChange={(e) => setEditL({ ...editL, pref: e.target.value })} className={inpL}>
+                                              <option value="">Prefijo…</option>
+                                              {[...new Set([...(editL.pref ? [editL.pref] : []), ...editL.prefijos])].map((x) => <option key={x} value={x}>{x}</option>)}
+                                            </select>
+                                          ) : (
+                                            <input value={editL.pref} onChange={(e) => setEditL({ ...editL, pref: e.target.value.toUpperCase() })} placeholder="Prefijo" className={`${inpL} w-40`} />
+                                          )}
+                                          <input value={editL.pd} onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setEditL({ ...editL, pd: v, ph: v !== "" && c.cant ? String(Number(v) + c.cant - 1) : "" }); }} placeholder="desde" className={`${inpL} w-24`} />
+                                          <span>al</span>
+                                          <input value={editL.ph} onChange={(e) => setEditL({ ...editL, ph: e.target.value.replace(/\D/g, "") })} placeholder="hasta" className={`${inpL} w-24`} />
+                                          {c.precNuevo && <span className="font-mono text-stone-600">{c.precNuevo}</span>}
+                                        </div>
+                                      )}
+                                      {c.err && editL.loteId && <div className="text-red-700 text-xs">{c.err}</div>}
                                       <div className="flex gap-2">
-                                        <button onClick={guardarEditL} disabled={!editL.loteId || editL.motivo.trim().length < 3 || (editL.conPrecinto && !editL.precinto.trim())} className="bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-50">Guardar corrección</button>
+                                        <button onClick={guardarEditL} disabled={!editL.loteId || editL.motivo.trim().length < 3 || !!c.err} className="bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-50">Guardar corrección</button>
                                         <button onClick={() => setEditL(null)} className="text-stone-600 px-2">Cancelar</button>
                                       </div>
-                                      <div className="text-xs text-stone-500">El stock vuelve al lote anterior y se descuenta del nuevo; queda registrado en Movimientos y en el historial de cambios del remito.</div>
+                                      <div className="text-xs text-stone-500">El stock vuelve al lote anterior y se descuenta del nuevo; queda registrado en Movimientos y en el historial de cambios del remito. {c.parcial ? "El renglón se parte alrededor de los precintos reemplazados; los totales del remito no cambian." : ""}</div>
                                     </div>
                                   </td></tr>
-                                )}
+                                  );
+                                })()}
                                 </Fragment>
                               ))}
                           </tbody>
