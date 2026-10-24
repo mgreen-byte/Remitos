@@ -15,6 +15,28 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [importando, setImportando] = useState(false);
+  const [orden, setOrden] = useState(null); // {key, dir}: orden elegido tocando el título de una columna
+
+  const valorOrden = (r, c) => {
+    const v = r[c.key];
+    if (c.type === "select") return String(c.options?.find((o) => o.value === v)?.label ?? v ?? "");
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "boolean") return v ? "1" : "0";
+    return v ?? "";
+  };
+  const ordenadas = !orden
+    ? rows
+    : [...rows].sort((a, b) => {
+        const c = columns.find((x) => x.key === orden.key);
+        const va = valorOrden(a, c);
+        const vb = valorOrden(b, c);
+        const vacioA = va === "" || va === null;
+        const vacioB = vb === "" || vb === null;
+        if (vacioA !== vacioB) return vacioA ? 1 : -1; // los vacíos siempre al final
+        const r = c.type === "number" ? Number(va) - Number(vb) : String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
+        return orden.dir === "desc" ? -r : r;
+      });
+  const ordenarPor = (key) => setOrden((o) => (o?.key === key ? (o.dir === "asc" ? { key, dir: "desc" } : null) : { key, dir: "asc" }));
 
   const cargar = async () => {
     const { data, error } = await supabase.from(table).select(select).order(orderBy);
@@ -139,8 +161,9 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
           <thead className="text-xs text-stone-500 bg-stone-50">
             <tr>
               {columns.map((c) => (
-                <th key={c.key} className="text-left p-2 first:pl-4">
+                <th key={c.key} className="text-left p-2 first:pl-4 cursor-pointer select-none hover:text-stone-800" onClick={() => ordenarPor(c.key)} title="Tocá para ordenar">
                   {c.label}
+                  <span className="ml-1 text-emerald-700">{orden?.key === c.key ? (orden.dir === "asc" ? "▲" : "▼") : ""}</span>
                 </th>
               ))}
               <th className="p-2"></th>
@@ -182,7 +205,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
                 </td>
               </tr>
             )}
-            {rows.map((r) =>
+            {ordenadas.map((r) =>
               edit?.id === r.id ? (
                 <tr key={r.id} className="border-t border-stone-100 bg-amber-50">
                   {columns.map((c) => (
