@@ -102,8 +102,20 @@ function OrdenesInner({ profile }) {
       if (filtro === "pendientes" && (o.estado === "anulada" || o.estado === "cerrada" || !ls.some((l) => Number(l.saldo) > 0))) return false;
       if (q && !(norm(o.numero).includes(q) || ls.some((l) => norm(l.cliente).includes(q) || norm(l.producto_texto).includes(q) || norm(l.lote_texto).includes(q)))) return false;
       return true;
+    }).sort((a, b) => {
+      // Primero lo pendiente, con la fecha de carga más próxima arriba (las sin fecha al final); después lo demás.
+      const pend = (o) => (o.estado === "activa" && (lineasDe[o.id] || []).some((l) => Number(l.saldo) > 0) ? 0 : 1);
+      return pend(a) - pend(b) || String(a.fecha_carga || "9999").localeCompare(String(b.fecha_carga || "9999")) || String(b.created_at).localeCompare(String(a.created_at));
     });
   }, [ordenes, lineasDe, filtro, buscar, vista]);
+  const hoyISO = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const badgeCarga = (o, ls) => {
+    if (!o.fecha_carga) return null;
+    const pend = o.estado === "activa" && ls.some((l) => Number(l.saldo) > 0);
+    const cls = pend && o.fecha_carga < hoyISO ? "bg-red-50 text-red-700 border-red-300" : pend && o.fecha_carga === hoyISO ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-stone-50 text-stone-700 border-stone-200";
+    const txt = pend && o.fecha_carga < hoyISO ? "Carga vencida " : pend && o.fecha_carga === hoyISO ? "Carga HOY " : "Carga prevista ";
+    return <span className={`text-[11.5px] font-medium border rounded px-1.5 py-0.5 ${cls}`}>{txt}{fmtFecha(o.fecha_carga)}</span>;
+  };
 
   // Una orden completada (para la planta) solo la modifica el administrador.
   const completaPlanta = (o, pid) => {
@@ -127,7 +139,7 @@ function OrdenesInner({ profile }) {
         if (parsed.modalidadDetectada === "maiz") throw new Error("Esta es una orden de maíz: por ahora acá se cargan solo las de soja.");
         const { lineas: ls, depositosSinPlanta, sinCatalogo } = armarLineas(parsed, plantas, productos, "soja");
         if (!ls.length) throw new Error("La orden no trae clientes con cantidad para cargar. Revisá que tenga Cliente y Cantidad completos.");
-        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {} });
+        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {} });
       } catch (err) {
         setPrev(null);
         setMsg({ tipo: "error", texto: err.message || "No pude leer el archivo." });
@@ -156,6 +168,10 @@ function OrdenesInner({ profile }) {
       p_lineas: lineasParaGuardar(efectivas),
       p_origen: "excel",
     });
+    if (!error && prev.fechaCarga) {
+      const r2 = await supabase.rpc("fijar_fecha_carga_excel", { p_numero: up(prev.numero).trim(), p_fecha: prev.fechaCarga });
+      if (r2.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar la fecha de carga: " + friendlyError(r2.error) });
+    }
     setGuardando(false);
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setResultado(data);
@@ -169,6 +185,7 @@ function OrdenesInner({ profile }) {
     setMsg(null);
     const { data, error } = await supabase.rpc("crear_orden_manual", { p_numero: manual.numero, p_fecha: manual.fecha || null });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    if (manual.fechaCarga) await supabase.rpc("fijar_fecha_carga", { p_orden_id: data, p_fecha: manual.fechaCarga });
     setManual(null);
     await cargar();
     abrir(data);
@@ -183,6 +200,7 @@ function OrdenesInner({ profile }) {
     const { data, error } = await supabase.rpc("crear_orden_traslado", { p_origen: nuevoT.origen, p_destino: nuevoT.destino, p_fecha: null });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     const origen = nuevoT.origen;
+    if (nuevoT.fechaCarga) await supabase.rpc("fijar_fecha_carga", { p_orden_id: data, p_fecha: nuevoT.fechaCarga });
     setNuevoT(null);
     await cargar();
     await abrir(data);
@@ -211,6 +229,12 @@ function OrdenesInner({ profile }) {
     setLineaT(null);
     await cargar();
     cargarRemitos(id);
+  };
+  const guardarFechaCarga = async (o, valor) => {
+    const { error } = await supabase.rpc("fijar_fecha_carga", { p_orden_id: o.id, p_fecha: valor || null });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setMsg({ tipo: "ok", texto: valor ? `Fecha prevista de carga de ${o.numero}: ${fmtFecha(valor)}.` : `Se quitó la fecha prevista de carga de ${o.numero}.` });
+    await cargar();
   };
   const cambiarPrioridad = async (l, valor) => {
     const n = Number(valor);
@@ -446,7 +470,7 @@ function OrdenesInner({ profile }) {
             {!nuevoT ? (
               <button onClick={() => setNuevoT({ origen: "", destino: "" })} className={btn2}>+ Nueva orden de traslado</button>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-3 items-end">
+              <div className="grid gap-3 sm:grid-cols-4 items-end">
                 <div>
                   <label className={lab}>Planta de origen (sale el stock)</label>
                   <select value={nuevoT.origen} onChange={(e) => setNuevoT({ ...nuevoT, origen: e.target.value, destino: nuevoT.destino === e.target.value ? "" : nuevoT.destino })} className={inp}>
@@ -460,6 +484,10 @@ function OrdenesInner({ profile }) {
                     <option value="">Elegir…</option>
                     {plantas.filter((p) => p.id !== nuevoT.origen).map((p) => (<option key={p.id} value={p.id}>{p.nombre}</option>))}
                   </select>
+                </div>
+                <div>
+                  <label className={lab}>Fecha prevista de carga (opcional)</label>
+                  <input type="date" value={nuevoT.fechaCarga || ""} onChange={(e) => setNuevoT({ ...nuevoT, fechaCarga: e.target.value })} className={inp} />
                 </div>
                 <div className="flex gap-2">
                   <button onClick={crearTraslado} disabled={!nuevoT.origen || !nuevoT.destino} className={btn}>Crear y agregar lotes</button>
@@ -525,7 +553,7 @@ function OrdenesInner({ profile }) {
             {!poderAdmin && <div className="text-[12px] text-stone-500">Se cargan solo las líneas de tu planta ({profile.planta?.nombre}). Si la orden ya existe, se reemplazan las de tu planta por las del archivo.</div>}
 
             {manual && poderAdmin && (
-              <div className="grid gap-3 sm:grid-cols-3 items-end border-t border-stone-200 pt-3">
+              <div className="grid gap-3 sm:grid-cols-4 items-end border-t border-stone-200 pt-3">
                 <div>
                   <label className={lab}>Número de orden</label>
                   <input value={manual.numero} onChange={(e) => setManual({ ...manual, numero: up(e.target.value) })} placeholder="Ej: OC-SF-002" className={inp} />
@@ -533,6 +561,10 @@ function OrdenesInner({ profile }) {
                 <div>
                   <label className={lab}>Fecha</label>
                   <input type="date" value={manual.fecha} onChange={(e) => setManual({ ...manual, fecha: e.target.value })} className={inp} />
+                </div>
+                <div>
+                  <label className={lab}>Fecha prevista de carga (opcional)</label>
+                  <input type="date" value={manual.fechaCarga || ""} onChange={(e) => setManual({ ...manual, fechaCarga: e.target.value })} className={inp} />
                 </div>
                 <div className="flex gap-2">
                   <button onClick={crearManual} className={btn}>Crear y agregar líneas</button>
@@ -549,6 +581,10 @@ function OrdenesInner({ profile }) {
               <div>
                 <label className={lab}>Número de la orden</label>
                 <input value={prev.numero} onChange={(e) => setPrev({ ...prev, numero: up(e.target.value) })} placeholder="OC-SF-000" className={inp} />
+              </div>
+              <div>
+                <label className={lab}>Fecha prevista de carga</label>
+                <input type="date" value={prev.fechaCarga || ""} onChange={(e) => setPrev({ ...prev, fechaCarga: e.target.value })} className={inp} />
               </div>
               <div className="text-[13px] text-stone-600">
                 Archivo: <b>{prev.archivo}</b> · {efectivas.length} línea(s) · se cargan <b>{aCargar.length}</b>
@@ -637,13 +673,20 @@ function OrdenesInner({ profile }) {
                   <button onClick={() => abrir(o.id)} className="w-full text-left px-4 py-3 flex items-center gap-3 flex-wrap hover:bg-stone-50">
                     <span className="font-semibold text-[15px]">{o.numero}</span>
                     <span className={`text-[11px] font-medium border rounded px-1.5 py-0.5 ${est.cls}`}>{est.txt}</span>
-                    <span className="text-[12.5px] text-stone-500">{fmtFecha(o.fecha)} · {o.origen === "manual" ? "creada a mano" : "desde Excel"}{o.creado_por_nombre ? ` · ${o.creado_por_nombre}` : ""}</span>
+                    {badgeCarga(o, ls)}
+                    <span className="text-[12.5px] text-stone-500">creada {fmtFecha(o.fecha)} · {o.origen === "manual" ? "creada a mano" : "desde Excel"}{o.creado_por_nombre ? ` · ${o.creado_por_nombre}` : ""}</span>
                     <span className="text-[12.5px] text-stone-500">{o.modalidad === "traslado" ? `${nombrePlantaT(o.planta_origen_id)} → ${nombrePlantaT(o.planta_destino_id)}` : plantasOrden.join(", ")}</span>
                     {o.modalidad === "traslado" && miPlanta && o.planta_destino_id === miPlanta && <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-violet-50 text-violet-800 border-violet-200">Llega a tu planta</span>}
                     <span className="ml-auto text-[13px] text-stone-700">Pedido {fmtNum(ped)} · Remitido {fmtNum(rem)} · Saldo <b>{fmtNum(Math.max(0, ped - rem))}</b></span>
                   </button>
                   {open && (
                     <div className="border-t border-stone-200 px-4 py-3 space-y-3">
+                      {poderAdmin && o.estado !== "anulada" && (
+                        <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                          <label className="text-stone-600">Fecha prevista de carga</label>
+                          <input key={`${o.id}-${o.fecha_carga || ""}`} type="date" defaultValue={o.fecha_carga || ""} onChange={(e) => guardarFechaCarga(o, e.target.value)} className="border border-stone-300 rounded px-2 py-1 text-[13px]" />
+                        </div>
+                      )}
                       {o.estado === "cerrada" && (
                         <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
                       )}
