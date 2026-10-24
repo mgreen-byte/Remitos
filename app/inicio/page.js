@@ -119,7 +119,7 @@ function InicioInner({ profile }) {
 
   return (
     <NavBar profile={profile}>
-      <div className="max-w-6xl mx-auto p-6 space-y-5">
+      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-5 min-w-0">
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-[22px] font-semibold">Inicio</h1>
@@ -131,12 +131,12 @@ function InicioInner({ profile }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-3 md:gap-4 flex-wrap">
           <div className="inline-flex rounded-md border border-stone-300 overflow-hidden text-[13px]">
             <button onClick={() => setSoloBB(true)} className={`px-3 py-1.5 ${soloBB ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>Big Bag</button>
             <button onClick={() => setSoloBB(false)} className={`px-3 py-1.5 ${!soloBB ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>Todo el stock</button>
           </div>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o lote…" className="px-3 py-1.5 text-[13.5px] w-64" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o lote…" className="px-3 py-1.5 text-[13.5px] w-full md:w-64" />
         </div>
 
         {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">{error}</div>}
@@ -160,13 +160,13 @@ function InicioInner({ profile }) {
         </div>
 
         {porProducto.length > 0 && (
-          <section className="panel p-5">
+          <section className="panel p-4 md:p-5">
             <h2 className="paso-titulo mb-3">Total por producto</h2>
-            <div className="grid gap-x-8 gap-y-1 md:grid-cols-2 text-[13px]">
+            <div className="grid gap-x-8 gap-y-1 md:grid-cols-2 text-[13px] grid-cols-1">
               {porProducto.map((x) => (
-                <div key={x.nombre + x.presentacion} className="flex justify-between gap-3 border-b border-stone-100 py-1">
-                  <span className="truncate">{x.nombre} {nombreConPresentacion(x.nombre, x.presentacion) === x.nombre ? null : <span className="text-stone-400">{x.presentacion}</span>}</span>
-                  <span className="whitespace-nowrap"><b>{fmtNum(x.unidades)}</b> <span className="text-stone-400">· {fmtNum(x.kg)} kg</span></span>
+                <div key={x.nombre + x.presentacion} className="flex justify-between gap-3 min-w-0 border-b border-stone-100 py-1">
+                  <span className="min-w-0 break-words md:truncate">{x.nombre} {nombreConPresentacion(x.nombre, x.presentacion) === x.nombre ? null : <span className="text-stone-400">{x.presentacion}</span>}</span>
+                  <span className="whitespace-nowrap shrink-0 text-right"><b>{fmtNum(x.unidades)}</b> <span className="text-stone-400">· {fmtNum(x.kg)} kg</span></span>
                 </div>
               ))}
             </div>
@@ -175,11 +175,20 @@ function InicioInner({ profile }) {
 
         {enCamino.length > 0 && (
           <section className="panel overflow-hidden border-t-amber-400">
-            <div className="px-5 py-3.5 flex items-center gap-3 flex-wrap">
+            <div className="px-4 md:px-5 py-3.5 flex items-center gap-1 md:gap-3 flex-wrap">
               <h2 className="paso-titulo">En tránsito entre plantas</h2>
-              <span className="ml-auto text-[13px] text-stone-600"><b>{fmtNum(transitoU)}</b> {soloBB ? "BB" : "u."} · {fmtNum(transitoKg)} kg · aún no confirmado por la planta de destino</span>
+              <span className="md:ml-auto text-[13px] text-stone-600"><b>{fmtNum(transitoU)}</b> {soloBB ? "BB" : "u."} · {fmtNum(transitoKg)} kg · aún no confirmado por la planta de destino</span>
             </div>
-            <table className="w-full text-[13px]">
+            <div className="md:hidden divide-y divide-stone-100 border-t border-stone-100">
+              {enCamino.map((t, i) => (
+                <div key={t.remito_id + "-m" + i} className="px-4 py-2.5 space-y-0.5 text-[13px]">
+                  <div className="flex justify-between gap-3"><span className="font-medium">{t.punto_venta}-{t.numero} <span className="text-stone-400 font-normal">{fmtFecha(t.fecha)}</span></span><span className="font-semibold whitespace-nowrap">{fmtNum(t.cantidad)} u.{t.kg_total != null ? <span className="text-stone-400 font-normal"> · {fmtNum(t.kg_total)} kg</span> : null}</span></div>
+                  <div className="text-stone-600">{t.planta_origen} → {t.planta_destino}</div>
+                  <div className="text-stone-500 break-words">{t.descripcion} · <span className="font-mono">{t.lote || "—"}</span></div>
+                </div>
+              ))}
+            </div>
+            <table className="w-full text-[13px] hidden md:table">
               <thead>
                 <tr className="text-left text-[12px]">
                   <th className="px-5 py-2 font-medium">Remito</th>
@@ -213,10 +222,10 @@ function InicioInner({ profile }) {
         <div className="space-y-3">
           {porPlanta.map(({ planta, lotes: ls, unidades, kg }) => (
             <details key={planta.id} open={ls.length > 0} className="panel overflow-hidden group">
-              <summary className="cursor-pointer list-none flex items-center gap-3 px-5 py-3.5 hover:bg-emerald-50/40">
+              <summary className="cursor-pointer list-none flex items-center gap-x-3 gap-y-0.5 flex-wrap px-4 md:px-5 py-3.5 hover:bg-emerald-50/40">
                 <span className="font-semibold text-emerald-900">{planta.nombre}</span>
                 <span className="text-[12px] text-stone-400">PV {planta.punto_venta}</span>
-                <span className="ml-auto text-[13px] text-stone-600">
+                <span className="md:ml-auto text-[13px] text-stone-600 w-full md:w-auto">
                   {ls.length ? (<><b>{fmtNum(unidades)}</b> {soloBB ? "BB" : "u."} · {fmtNum(kg)} kg · {ls.length} lote(s)</>) : <span className="text-stone-400">Sin stock</span>}
                 </span>
               </summary>
@@ -224,21 +233,21 @@ function InicioInner({ profile }) {
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="text-left text-[12px]">
-                      <th className="px-5 py-2 font-medium">Producto</th>
-                      <th className="px-3 py-2 font-medium">Presentación</th>
+                      <th className="px-3 md:px-5 py-2 font-medium">Producto</th>
+                      <th className="px-3 py-2 font-medium hidden md:table-cell">Presentación</th>
                       <th className="px-3 py-2 font-medium">Lote</th>
                       <th className="px-3 py-2 font-medium text-right">Cantidad</th>
-                      <th className="px-5 py-2 font-medium text-right">Kg</th>
+                      <th className="px-3 md:px-5 py-2 font-medium text-right">Kg</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ls.map((l) => (
                       <tr key={l.id} className="border-t border-stone-100">
-                        <td className="px-5 py-1.5">{l.producto?.nombre}</td>
-                        <td className="px-3 py-1.5 text-stone-500">{l.producto?.presentacion || "—"}</td>
-                        <td className="px-3 py-1.5 font-mono">{l.lote}</td>
+                        <td className="px-3 md:px-5 py-1.5 break-words">{l.producto?.nombre}</td>
+                        <td className="px-3 py-1.5 text-stone-500 hidden md:table-cell">{l.producto?.presentacion || "—"}</td>
+                        <td className="px-2 md:px-3 py-1.5 font-mono text-[12px] md:text-[13px] break-all">{l.lote}</td>
                         <td className="px-3 py-1.5 text-right font-semibold">{fmtNum(l.stock)}</td>
-                        <td className="px-5 py-1.5 text-right">{l.kg !== null ? fmtNum(l.kg) : "—"}</td>
+                        <td className="px-3 md:px-5 py-1.5 text-right">{l.kg !== null ? fmtNum(l.kg) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
