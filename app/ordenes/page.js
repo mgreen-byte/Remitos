@@ -49,6 +49,9 @@ function OrdenesInner({ profile }) {
   const [msg, setMsg] = useState(null);
   const [filtro, setFiltro] = useState("pendientes");
   const [buscar, setBuscar] = useState("");
+  const [plantaSel, setPlantaSel] = useState(profile.rol === "operador" && miPlanta ? miPlanta : ""); // despacho a clientes
+  const [origenSel, setOrigenSel] = useState(""); // traslados
+  const [destinoSel, setDestinoSel] = useState("");
   const [abierta, setAbierta] = useState(null);
   const [remitosDe, setRemitosDe] = useState({});
   const [log, setLog] = useState(null);
@@ -94,11 +97,39 @@ function OrdenesInner({ profile }) {
     return m;
   }, [lineas]);
 
+  // Renglones visibles de una orden: en despacho a clientes, si hay planta elegida, solo los de esa planta.
+  const lineasVis = useCallback((o) => {
+    const ls = lineasDe[o.id] || [];
+    return o.modalidad !== "traslado" && plantaSel ? ls.filter((l) => l.planta_id === plantaSel) : ls;
+  }, [lineasDe, plantaSel]);
+  const pendiente = (o, ls) => o.estado === "activa" && ls.some((l) => Number(l.saldo) > 0);
+  // Botonera: solo plantas con órdenes pendientes (y cuántas)
+  const chips = useMemo(() => {
+    const cuenta = (m) => (id) => m[id] || 0;
+    const cli = {}, ori = {}, des = {};
+    for (const o of ordenes) {
+      const ls = lineasDe[o.id] || [];
+      if (o.modalidad === "traslado") {
+        if (!pendiente(o, ls)) continue;
+        ori[o.planta_origen_id] = (ori[o.planta_origen_id] || 0) + 1;
+        des[o.planta_destino_id] = (des[o.planta_destino_id] || 0) + 1;
+      } else {
+        for (const pid of new Set(ls.filter((l) => o.estado === "activa" && Number(l.saldo) > 0).map((l) => l.planta_id))) cli[pid] = (cli[pid] || 0) + 1;
+      }
+    }
+    const arr = (m) => plantas.filter((p) => m[p.id]).map((p) => ({ id: p.id, nombre: p.nombre, n: m[p.id] }));
+    return { cli: arr(cli), ori: arr(ori), des: arr(des), cuenta };
+  }, [ordenes, lineasDe, plantas]);
+
   const lista = useMemo(() => {
     const q = norm(buscar);
     return ordenes.filter((o) => {
       if ((o.modalidad === "traslado") !== (vista === "traslados")) return false;
-      const ls = lineasDe[o.id] || [];
+      if (vista === "traslados") {
+        if (origenSel && o.planta_origen_id !== origenSel) return false;
+        if (destinoSel && o.planta_destino_id !== destinoSel) return false;
+      } else if (plantaSel && lineasVis(o).length === 0) return false;
+      const ls = lineasVis(o);
       if (filtro === "pendientes" && (o.estado === "anulada" || o.estado === "cerrada" || !ls.some((l) => Number(l.saldo) > 0))) return false;
       if (q && !(norm(o.numero).includes(q) || ls.some((l) => norm(l.cliente).includes(q) || norm(l.producto_texto).includes(q) || norm(l.lote_texto).includes(q)))) return false;
       return true;
@@ -107,7 +138,15 @@ function OrdenesInner({ profile }) {
       const pend = (o) => (o.estado === "activa" && (lineasDe[o.id] || []).some((l) => Number(l.saldo) > 0) ? 0 : 1);
       return pend(a) - pend(b) || String(a.fecha_carga || "9999").localeCompare(String(b.fecha_carga || "9999")) || String(b.created_at).localeCompare(String(a.created_at));
     });
-  }, [ordenes, lineasDe, filtro, buscar, vista]);
+  }, [ordenes, lineasDe, lineasVis, filtro, buscar, vista, plantaSel, origenSel, destinoSel]);
+  const resumen = useMemo(() => {
+    let ped = 0, rem = 0;
+    for (const o of lista) {
+      if (o.estado === "anulada") continue;
+      for (const l of lineasVis(o)) { ped += Number(l.cantidad); rem += Number(l.remitido); }
+    }
+    return { ped, rem, saldo: Math.max(0, ped - rem) };
+  }, [lista, lineasVis]);
   const hoyISO = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const badgeCarga = (o, ls) => {
     if (!o.fecha_carga) return null;
@@ -647,6 +686,37 @@ function OrdenesInner({ profile }) {
           </div>
         )}
 
+        {(() => {
+          const Chip = ({ activo, onClick, children }) => (
+            <button onClick={onClick} className={`shrink-0 px-3 py-1.5 rounded-full text-[13px] border whitespace-nowrap ${activo ? "bg-emerald-700 text-white border-emerald-700" : "border-stone-300 text-stone-700 bg-white hover:bg-stone-50"}`}>{children}</button>
+          );
+          const fila = (titulo, lista, sel, setSel) => (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {titulo && <span className="text-[12px] text-stone-500 shrink-0 w-14">{titulo}</span>}
+              <Chip activo={!sel} onClick={() => setSel("")}>Todas</Chip>
+              {lista.map((p) => (
+                <Chip key={p.id} activo={sel === p.id} onClick={() => setSel(p.id)}>{p.nombre} <span className={sel === p.id ? "opacity-90" : "text-stone-500"}>· {p.n}</span></Chip>
+              ))}
+              {sel && !lista.some((p) => p.id === sel) && <Chip activo onClick={() => setSel("")}>{nombrePlanta(sel)} · 0</Chip>}
+            </div>
+          );
+          return vista === "traslados" ? (
+            <div className="space-y-1">
+              {fila("Origen", chips.ori, origenSel, setOrigenSel)}
+              {fila("Destino", chips.des, destinoSel, setDestinoSel)}
+            </div>
+          ) : (
+            fila(null, chips.cli, plantaSel, setPlantaSel)
+          );
+        })()}
+
+        {((vista === "clientes" && plantaSel) || (vista === "traslados" && (origenSel || destinoSel))) && (
+          <div className="text-[13.5px] text-stone-700 bg-white border border-stone-200 rounded-md px-3 py-2">
+            <b>{vista === "traslados" ? [origenSel && `Sale de ${nombrePlanta(origenSel)}`, destinoSel && `Llega a ${nombrePlanta(destinoSel)}`].filter(Boolean).join(" · ") : nombrePlanta(plantaSel)}</b>
+            {" · "}Pedido {fmtNum(resumen.ped)} · Remitido {fmtNum(resumen.rem)} · Saldo <b>{fmtNum(resumen.saldo)}</b> u.
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={`${inp} max-w-[220px]`}>
             <option value="pendientes">Con saldo pendiente</option>
@@ -662,7 +732,7 @@ function OrdenesInner({ profile }) {
         ) : (
           <div className="space-y-3">
             {lista.map((o) => {
-              const ls = lineasDe[o.id] || [];
+              const ls = lineasVis(o);
               const est = estadoOrden(o, ls);
               const ped = ls.reduce((a, l) => a + Number(l.cantidad), 0);
               const rem = ls.reduce((a, l) => a + Number(l.remitido), 0);
