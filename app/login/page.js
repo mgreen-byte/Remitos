@@ -36,7 +36,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-2xl border-t-4 border-emerald-600 p-8 w-full max-w-sm space-y-4">
         <div className="text-center mb-2">
           <img src="/logo-color.png" alt="Stine" className="mx-auto h-14 w-auto mb-3" />
-          <div className="text-sm font-semibold text-stone-600">Remitos y despachos</div>
+          <div className="text-sm font-semibold text-stone-600">Despacho y Stock</div>
           <div className="text-sm text-stone-400">Iniciá sesión para continuar</div>
         </div>
         <label className="block text-xs text-stone-500">

@@ -87,7 +87,7 @@ export default function NavBar({ profile, children }) {
       <aside className="no-print sticky top-0 z-40 md:z-auto md:w-60 md:flex-shrink-0 md:min-h-screen md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col">
         <div className="px-5 py-4 md:py-6 flex-shrink-0">
           <img src="/logo-blanco.png" alt="Stine" className="h-8 md:h-10 w-auto" />
-          <div className="hidden md:block text-[12px] text-emerald-300 mt-2">Remitos y despachos</div>
+          <div className="hidden md:block text-[12px] text-emerald-300 mt-2">Despacho y Stock</div>
         </div>
         <div className="md:hidden flex-1 flex items-center justify-end gap-3 pr-3 min-w-0">
           <span className="text-[14px] font-medium text-white truncate">{titulo}</span>

@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Remitos",
-  description: "Plataforma de remitos",
+  title: "Despacho y Stock",
+  description: "Remitos, stock y traslados",
 };
 
 export default function RootLayout({ children }) {
