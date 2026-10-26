@@ -1024,7 +1024,7 @@ function OrdenesInner({ profile }) {
                         {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
-                        {poderAdmin && <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt })} className={btn2}>Descargar PDF</button>}
+                        <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt })} className={btn2}>Descargar PDF</button>
                         {(poderAdmin || soloVista) && (
                           <button onClick={() => (log?.id === o.id ? setLog(null) : verLog(o.id))} className={btn2}>{log?.id === o.id ? "Ocultar cambios" : "Ver cambios"}</button>
                         )}
