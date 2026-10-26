@@ -50,6 +50,7 @@ function OrdenesInner({ profile }) {
   const [msg, setMsg] = useState(null);
   const [filtro, setFiltro] = useState("pendientes");
   const [buscar, setBuscar] = useState("");
+  const [orden, setOrden] = useState("pend"); // pend | num_asc | num_desc | carga_asc | carga_desc | creada_desc | creada_asc | cli_asc | cli_desc
   const [plantaSel, setPlantaSel] = useState(profile.rol === "operador" && miPlanta ? miPlanta : ""); // despacho a clientes
   const [origenSel, setOrigenSel] = useState(""); // traslados
   const [destinoSel, setDestinoSel] = useState("");
@@ -135,11 +136,32 @@ function OrdenesInner({ profile }) {
       if (q && !(norm(o.numero).includes(q) || ls.some((l) => norm(l.cliente).includes(q) || norm(l.producto_texto).includes(q) || norm(l.lote_texto).includes(q)))) return false;
       return true;
     }).sort((a, b) => {
-      // Primero lo pendiente, con la fecha de carga más próxima arriba (las sin fecha al final); después lo demás.
-      const pend = (o) => (o.estado === "activa" && (lineasDe[o.id] || []).some((l) => Number(l.saldo) > 0) ? 0 : 1);
-      return pend(a) - pend(b) || String(a.fecha_carga || "9999").localeCompare(String(b.fecha_carga || "9999")) || String(b.created_at).localeCompare(String(a.created_at));
+      const num = (x, y) => String(x.numero).localeCompare(String(y.numero), "es", { numeric: true, sensitivity: "base" });
+      const cli = (o) => String((lineasVis(o)[0] || {}).cliente || "").toLowerCase();
+      const conFecha = (k, dir) => { // las sin fecha siempre al final
+        const fa = a[k] || "", fb = b[k] || "";
+        if (!fa && !fb) return 0;
+        if (!fa) return 1;
+        if (!fb) return -1;
+        return dir * fa.localeCompare(fb);
+      };
+      switch (orden) {
+        case "num_asc": return num(a, b);
+        case "num_desc": return num(b, a);
+        case "carga_asc": return conFecha("fecha_carga", 1) || num(a, b);
+        case "carga_desc": return conFecha("fecha_carga", -1) || num(a, b);
+        case "creada_desc": return String(b.created_at).localeCompare(String(a.created_at));
+        case "creada_asc": return String(a.created_at).localeCompare(String(b.created_at));
+        case "cli_asc": return cli(a).localeCompare(cli(b), "es") || num(a, b);
+        case "cli_desc": return cli(b).localeCompare(cli(a), "es") || num(a, b);
+        default: {
+          // Primero lo pendiente, con la fecha de carga más próxima arriba (las sin fecha al final); después lo demás.
+          const pend = (o) => (o.estado === "activa" && (lineasDe[o.id] || []).some((l) => Number(l.saldo) > 0) ? 0 : 1);
+          return pend(a) - pend(b) || String(a.fecha_carga || "9999").localeCompare(String(b.fecha_carga || "9999")) || String(b.created_at).localeCompare(String(a.created_at));
+        }
+      }
     });
-  }, [ordenes, lineasDe, lineasVis, filtro, buscar, vista, plantaSel, origenSel, destinoSel]);
+  }, [ordenes, lineasDe, lineasVis, filtro, buscar, vista, plantaSel, origenSel, destinoSel, orden]);
   const resumen = useMemo(() => {
     let ped = 0, rem = 0;
     for (const o of lista) {
@@ -472,7 +494,7 @@ function OrdenesInner({ profile }) {
 
         <div className="flex gap-2">
           {[["clientes", "Despacho a clientes"], ["traslados", "Traslados entre plantas"]].map(([k, t]) => (
-            <button key={k} onClick={() => { setVista(k); setAbierta(null); setEdit(null); setLineaT(null); }} className={`px-4 py-2 rounded-md text-[13.5px] border ${vista === k ? "bg-emerald-700 text-white border-emerald-700" : "border-stone-300 text-stone-700 hover:bg-stone-50"}`}>{t}</button>
+            <button key={k} onClick={() => { setVista(k); if (k === "traslados" && orden.startsWith("cli_")) setOrden("pend"); setAbierta(null); setEdit(null); setLineaT(null); }} className={`px-4 py-2 rounded-md text-[13.5px] border ${vista === k ? "bg-emerald-700 text-white border-emerald-700" : "border-stone-300 text-stone-700 hover:bg-stone-50"}`}>{t}</button>
           ))}
         </div>
 
@@ -722,6 +744,17 @@ function OrdenesInner({ profile }) {
           <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={`${inp} max-w-[220px]`}>
             <option value="pendientes">Con saldo pendiente</option>
             <option value="todas">Todas</option>
+          </select>
+          <select value={orden} onChange={(e) => setOrden(e.target.value)} className={`${inp} max-w-[240px]`} aria-label="Ordenar por">
+            <option value="pend">Ordenar: pendientes primero</option>
+            <option value="num_asc">N° de orden: A → Z</option>
+            <option value="num_desc">N° de orden: Z → A</option>
+            <option value="carga_asc">Carga prevista: más próxima</option>
+            <option value="carga_desc">Carga prevista: más lejana</option>
+            <option value="creada_desc">Creación: más nueva</option>
+            <option value="creada_asc">Creación: más vieja</option>
+            {vista !== "traslados" && <option value="cli_asc">Cliente: A → Z</option>}
+            {vista !== "traslados" && <option value="cli_desc">Cliente: Z → A</option>}
           </select>
           <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar por N° de orden, cliente, producto o lote…" className={`${inp} max-w-md`} />
         </div>
