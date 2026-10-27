@@ -208,7 +208,7 @@ function GenerarInner({ profile }) {
   const productosDisponibles = useMemo(() => {
     const conStock = new Set(lotes.map((l) => l.producto_id));
     return productos.filter(
-      (p) => conStock.has(p.id) && (modalidad === "generico" || modalidad === "traslado" || p.categoria === modalidad || p.categoria === "otro")
+      (p) => (conStock.has(p.id) || (modalidad !== "traslado" && (p.grupo || "semilla") !== "semilla")) && (modalidad === "generico" || modalidad === "traslado" || p.categoria === modalidad || p.categoria === "otro")
     );
   }, [productos, lotes, modalidad]);
 
@@ -236,7 +236,10 @@ function GenerarInner({ profile }) {
     return d === null || h === null || h < d ? null : h - d + 1;
   };
   const pad4 = (v) => (String(v ?? "").trim() ? String(v).trim().padStart(4, "0") : ""); // 20 -> 0020, 120 -> 0120
+  // Solo las semillas llevan precinto (y lote obligatorio); insumos y ensamblajes no.
+  const esSemilla = (it) => { const p = productoDe(it.productoId); return !p || (p.grupo || "semilla") === "semilla"; };
   const precintoTxt = (it) => {
+    if (!esSemilla(it)) return "";
     if (!usaPrefijos) return up(it.precinto || "").trim();
     const d = pad4(it.precDesde);
     const h = pad4(it.precHasta);
@@ -277,7 +280,8 @@ function GenerarInner({ profile }) {
   const updItem = (id, patch) => setItems((arr) => arr.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   const selProducto = (id, productoId) => {
     const ls = lotesDe(productoId);
-    updItem(id, { productoId, loteId: ls.length === 1 ? ls[0].id : "" });
+    const sem = (productoDe(productoId)?.grupo || "semilla") === "semilla";
+    updItem(id, { productoId, loteId: (sem || modalidad === "traslado") && ls.length === 1 ? ls[0].id : "" });
   };
 
   // ---------- Excel ----------
@@ -601,9 +605,9 @@ function GenerarInner({ profile }) {
       if (!it.desc) return `Ítem ${i + 1}: falta el producto o la descripción.`;
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
-        if (!it.loteId) return `Ítem ${i + 1}: elegí el lote.`;
-        if (!precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
-        if (usaPrefijos) {
+        if (!it.loteId && (esTraslado || esSemilla(it))) return `Ítem ${i + 1}: elegí el lote.`;
+        if (esSemilla(it) && !precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
+        if (esSemilla(it) && usaPrefijos) {
           if (!it.precPref) return `Ítem ${i + 1}: elegí el prefijo del precinto.`;
           const cp = cantPrecintos(it);
           if (cp === null) return `Ítem ${i + 1}: los números de precinto "desde" y "hasta" tienen que ser números, y "hasta" no puede ser menor que "desde".`;
@@ -1228,7 +1232,7 @@ function GenerarInner({ profile }) {
                             )}
                           </select>
                           <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={inp} disabled={!it.productoId}>
-                            <option value="">{it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
+                            <option value="">{!esSemilla(it) && modalidad !== "traslado" ? "Sin lote (opcional)" : it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
                             {ls.map((x) => (
                               <option key={x.id} value={x.id}>
                                 {x.lote} · {fmtNum(x.stock)} disp.
@@ -1256,7 +1260,7 @@ function GenerarInner({ profile }) {
                       <div className="flex gap-x-4 gap-y-1 flex-wrap">
                         {!it.libre && (
                           <>
-                            {usaPrefijos ? (
+                            {!esSemilla(it) ? null : usaPrefijos ? (
                               <span className="flex items-center gap-1.5 flex-wrap">
                                 <select value={it.precPref} onChange={(e) => updItem(it.id, { precPref: e.target.value })} className={`px-2 py-1 text-[12px] ${!it.precPref && it.cant > 0 ? "!border-red-400" : ""}`}>
                                   <option value="">Prefijo del precinto…</option>
