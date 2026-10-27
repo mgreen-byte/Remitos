@@ -1,6 +1,7 @@
 "use client";
 
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
+import { EMPRESA_FISCAL } from "@/lib/remitoPdf";
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -644,8 +645,8 @@ function GenerarInner({ profile }) {
     if (modo === "pdf") {
       // Se verifica ANTES de registrar, para no gastar un número si después no se puede armar el PDF.
       const pl = planta || planta0;
-      if (pl?.empresa !== "ms") return setError("El PDF digital está disponible solo para plantas de MS Technologies (campo Empresa de la planta).");
-      if (!pl?.domicilio_fiscal) return setError(`Falta la dirección fiscal de la planta ${pl?.nombre}: cargala en Administración → Plantas.`);
+      if (!EMPRESA_FISCAL[pl?.empresa]) return setError("La planta no tiene empresa asignada (MS Technologies o Stine Seed): completá el campo Empresa en Administración → Plantas.");
+      if (!pl?.domicilio_fiscal && !EMPRESA_FISCAL[pl.empresa].domicilioFiscal) return setError(`Falta la dirección fiscal de la planta ${pl?.nombre}: cargala en Administración → Plantas.`);
       const { data: tals } = await supabase.from("talonarios").select("id, imprenta_nombre").eq("planta_id", pl.id).eq("estado", "activo");
       if (!(tals || []).length) return setError("La planta no tiene un talonario activo: el PDF necesita el CAI del talonario (activá el control y cargá el talonario).");
       if ((tals || []).every((t) => !t.imprenta_nombre)) return setError("Faltan los datos de la imprenta en el talonario: completalos en Talonarios → Editar.");
