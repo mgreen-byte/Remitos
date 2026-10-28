@@ -1,6 +1,7 @@
 "use client";
 
 import { descargarOrdenPdf } from "@/lib/ordenPdf";
+import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -52,6 +53,7 @@ function OrdenesInner({ profile }) {
   const [buscar, setBuscar] = useState("");
   const [orden, setOrden] = useState("pend"); // pend | num_asc | num_desc | carga_asc | carga_desc | creada_desc | creada_asc | cli_asc | cli_desc
   const [plantaSel, setPlantaSel] = useState(profile.rol === "operador" && miPlanta ? miPlanta : ""); // despacho a clientes
+  const [expo, setExpo] = useState(null); // {desde, hasta, planta, trasl, trabajando, aviso} — descarga de entregas (solo admin)
   const [origenSel, setOrigenSel] = useState(""); // traslados
   const [destinoSel, setDestinoSel] = useState("");
   const [abierta, setAbierta] = useState(null);
@@ -706,6 +708,49 @@ function OrdenesInner({ profile }) {
               <button onClick={() => { setPrev(null); if (fileRef.current) fileRef.current.value = ""; }} className={btn2}>Cancelar</button>
             </div>
             <div className="text-[12px] text-stone-500">Si la orden ya existe, se reemplazan las líneas de esos depósitos. Las que ya tienen remitos no se pueden quitar ni cambiar de cliente, producto o lote.</div>
+          </div>
+        )}
+
+        {esAdmin && (
+          <div className="space-y-2">
+            <button onClick={() => setExpo(expo ? null : { desde: hoyISO.slice(0, 8) + "01", hasta: hoyISO, planta: "", trasl: false, trabajando: false, aviso: "" })} className={btn2}>
+              {expo ? "Cerrar exportación" : "Exportar entregas (Excel / PDF)"}
+            </button>
+            {expo && (
+              <div className="panel p-4 space-y-3">
+                <div className="text-[13px] text-stone-600">Remitos despachados con orden de carga (no anulados ni rechazados), con producto, cliente, CUIT y cantidades.</div>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div><label className={lab}>Desde</label><input type="date" value={expo.desde} onChange={(e) => setExpo({ ...expo, desde: e.target.value })} className={inp} /></div>
+                  <div><label className={lab}>Hasta</label><input type="date" value={expo.hasta} onChange={(e) => setExpo({ ...expo, hasta: e.target.value })} className={inp} /></div>
+                  <div>
+                    <label className={lab}>Planta</label>
+                    <select value={expo.planta} onChange={(e) => setExpo({ ...expo, planta: e.target.value })} className={inp}>
+                      <option value="">Todas</option>
+                      {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-[13px] text-stone-700"><input type="checkbox" checked={expo.trasl} onChange={(e) => setExpo({ ...expo, trasl: e.target.checked })} /> Incluir traslados entre plantas (se identifican aparte)</label>
+                <div className="flex flex-wrap gap-2">
+                  {["excel", "pdf"].map((fmtO) => (
+                    <button key={fmtO} disabled={expo.trabajando} className={btn} onClick={async () => {
+                      setExpo((x) => ({ ...x, trabajando: true, aviso: "" }));
+                      try {
+                        const todas = await cargarDespachos(supabase, { desde: expo.desde, hasta: expo.hasta, plantaId: expo.planta });
+                        const filas = filasDeEntregas(todas, { incluirTraslados: expo.trasl });
+                        if (!filas.length) { setExpo((x) => ({ ...x, trabajando: false, aviso: "No hay entregas con orden de carga en ese período." })); return; }
+                        const meta = { desde: expo.desde, hasta: expo.hasta, plantaNombre: plantas.find((p) => p.id === expo.planta)?.nombre || "", incluirTraslados: expo.trasl };
+                        if (fmtO === "excel") await descargarEntregasExcel(filas, meta); else await descargarEntregasPdf(filas, meta);
+                        setExpo((x) => ({ ...x, trabajando: false, aviso: `Listo: ${filas.length} renglones.` }));
+                      } catch (e) {
+                        setExpo((x) => ({ ...x, trabajando: false, aviso: friendlyError(e) }));
+                      }
+                    }}>{expo.trabajando ? "Armando…" : fmtO === "excel" ? "Descargar Excel" : "Descargar PDF"}</button>
+                  ))}
+                </div>
+                {expo.aviso && <div className="text-[13px] text-stone-600">{expo.aviso}</div>}
+              </div>
+            )}
           </div>
         )}
 

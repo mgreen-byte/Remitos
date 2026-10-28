@@ -63,6 +63,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/inicio", "Inicio", "inicio"]] : []),
     ...(rol !== "consulta" && rol !== "logistica" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/ordenes", "Órdenes de carga", "ordenes"],
+    ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/despachos", "Despachos", "despachos"]] : []),
     ["/stock", "Stock", "stock"],
     ["/traslados", "Traslados", "traslados"],
     ["/talonarios", "Talonarios", "talonarios"],
