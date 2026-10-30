@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
+import { traerTodo } from "@/lib/despachos";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, up, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
@@ -22,6 +23,8 @@ function StockInner({ profile }) {
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [inicialPorLote, setInicialPorLote] = useState({}); // lote_id -> suma de ingresos, ajustes positivos y traslados recibidos
+  const [tip, setTip] = useState(null); // cartel flotante de Comprometido: {x, y, titulo, items, total}
   const [ocLineas, setOcLineas] = useState([]); // líneas de órdenes activas con saldo (comprometido)
   const [verAgotados, setVerAgotados] = useState(false);
   const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
@@ -60,11 +63,19 @@ function StockInner({ profile }) {
     setLotes(data || []);
     const { data: ln } = await supabase
       .from("v_ordenes_lineas_saldo")
-      .select("id, producto_id, lote_texto, planta_id, saldo, orden_numero")
+      .select("id, producto_id, lote_texto, planta_id, saldo, orden_numero, cliente")
       .eq("planta_id", plantaId)
       .eq("orden_estado", "activa")
       .gt("saldo", 0);
     setOcLineas(ln || []);
+    try {
+      const movs = await traerTodo(() =>
+        supabase.from("movimientos_stock").select("id, lote_id, cantidad, lote:lotes!inner(planta_id)").eq("lote.planta_id", plantaId).in("tipo", ["ingreso", "ajuste", "traslado_ingreso"]).gt("cantidad", 0).order("id")
+      );
+      const m = {};
+      for (const x of movs) m[x.lote_id] = (m[x.lote_id] || 0) + Number(x.cantidad);
+      setInicialPorLote(m);
+    } catch { setInicialPorLote({}); }
   };
   const cargarTransito = async () => {
     if (!plantaId) return setTransito([]);
@@ -170,6 +181,19 @@ function StockInner({ profile }) {
     else compSinLote[ln.producto_id] = (compSinLote[ln.producto_id] || 0) + sal;
   }
   const compDe = (l) => compPorLote[loteKey(l.producto_id, l.lote)] || 0;
+  const iniDe = (l) => Number(inicialPorLote[l.id] || 0);
+  // Detalle del comprometido: una línea por orden/cliente (saldo pendiente).
+  const detalleLote = (l) => ocLineas.filter((ln) => ln.producto_id === l.producto_id && ln.lote_texto && norm(ln.lote_texto) === norm(l.lote)).map((ln) => ({ orden: ln.orden_numero, cliente: ln.cliente, n: Number(ln.saldo) || 0 }));
+  const detalleProducto = (g) => ocLineas.filter((ln) => ln.producto_id === g.id).map((ln) => ({
+    orden: ln.orden_numero, cliente: ln.cliente, n: Number(ln.saldo) || 0,
+    lote: ln.lote_texto && clavesLotes.has(loteKey(ln.producto_id, ln.lote_texto)) ? ln.lote_texto : "",
+  }));
+  const mostrarTip = (e, titulo, items, fijar) => {
+    if (!items.length) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const t = { x: Math.min(r.right, window.innerWidth - 12), y: r.bottom + 6, titulo, items, total: items.reduce((a, i) => a + i.n, 0) };
+    setTip((prev) => (fijar && prev && prev.titulo === titulo ? null : t));
+  };
   const q = norm(busqueda);
   const visibles = lotes
     .filter((l) => verAgotados || Number(l.stock) > 0)
@@ -179,11 +203,12 @@ function StockInner({ profile }) {
   for (const l of visibles) {
     let g = grupos.find((x) => x.id === l.producto_id);
     if (!g) {
-      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, kg: 0, comp: 0, sinLote: compSinLote[l.producto_id] || 0 };
+      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, inicial: 0, kg: 0, comp: 0, sinLote: compSinLote[l.producto_id] || 0 };
       grupos.push(g);
     }
     g.lotes.push(l);
     g.unidades += Number(l.stock);
+    g.inicial += iniDe(l);
     g.comp += compDe(l);
     g.kg += Number(l.stock) * Number(l.producto?.kg_por_unidad || 0);
   }
@@ -319,11 +344,11 @@ function StockInner({ profile }) {
                       <span className="text-stone-400 mt-0.5">{abierto(g) ? "▾" : "▸"}</span>
                       <div className="min-w-0 flex-1">
                         <div className="font-medium text-[14px] break-words">{nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion)}</div>
-                        <div className="text-[12px] text-stone-500 mt-0.5">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}{g.producto?.kg_por_unidad ? ` · ${fmtNum(g.kg)} kg` : ""}</div>
+                        <div className="text-[12px] text-stone-500 mt-0.5">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}{g.inicial > 0 ? ` · inicial ${fmtNum(g.inicial)}` : ""}{g.producto?.kg_por_unidad ? ` · ${fmtNum(g.kg)} kg` : ""}</div>
                       </div>
                       <div className="text-right shrink-0 text-[12px] leading-snug">
                         <div><b className="text-[15px]">{fmtNum(g.unidades)}</b> <span className="text-stone-400">stock</span></div>
-                        <div className="text-amber-800">{g.comp + g.sinLote > 0 ? `${fmtNum(g.comp + g.sinLote)} compr.` : ""}</div>
+                        <div className="text-amber-800 underline decoration-dotted" onClick={(e) => { e.stopPropagation(); mostrarTip(e, nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion), detalleProducto(g), true); }}>{g.comp + g.sinLote > 0 ? `${fmtNum(g.comp + g.sinLote)} compr.` : ""}</div>
                         <div className={`font-semibold ${disp < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(disp)} disp.</div>
                       </div>
                     </div>
@@ -338,8 +363,8 @@ function StockInner({ profile }) {
                             <span className="text-stone-400 mr-1">{movs.loteId === l.id ? "▾" : "▸"}</span>{l.lote}
                           </button>
                           <div className="text-[12.5px] text-right whitespace-nowrap">
-                            <b className={Number(l.stock) === 0 ? "text-stone-300" : ""}>{fmtNum(l.stock)}</b>
-                            {compDe(l) > 0 && <span className="text-amber-800"> · {fmtNum(compDe(l))} compr.</span>}
+                            {iniDe(l) > 0 && <span className="text-stone-400">ini {fmtNum(iniDe(l))} · </span>}<b className={Number(l.stock) === 0 ? "text-stone-300" : ""}>{fmtNum(l.stock)}</b>
+                            {compDe(l) > 0 && <button type="button" className="text-amber-800 underline decoration-dotted" onClick={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l), true)}> · {fmtNum(compDe(l))} compr.</button>}
                             <span className={dl < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}> · {fmtNum(dl)} disp.</span>
                           </div>
                         </div>
@@ -409,6 +434,7 @@ function StockInner({ profile }) {
                   <th className="text-left p-2 pl-4">Producto</th>
                   <th className="text-left p-2">Lote</th>
                   <th className="text-right p-2 hidden md:table-cell">Kg x unidad</th>
+                  <th className="text-right p-2" title="Total ingresado al lote: ingresos, ajustes positivos y traslados recibidos (sin contar reintegros por anulaciones o correcciones).">Inicial</th>
                   <th className="text-right p-2">Stock (u.)</th>
                   <th className="text-right p-1.5 md:p-2" title="Saldo pendiente de las órdenes de carga activas. No modifica el stock."><span className="md:hidden">Compr.</span><span className="hidden md:inline">Comprometido</span></th>
                   <th className="text-right p-2">Disponible</th>
@@ -419,7 +445,7 @@ function StockInner({ profile }) {
               <tbody>
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-6 text-center text-stone-400">
+                    <td colSpan={9} className="p-6 text-center text-stone-400">
                       No hay lotes cargados.
                     </td>
                   </tr>
@@ -434,8 +460,9 @@ function StockInner({ profile }) {
                       </td>
                       <td className="p-2 text-stone-500 text-xs">{g.lotes.length} lote{g.lotes.length === 1 ? "" : "s"}</td>
                       <td className="p-2 text-right text-stone-600 hidden md:table-cell">{g.producto?.kg_por_unidad ? fmtNum(g.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right text-stone-600">{g.inicial > 0 ? fmtNum(g.inicial) : "—"}</td>
                       <td className="p-2 text-right font-semibold">{fmtNum(g.unidades)}</td>
-                      <td className="p-2 text-right text-amber-800" title={g.sinLote ? `Incluye ${fmtNum(g.sinLote)} de órdenes sin lote asignado (no coinciden con ningún lote de esta planta)` : ""}>
+                      <td className={`p-2 text-right text-amber-800 ${g.comp + g.sinLote > 0 ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTip(e, nombreConPresentacion(g.producto?.nombre, g.producto?.presentacion), detalleProducto(g))} onMouseLeave={() => setTip(null)} title={g.sinLote ? `Incluye ${fmtNum(g.sinLote)} de órdenes sin lote asignado (no coinciden con ningún lote de esta planta)` : ""}>
                         {g.comp + g.sinLote > 0 ? fmtNum(g.comp + g.sinLote) : "—"}
                         {g.sinLote > 0 && <div className="text-[10.5px] text-amber-700 font-normal">{fmtNum(g.sinLote)} sin lote asignado</div>}
                       </td>
@@ -452,8 +479,9 @@ function StockInner({ profile }) {
                         {l.lote}
                       </td>
                       <td className="p-2 text-right text-stone-600 hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right text-stone-500">{iniDe(l) > 0 ? fmtNum(iniDe(l)) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
-                      <td className="p-2 text-right text-amber-800">{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
+                      <td className={`p-2 text-right text-amber-800 ${compDe(l) > 0 ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l))} onMouseLeave={() => setTip(null)}>{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
                       <td className={`p-2 text-right ${Number(l.stock) - compDe(l) < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}`}>{fmtNum(Number(l.stock) - compDe(l))}</td>
                       <td className="p-2 text-right hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right md:whitespace-nowrap">
@@ -478,7 +506,7 @@ function StockInner({ profile }) {
                     </tr>
                     {ajuste && ajuste.loteId === l.id && (
                       <tr className="bg-amber-50">
-                        <td colSpan={8} className="p-3">
+                        <td colSpan={9} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
                             <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-32`} />
                             <input value={ajuste.motivo} onChange={(e) => setAjuste({ ...ajuste, motivo: e.target.value })} placeholder="Motivo del ajuste (obligatorio)" className={`${inputCls} flex-1 min-w-[200px]`} />
@@ -495,7 +523,7 @@ function StockInner({ profile }) {
                     )}
                     {reasig && reasig.loteId === l.id && (
                       <tr className="bg-amber-50">
-                        <td colSpan={8} className="p-3">
+                        <td colSpan={9} className="p-3">
                           <div className="flex gap-2 flex-wrap items-center">
                             <span className="text-sm">Pasar el lote <b className="font-mono">{l.lote}</b> a:</span>
                             <select value={reasig.productoId} onChange={(e) => setReasig({ ...reasig, productoId: e.target.value })} className={`${inputCls} min-w-[280px]`}>
@@ -519,7 +547,7 @@ function StockInner({ profile }) {
                     )}
                     {movs.loteId === l.id && (
                       <tr className="bg-stone-50">
-                        <td colSpan={8} className="p-3">
+                        <td colSpan={9} className="p-3">
                           <table className="w-full text-xs">
                             <tbody>
                               {movs.rows.map((m) => (
@@ -551,6 +579,20 @@ function StockInner({ profile }) {
           </div>
         </div>
       </div>
+      {tip && (
+        <div className="fixed z-50 bg-white border border-stone-300 rounded-lg shadow-lg p-3 text-[12.5px] max-w-[min(360px,calc(100vw-24px))]" style={{ top: Math.min(tip.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 40), left: Math.max(12, tip.x - 360) }} onClick={() => setTip(null)}>
+          <div className="font-semibold text-stone-800 mb-1.5 break-words">Comprometido · {tip.titulo}</div>
+          <div className="space-y-1">
+            {tip.items.map((i, k) => (
+              <div key={k} className="flex justify-between gap-4">
+                <span className="min-w-0 break-words"><b className="font-mono">{i.orden}</b> · {i.cliente}{i.lote === "" ? <span className="text-amber-700"> (sin lote asignado)</span> : i.lote ? <span className="text-stone-400 font-mono"> · {i.lote}</span> : null}</span>
+                <b className="whitespace-nowrap">{fmtNum(i.n)}</b>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between gap-4 border-t border-stone-200 mt-2 pt-1.5 font-semibold"><span>Total</span><span>{fmtNum(tip.total)}</span></div>
+        </div>
+      )}
     </NavBar>
   );
 }
