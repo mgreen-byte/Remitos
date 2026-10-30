@@ -36,6 +36,7 @@ function HistorialInner({ profile }) {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(null);
   const [anulando, setAnulando] = useState(null); // {id, motivo}
+  const [desanulando, setDesanulando] = useState(null); // {id, motivo}  (solo administrador)
   const [reabriendo, setReabriendo] = useState(null); // {id, motivo}  (solo administrador)
   const [msg, setMsg] = useState("");
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
@@ -109,6 +110,14 @@ function HistorialInner({ profile }) {
     if (error) return setMsg(friendlyError(error));
     setAnulando(null);
     setMsg("Remito anulado. El stock fue devuelto a los lotes.");
+    buscar();
+  };
+
+  const desanular = async () => {
+    const { error } = await supabase.rpc("desanular_remito", { p_remito_id: desanulando.id, p_motivo: desanulando.motivo });
+    if (error) return setMsg(friendlyError(error));
+    setDesanulando(null);
+    setMsg("Remito desanulado: volvió a Emitido y el stock se descontó de nuevo de sus lotes.");
     buscar();
   };
 
@@ -594,10 +603,31 @@ function HistorialInner({ profile }) {
                               Anular…
                             </button>
                           )}
+                          {profile.rol === "admin" && r.tipo !== "traslado" && r.estado === "anulado" && desanulando?.id !== r.id && (
+                            <button onClick={() => setDesanulando({ id: r.id, motivo: "" })} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
+                              Desanular…
+                            </button>
+                          )}
                           {profile.rol === "admin" && r.tipo === "traslado" && (r.estado === "recibido" || r.estado === "rechazado") && reabriendo?.id !== r.id && (
                             <button onClick={() => setReabriendo({ id: r.id, motivo: "" })} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
                               Reabrir para corregir…
                             </button>
+                          )}
+                          {desanulando?.id === r.id && (
+                            <div className="w-full border border-amber-300 bg-amber-50 rounded p-3 space-y-2 text-sm">
+                              <div className="font-medium text-amber-900">Desanular el remito {r.punto_venta}-{r.numero}</div>
+                              <input
+                                value={desanulando.motivo}
+                                onChange={(e) => setDesanulando({ ...desanulando, motivo: e.target.value })}
+                                placeholder="Motivo (obligatorio)"
+                                className="w-full border border-stone-300 rounded px-2 py-1.5 bg-white"
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={desanular} className="bg-amber-600 text-white text-sm px-3 py-1.5 rounded">Confirmar</button>
+                                <button onClick={() => setDesanulando(null)} className="text-sm px-3 py-1.5 rounded border border-stone-300">Cancelar</button>
+                              </div>
+                              <div className="text-xs text-stone-500">Vuelve a Emitido y se descuenta otra vez el stock de sus lotes (si no alcanza, no se puede). Después podés usar «Corregir número».</div>
+                            </div>
                           )}
                           {reabriendo?.id === r.id && (
                             <div className="flex-1 min-w-[260px] space-y-2">
