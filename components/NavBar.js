@@ -13,6 +13,7 @@ const ICONOS = {
   stock: "M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8",
   historial: "M12 7v5l3 2M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4",
   ordenes: "M9 4h6l1 2h3v15H5V6h3zM9 12h6M9 16h4",
+  despachos: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   cot: "M6 3h9l4 4v14H6zM9 13l2 2 4-4M9 17h6",
   transportes: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   choferes: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1",

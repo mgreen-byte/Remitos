@@ -41,6 +41,7 @@ function HistorialInner({ profile }) {
   const [calibracion, setCalibracion] = useState(CALIBRACION_DEFAULT);
   const [reimp, setReimp] = useState(null);
   const [editL, setEditL] = useState(null); // corrección de lote de un renglón (solo administrador)
+  const [editN, setEditN] = useState(null); // corrección del número de remito (solo administrador): {id, numero, motivo}
   const [editT, setEditT] = useState(null); // edición de transporte/chofer (solo administrador)
   const [transportistas, setTransportistas] = useState([]);
   const [choferes, setChoferes] = useState([]);
@@ -202,6 +203,14 @@ function HistorialInner({ profile }) {
     setEditL(null);
     await buscar();
     setMsg(`Lote corregido: ${fmtNum(data?.cantidad)} u. del lote ${data?.lote_anterior} → ${data?.lote_nuevo}. El stock se movió entre los dos lotes. Reimprimí el remito.${data?.aviso ? " " + data.aviso : ""}`);
+  };
+  const guardarEditN = async () => {
+    setMsg("");
+    const { data, error } = await supabase.rpc("corregir_numero_remito", { p_remito_id: editN.id, p_numero: editN.numero, p_motivo: editN.motivo });
+    if (error) return setMsg(friendlyError(error));
+    setEditN(null);
+    await buscar();
+    setMsg(`Número corregido: ahora el remito es el N° ${data}. Si ya lo imprimiste con otro número, reimprimilo.`);
   };
   const guardarEditT = async () => {
     setMsg("");
@@ -544,6 +553,21 @@ function HistorialInner({ profile }) {
                             <div className="text-xs text-stone-500">No cambia el stock, los kilos ni la mercadería. Queda registrado quién lo modificó y cómo estaba antes.</div>
                           </div>
                         )}
+                        {editN?.id === r.id && (
+                          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2 text-sm mb-2">
+                            <div className="font-medium text-amber-900">Corregir el número del remito {r.punto_venta}-{r.numero}</div>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <span className="text-stone-600">Número real del formulario:</span>
+                              <input value={editN.numero} onChange={(e) => setEditN({ ...editN, numero: e.target.value.replace(/\D/g, "").slice(0, 8) })} onBlur={() => editN.numero && setEditN({ ...editN, numero: editN.numero.padStart(8, "0") })} inputMode="numeric" placeholder="00002503" className="border border-stone-300 rounded px-2 py-1.5 w-32 font-mono" />
+                              <input value={editN.motivo} onChange={(e) => setEditN({ ...editN, motivo: e.target.value })} placeholder="Motivo (obligatorio)" className="border border-stone-300 rounded px-2 py-1.5 flex-1 min-w-[200px]" />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={guardarEditN} disabled={!editN.numero || editN.motivo.trim().length < 3} className="bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-50">Guardar número</button>
+                              <button onClick={() => setEditN(null)} className="text-stone-600 px-2">Cancelar</button>
+                            </div>
+                            <div className="text-xs text-stone-500">El número viejo queda libre. No cambia el stock ni la mercadería; queda registrado quién lo corrigió y cómo estaba. Con el control de talonarios activo, el número tiene que estar dentro de un talonario de la planta.</div>
+                          </div>
+                        )}
                         <div className="flex gap-2 items-start flex-wrap">
                           {!soloLectura && (
                             <button onClick={() => reimprimir(r)} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded">
@@ -553,6 +577,11 @@ function HistorialInner({ profile }) {
                           {profile.rol === "admin" && r.estado !== "anulado" && editT?.id !== r.id && (
                             <button onClick={() => abrirEditT(r)} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
                               Corregir transporte / chofer
+                            </button>
+                          )}
+                          {profile.rol === "admin" && r.estado !== "anulado" && editN?.id !== r.id && (
+                            <button onClick={() => setEditN({ id: r.id, numero: "", motivo: "" })} className="border border-amber-400 text-amber-800 text-sm px-3 py-1.5 rounded">
+                              Corregir número
                             </button>
                           )}
                           {profile.rol === "admin" && r.estado !== "anulado" && (
