@@ -85,16 +85,19 @@ function DespachosInner({ profile }) {
   const cargar = useCallback(async () => {
     setCargando(true); setError("");
     try {
-      const [f, ls, os] = await Promise.all([
+      const [f, ls, os, prods] = await Promise.all([
         cargarDespachos(supabase, { desde, hasta, plantaId }),
         traerTodo(() => {
-          let q = supabase.from("v_ordenes_lineas_saldo").select("id, orden_id, orden_numero, cliente, planta_id, cantidad, remitido, saldo, orden_estado, orden_modalidad").eq("orden_estado", "activa").neq("orden_modalidad", "traslado").order("id");
+          let q = supabase.from("v_ordenes_lineas_saldo").select("id, orden_id, orden_numero, producto_id, cliente, planta_id, cantidad, remitido, saldo, orden_estado, orden_modalidad").eq("orden_estado", "activa").neq("orden_modalidad", "traslado").order("id");
           if (plantaId) q = q.eq("planta_id", plantaId);
           return q;
         }),
         traerTodo(() => supabase.from("ordenes_carga").select("id, numero, fecha_carga, estado, modalidad").eq("estado", "activa").neq("modalidad", "traslado").order("id")),
+        traerTodo(() => supabase.from("productos").select("id").eq("grupo", "semilla").eq("categoria", "soja").order("id")),
       ]);
-      setFilas(f); setLineas(ls); setOrdenes(os);
+      // Por ahora el tablero solo refleja SEMILLA de SOJA.
+      const ids = new Set(prods.map((p) => p.id));
+      setFilas(f.filter((x) => x.semillaSoja)); setLineas(ls.filter((l) => l.producto_id && ids.has(l.producto_id))); setOrdenes(os);
     } catch (e) {
       setError(friendlyError(e));
     }
@@ -163,7 +166,7 @@ function DespachosInner({ profile }) {
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-5 min-w-0">
         <div>
           <h1 className="text-[22px] font-semibold">Despachos</h1>
-          <p className="text-[13px] text-stone-500 mt-1">Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
+          <p className="text-[13px] text-stone-500 mt-1">Solo semilla de soja. Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
         </div>
 
         <div className="space-y-2">
