@@ -132,7 +132,7 @@ function HistorialInner({ profile }) {
   const bajarPdf = async (r) => {
     setMsg("");
     try {
-      await descargarPdfDeRemito(supabase, r, { leyenda: "REIMPRESIÓN DIGITAL" });
+      await descargarPdfDeRemito(supabase, r);
     } catch (e) {
       setMsg(e.message || friendlyError(e));
     }
