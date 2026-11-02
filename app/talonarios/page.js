@@ -9,7 +9,7 @@ import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 const n8 = (n) => String(n).padStart(8, "0");
-const MOTIVOS = { danado: "Dañado", extraviado: "Extraviado", otro: "Anulado en papel / otro" };
+const MOTIVOS = { danado: "Dañado", extraviado: "Extraviado", otro: "Anulado en papel / otro", manual: "Emitido a mano (sin sistema)" };
 
 export default function TalonariosPage() {
   return <AuthGuard>{(profile) => <Inner profile={profile} />}</AuthGuard>;
@@ -272,6 +272,12 @@ function Inner({ profile }) {
               {abierto && panel.modo === "huecos" && (
                 <div className="space-y-2 border-t border-stone-100 pt-3">
                   {panel.lista.length === 0 && <div className="text-sm text-stone-400">No quedan números sin justificar.</div>}
+                  {panel.lista.length > 1 && (
+                    <div className="flex gap-3 text-[12.5px]">
+                      <button type="button" className="underline text-emerald-800" onClick={() => setPanel({ ...panel, nums: [...panel.lista] })}>Marcar todos</button>
+                      <button type="button" className="underline text-stone-500" onClick={() => setPanel({ ...panel, nums: [] })}>Ninguno</button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     {panel.lista.map((n) => (
                       <label key={n} className={`px-2 py-1 rounded border text-[12.5px] cursor-pointer font-mono ${panel.nums.includes(n) ? "bg-emerald-700 text-white border-emerald-700" : "bg-white border-stone-300"}`}>
@@ -287,7 +293,7 @@ function Inner({ profile }) {
                           <option key={k} value={k}>{v}</option>
                         ))}
                       </select>
-                      <input value={panel.detalle} onChange={(e) => setPanel({ ...panel, detalle: e.target.value })} placeholder={panel.motivo === "otro" ? "Explicá el motivo (obligatorio)" : "Detalle (opcional)"} className={`${inputCls} flex-1 min-w-[180px]`} />
+                      <input value={panel.detalle} onChange={(e) => setPanel({ ...panel, detalle: e.target.value })} placeholder={panel.motivo === "otro" ? "Explicá el motivo (obligatorio)" : panel.motivo === "manual" ? "Obligatorio: ej. sin luz · cliente / orden de carga" : "Detalle (opcional)"} className={`${inputCls} flex-1 min-w-[180px]`} />
                       <button disabled={!panel.nums.length} onClick={justificar} className="btn-primario">Justificar {panel.nums.length || ""}</button>
                     </div>
                   )}
