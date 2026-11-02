@@ -24,6 +24,7 @@ function StockInner({ profile }) {
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [inicialPorLote, setInicialPorLote] = useState({}); // lote_id -> suma de ingresos, ajustes positivos y traslados recibidos
+  const [tipR, setTipR] = useState(null); // cartel flotante del remito de un movimiento: {x, y, titulo, lineas}
   const [tip, setTip] = useState(null); // cartel flotante de Comprometido: {x, y, titulo, items, total}
   const [ocLineas, setOcLineas] = useState([]); // líneas de órdenes activas con saldo (comprometido)
   const [verAgotados, setVerAgotados] = useState(false);
@@ -161,7 +162,7 @@ function StockInner({ profile }) {
   const cargarMovs = async (loteId) => {
     const { data } = await supabase
       .from("movimientos_stock")
-      .select("*, remito:remitos(punto_venta, numero)")
+      .select("*, remito:remitos(punto_venta, numero, tipo, estado, cliente_nombre, orden_carga, orden_salida, origen:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre))")
       .eq("lote_id", loteId)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -193,6 +194,28 @@ function StockInner({ profile }) {
     const r = e.currentTarget.getBoundingClientRect();
     const t = { x: Math.min(r.right, window.innerWidth - 12), y: r.bottom + 6, titulo, items, total: items.reduce((a, i) => a + i.n, 0) };
     setTip((prev) => (fijar && prev && prev.titulo === titulo ? null : t));
+  };
+  const lineasRemito = (rm) => {
+    if (!rm) return [];
+    const out = [];
+    if (rm.tipo === "traslado") {
+      out.push(["Traslado entre plantas", ""]);
+      out.push(["Origen", rm.origen?.nombre || "—"]);
+      out.push(["Destino", rm.destino?.nombre || "—"]);
+      if (rm.orden_carga) out.push(["Orden de traslado", rm.orden_carga + (rm.orden_salida ? ` · salida ${rm.orden_salida}` : "")]);
+    } else {
+      out.push(["Cliente", rm.cliente_nombre || "—"]);
+      out.push(["Orden de carga", rm.orden_carga || "sin orden"]);
+    }
+    if (rm.estado === "anulado") out.push(["Estado", "Remito anulado"]);
+    return out;
+  };
+  const mostrarTipR = (e, m, fijar) => {
+    if (!m.remito) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const titulo = `Remito ${m.remito.punto_venta}-${m.remito.numero}`;
+    const t = { x: Math.min(r.right, window.innerWidth - 12), y: r.bottom + 6, titulo, lineas: lineasRemito(m.remito) };
+    setTipR((prev) => (fijar && prev && prev.titulo === titulo ? null : t));
   };
   const q = norm(busqueda);
   const visibles = lotes
@@ -411,7 +434,7 @@ function StockInner({ profile }) {
                                   <span className="uppercase text-stone-600">{String(m.tipo).replace("traslado_", "traslado ")}</span>
                                   <span><b className={m.cantidad < 0 ? "text-red-600" : "text-emerald-700"}>{fmtNum(m.cantidad)}</b> <span className="text-stone-500">→ {fmtNum(m.stock_resultante)}</span></span>
                                 </div>
-                                <div className="text-stone-500">{m.remito ? `Remito ${m.remito.punto_venta}-${m.remito.numero}` : m.motivo || ""}</div>
+                                <div className="text-stone-500">{m.remito ? <button type="button" className="underline decoration-dotted" onClick={(e) => mostrarTipR(e, m, true)}>{`Remito ${m.remito.punto_venta}-${m.remito.numero}`}</button> : m.motivo || ""}</div>
                                 <div className="text-stone-400">{new Date(m.created_at).toLocaleString("es-AR")} · {m.usuario_nombre}</div>
                                 {profile.rol === "admin" && !m.remito_id && ["ingreso", "ajuste"].includes(m.tipo) && (
                                   <button onClick={() => eliminarMov(m, l.id)} className="text-red-700 py-1">Eliminar movimiento</button>
@@ -556,7 +579,7 @@ function StockInner({ profile }) {
                                   <td className="pr-2 uppercase">{String(m.tipo).replace("traslado_", "traslado ")}</td>
                                   <td className={`pr-2 text-right font-semibold ${m.cantidad < 0 ? "text-red-600" : "text-emerald-700"}`}>{fmtNum(m.cantidad)}</td>
                                   <td className="pr-2 text-right text-stone-500">→ {fmtNum(m.stock_resultante)}</td>
-                                  <td className="pr-2">{m.remito ? `Remito ${m.remito.punto_venta}-${m.remito.numero}` : m.motivo || ""}</td>
+                                  <td className={`pr-2 ${m.remito ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTipR(e, m)} onMouseLeave={() => setTipR(null)}>{m.remito ? <span className="underline decoration-dotted">{`Remito ${m.remito.punto_venta}-${m.remito.numero}`}</span> : m.motivo || ""}</td>
                                   <td className="text-stone-400">{m.usuario_nombre}</td>
                                   <td className="pl-2 text-right">
                                     {profile.rol === "admin" && !m.remito_id && ["ingreso", "ajuste"].includes(m.tipo) && (
@@ -579,6 +602,16 @@ function StockInner({ profile }) {
           </div>
         </div>
       </div>
+      {tipR && (
+        <div className="fixed z-50 bg-white border border-stone-300 rounded-lg shadow-lg p-3 text-[12.5px] max-w-[min(360px,calc(100vw-24px))]" style={{ top: Math.min(tipR.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 40), left: Math.max(12, tipR.x - 360) }} onClick={() => setTipR(null)}>
+          <div className="font-semibold text-stone-800 mb-1.5 break-words">{tipR.titulo}</div>
+          <div className="space-y-1">
+            {tipR.lineas.map(([k, v], i) => (
+              <div key={i} className="flex gap-3"><span className="text-stone-500 whitespace-nowrap">{k}</span><b className="min-w-0 break-words">{v}</b></div>
+            ))}
+          </div>
+        </div>
+      )}
       {tip && (
         <div className="fixed z-50 bg-white border border-stone-300 rounded-lg shadow-lg p-3 text-[12.5px] max-w-[min(360px,calc(100vw-24px))]" style={{ top: Math.min(tip.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 40), left: Math.max(12, tip.x - 360) }} onClick={() => setTip(null)}>
           <div className="font-semibold text-stone-800 mb-1.5 break-words">Comprometido · {tip.titulo}</div>
