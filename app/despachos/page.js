@@ -5,7 +5,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
-import { cargarDespachos, traerTodo } from "@/lib/despachos";
+import { cargarDespachos, traerTodo, esBigBag } from "@/lib/despachos";
 
 export default function DespachosPage() {
   return <AuthGuard roles={["admin", "logistica", "consulta"]}>{(profile) => <DespachosInner profile={profile} />}</AuthGuard>;
@@ -93,10 +93,10 @@ function DespachosInner({ profile }) {
           return q;
         }),
         traerTodo(() => supabase.from("ordenes_carga").select("id, numero, fecha_carga, estado, modalidad").eq("estado", "activa").neq("modalidad", "traslado").order("id")),
-        traerTodo(() => supabase.from("productos").select("id").eq("grupo", "semilla").eq("categoria", "soja").order("id")),
+        traerTodo(() => supabase.from("productos").select("id, presentacion").eq("grupo", "semilla").eq("categoria", "soja").order("id")),
       ]);
-      // Por ahora el tablero solo refleja SEMILLA de SOJA.
-      const ids = new Set(prods.map((p) => p.id));
+      // Por ahora el tablero solo refleja SEMILLA de SOJA en BIG BAG.
+      const ids = new Set(prods.filter((p) => esBigBag(p.presentacion)).map((p) => p.id));
       setFilas(f.filter((x) => x.semillaSoja)); setLineas(ls.filter((l) => l.producto_id && ids.has(l.producto_id))); setOrdenes(os);
     } catch (e) {
       setError(friendlyError(e));
@@ -166,7 +166,7 @@ function DespachosInner({ profile }) {
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-5 min-w-0">
         <div>
           <h1 className="text-[22px] font-semibold">Despachos</h1>
-          <p className="text-[13px] text-stone-500 mt-1">Solo semilla de soja. Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
+          <p className="text-[13px] text-stone-500 mt-1">Solo semilla de soja en big bag. Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
         </div>
 
         <div className="space-y-2">
