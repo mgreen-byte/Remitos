@@ -3,6 +3,7 @@
 import Field from "@/components/Field";
 import GuiaFormulario from "@/components/GuiaFormulario";
 import { FIELD_COORDS, FUENTE_REMITO } from "@/lib/fieldCoords";
+import { QR_COORDS, normalizarGps, qrPath } from "@/lib/qr";
 import { fmtNum } from "@/lib/util";
 
 // CUIT / CUIL / DNI se imprimen solo con números, sin guiones ni puntos.
@@ -81,6 +82,16 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
       {F("totalUnidades", fmtNum(d.totalUnidades), { align: "center", uppercase: false })}
       {F("totalKgs", fmtNum(d.totalKgs), { align: "center", uppercase: false })}
       {F("observaciones", d.observaciones)}
+      {(() => {
+        const link = normalizarGps(d.gps);
+        if (!link) return null;
+        const qr = qrPath(link);
+        return (
+          <svg viewBox={`0 0 ${qr.n} ${qr.n}`} shapeRendering="crispEdges" style={{ position: "absolute", left: `${QR_COORDS.left + offset.offsetX}mm`, top: `${QR_COORDS.top + offset.offsetY}mm`, width: `${QR_COORDS.size}mm`, height: `${QR_COORDS.size}mm` }}>
+            <path d={qr.d} fill="#000" />
+          </svg>
+        );
+      })()}
     </div>
   );
 }

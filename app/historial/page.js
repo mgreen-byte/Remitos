@@ -1,5 +1,6 @@
 "use client";
 
+import { gpsDeRemito } from "@/lib/qr";
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { Fragment, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -89,7 +90,7 @@ function HistorialInner({ profile }) {
     }
     let q = supabase
       .from("remitos")
-      .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre), remito_items(*)")
+      .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre, gps), remito_items(*, linea:ordenes_carga_lineas(gps))")
       .order("created_at", { ascending: false })
       .limit(300);
     if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
@@ -252,6 +253,7 @@ function HistorialInner({ profile }) {
       totalKgs: r.total_kgs,
       observaciones: observacionesImpresas({ cot: r.cot, observaciones: r.observaciones }),
       ordenCarga: ordenCargaImpresa(r.orden_carga, r.orden_salida),
+      gps: gpsDeRemito(r),
     });
     setTimeout(() => window.print(), 200);
   };

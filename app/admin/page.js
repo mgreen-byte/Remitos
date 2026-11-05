@@ -61,6 +61,7 @@ function AdminInner({ profile }) {
               { key: "prefijo", label: "Prefijo (órdenes de traslado)", type: "text", upper: true, placeholder: "STA" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "domicilio_fiscal", label: "Dirección fiscal (encabezado del remito PDF)", type: "text", placeholder: "Calle y N° | (CP) Localidad | Provincia" },
+              { key: "gps", label: "Ubicación (link de Google Maps) · QR de los traslados hacia esta planta", type: "text", placeholder: "https://maps.app.goo.gl/…" },
               { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
               { key: "empresa", label: "Empresa (formulario)", type: "select", nullable: true, options: Object.entries(EMPRESAS_ETIQUETA).map(([value, label]) => ({ value, label })) },
               { key: "activa", label: "Activa", type: "bool" },

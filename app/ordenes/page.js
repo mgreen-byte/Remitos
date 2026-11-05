@@ -9,6 +9,7 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, friendlyError, PROVINCIAS, norm, up } from "@/lib/util";
 import { parseOrdenDeCarga } from "@/lib/parseOrdenDeCarga";
+import { normalizarGps } from "@/lib/qr";
 import { armarLineas, lineasParaGuardar } from "@/lib/ordenesCarga";
 
 const inp = "w-full border border-stone-300 rounded-md px-3 py-2 text-[14px] bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 disabled:bg-stone-100 disabled:text-stone-500";
@@ -17,7 +18,7 @@ const btn = "bg-emerald-700 hover:bg-emerald-800 text-white text-[13.5px] font-m
 const btn2 = "border border-stone-300 text-stone-700 text-[13px] px-3 py-1.5 rounded-md hover:bg-stone-50";
 
 const LINEA_VACIA = {
-  planta_id: "", cliente: "", cuit: "", contacto: "", telefono: "", domicilio: "", provincia: "", entregar_en: "", ov: "",
+  planta_id: "", cliente: "", cuit: "", contacto: "", telefono: "", domicilio: "", provincia: "", entregar_en: "", gps: "", ov: "",
   producto_id: "", producto_texto: "", presentacion: "", lote_texto: "", cantidad: "", kilos: "",
 };
 
@@ -396,7 +397,7 @@ function OrdenesInner({ profile }) {
       tieneRemitos: Number(l.remitido) > 0,
       data: {
         planta_id: l.planta_id, cliente: l.cliente || "", cuit: l.cuit || "", contacto: l.contacto || "", telefono: l.telefono || "",
-        domicilio: l.domicilio || "", provincia: l.provincia || "", entregar_en: l.entregar_en || "", ov: l.ov || "",
+        domicilio: l.domicilio || "", provincia: l.provincia || "", entregar_en: l.entregar_en || "", gps: l.gps || "", ov: l.ov || "",
         producto_id: l.producto_id || "", producto_texto: l.producto_texto || "", presentacion: l.presentacion || "",
         lote_texto: l.lote_texto || "", cantidad: String(l.cantidad), kilos: l.kilos ?? "",
       },
@@ -423,12 +424,14 @@ function OrdenesInner({ profile }) {
     const prod = productos.find((p) => p.id === d.producto_id);
     const cantidad = Number(String(d.cantidad).replace(",", "."));
     const kilos = prod?.kg_por_unidad && cantidad ? Math.round(cantidad * Number(prod.kg_por_unidad) * 1000) / 1000 : d.kilos === "" ? null : Number(d.kilos);
-    const payload = { ...d, cantidad, kilos, producto_id: d.producto_id || null, cliente: up(d.cliente), provincia: d.provincia || "" };
+    const gps = normalizarGps(d.gps);
+    const gpsInvalido = !!String(d.gps || "").trim() && !gps; // no frena el guardado: la línea se guarda sin ubicación
+    const payload = { ...d, gps, cantidad, kilos, producto_id: d.producto_id || null, cliente: up(d.cliente), provincia: d.provincia || "" };
     const { error } = edit.lineaId
       ? await supabase.rpc("guardar_orden_linea", { p_linea_id: edit.lineaId, p_data: payload })
       : await supabase.rpc("agregar_orden_linea", { p_orden_id: edit.ordenId, p_data: payload });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
-    setMsg({ tipo: "ok", texto: edit.lineaId ? "Línea guardada." : "Línea agregada." });
+    setMsg({ tipo: "ok", texto: (edit.lineaId ? "Línea guardada." : "Línea agregada.") + (gpsInvalido ? " La ubicación no se guardó: tiene que ser un link de Google Maps (https://maps.app.goo.gl/…) o coordenadas." : "") });
     const id = edit.ordenId;
     setEdit(null);
     await cargar();
@@ -1047,6 +1050,10 @@ function OrdenesInner({ profile }) {
                             <div>
                               <label className={lab}>Entregar en</label>
                               <input value={edit.data.entregar_en} onChange={(e) => setD({ entregar_en: e.target.value })} className={inp} />
+                            </div>
+                            <div>
+                              <label className={lab}>Ubicación (link de Maps) · sale como QR en el remito</label>
+                              <input value={edit.data.gps} onChange={(e) => setD({ gps: e.target.value })} placeholder="https://maps.app.goo.gl/…" className={inp} />
                             </div>
                             <div>
                               <label className={lab}>Contacto</label>

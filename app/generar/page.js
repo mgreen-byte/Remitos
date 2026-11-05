@@ -2,6 +2,7 @@
 
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { EMPRESA_FISCAL } from "@/lib/remitoPdf";
+import { gpsDeRemito, normalizarGps } from "@/lib/qr";
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -25,6 +26,7 @@ function remitoVacio() {
     domicilio: "",
     iva: IVA_DEFAULT[0],
     entregarEn: "",
+    gps: "",
     transportistaId: "",
     transportista: "",
     transpCuit: "",
@@ -340,6 +342,7 @@ function GenerarInner({ profile }) {
       domicilio: up(c.domicilio),
       provincia: c.provincia || r.provincia,
       entregarEn: up(c.entregarEn),
+      gps: c.gps || "",
       observaciones: up(obs),
     }));
     const nuevos = c.items.map((oc) => {
@@ -404,7 +407,7 @@ function GenerarInner({ profile }) {
     const m = new Map();
     for (const l of ocDb) {
       const k = `${l.orden_id}||${norm(l.cliente)}`;
-      if (!m.has(k)) m.set(k, { clave: k, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, items: [], total: 0 });
+      if (!m.has(k)) m.set(k, { clave: k, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, gps: l.gps, items: [], total: 0 });
       const g = m.get(k);
       g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
       g.total += Number(l.saldo);
@@ -563,6 +566,7 @@ function GenerarInner({ profile }) {
       domicilio: d?.domicilio ? up(d.domicilio) : r.domicilio,
       // ENTREGAR EN: el nombre de la planta de destino (se puede completar a mano).
       entregarEn: d?.nombre ? up(d.nombre) : "",
+      gps: d?.gps || "",
     }));
   };
 
@@ -574,6 +578,7 @@ function GenerarInner({ profile }) {
     domicilio: remito.domicilio,
     iva: remito.iva,
     entregarEn: remito.entregarEn,
+    gps: remito.gps,
     transportista: remito.transportista,
     transpCuit: remito.transpCuit,
     transpDomicilio: remito.transpDomicilio,
@@ -727,9 +732,9 @@ function GenerarInner({ profile }) {
   const bajarPdf = async (id) => {
     setError("");
     try {
-      const { data: r, error: e1 } = await supabase.from("remitos").select("*, remito_items(*)").eq("id", id).single();
+      const { data: r, error: e1 } = await supabase.from("remitos").select("*, destino:plantas!planta_destino_id(gps), remito_items(*, linea:ordenes_carga_lineas(gps))").eq("id", id).single();
       if (e1) throw e1;
-      await descargarPdfDeRemito(supabase, r);
+      await descargarPdfDeRemito(supabase, r, { gps: gpsDeRemito(r) || normalizarGps(remito.gps) });
     } catch (e) {
       setError(`El remito quedó registrado, pero no se pudo armar el PDF: ${e.message || friendlyError(e)}. Descargalo desde Historial cuando lo corrijas.`);
     }
@@ -979,6 +984,13 @@ function GenerarInner({ profile }) {
                 <label className={lab}>Entregar en</label>
                 <input value={remito.entregarEn} onChange={(e) => setRemito((r) => ({ ...r, entregarEn: up(e.target.value) }))} className={inp} />
               </div>
+              {(
+                <div className="md:col-span-3">
+                  <label className={lab}>Ubicación de entrega (link de Maps) · sale como QR en el remito{esTraslado ? " · viene de la planta de destino" : ""}</label>
+                  <input value={remito.gps || ""} onChange={(e) => setRemito((r) => ({ ...r, gps: e.target.value }))} placeholder="https://maps.app.goo.gl/… (opcional)" className={inp} />
+                  {remito.gps && !normalizarGps(remito.gps) && <div className="text-[12px] text-amber-700 mt-1">No parece un link de Google Maps: no se imprime el QR.</div>}
+                </div>
+              )}
               {destPorGuardar && (
                 <label className="md:col-span-3 flex items-center gap-2 text-[13px] text-stone-700">
                   <input type="checkbox" checked={guardarDest} onChange={(e) => setGuardarDest(e.target.checked)} />
