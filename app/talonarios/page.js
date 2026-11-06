@@ -6,6 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
+import TalonariosAuto from "@/components/TalonariosAuto";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 const n8 = (n) => String(n).padStart(8, "0");
@@ -154,6 +155,8 @@ function Inner({ profile }) {
         )}
 
         {msg.texto && <div className={`text-sm rounded p-3 border ${msg.tipo === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-700"}`}>{msg.texto}</div>}
+
+        <TalonariosAuto esAdmin={esAdmin} plantas={plantas} />
 
         {nuevo && (
           <form onSubmit={crear} className="panel p-5 space-y-3">

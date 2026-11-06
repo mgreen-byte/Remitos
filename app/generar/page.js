@@ -122,6 +122,8 @@ function GenerarInner({ profile }) {
   const TODOS = ["1", "2", "3", "4", "5", "6"];
   const P = (id) => ({ abierto: abiertos.includes(id), onToggle: () => setAbiertos((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id])) });
   const [sugerido, setSugerido] = useState("");
+  const [auto, setAuto] = useState(null); // info_autoimpresion: talonario de autoimpresión de la planta (PDF, número automático)
+  const modoAuto = !!auto?.activo;
   const [tal, setTal] = useState(null); // respuesta de siguiente_numero cuando el control de talonarios está activo
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
@@ -187,6 +189,9 @@ function GenerarInner({ profile }) {
   const cargarSugerido = async (pv) => {
     setSugerido("");
     setTal(null);
+    const { data: ai } = await supabase.rpc("info_autoimpresion", { p_planta: esAdmin ? plantaId || null : null });
+    setAuto(ai || null);
+    if (ai?.activo) return;
     if (!pv) return;
     const { data: sn } = await supabase.rpc("siguiente_numero", { p_planta: esAdmin ? plantaId || null : null });
     if (sn?.control) {
@@ -620,7 +625,8 @@ function GenerarInner({ profile }) {
 
   const validar = () => {
     if (!planta) return "No hay una planta asignada. Elegí una planta (o pedile al administrador que te asigne una).";
-    if (!num8(remito.numero) || /^0+$/.test(num8(remito.numero))) return "Falta el número de remito (el que viene impreso en la hoja).";
+    if (modoAuto && !auto.leyenda_ok) return "Falta cargar la leyenda del CAI en el talonario de autoimpresión (Talonarios → Autoimpresión). Pedíselo al administrador.";
+    if (!modoAuto && (!num8(remito.numero) || /^0+$/.test(num8(remito.numero)))) return "Falta el número de remito (el que viene impreso en la hoja).";
     if (esTraslado && sinEmpresa) return "Tu planta no tiene empresa asignada (MS Technologies o Stine Seed). Pedile al administrador que la complete en Administración → Plantas.";
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
@@ -671,7 +677,8 @@ function GenerarInner({ profile }) {
     return "";
   };
 
-  const emitir = async (modo = "papel") => {
+  const emitir = async (modoPedido = "papel") => {
+    const modo = modoAuto ? "pdf" : modoPedido; // con autoimpresión el remito sale siempre en PDF
     setError("");
     const msg = validar();
     if (msg) {
@@ -688,7 +695,7 @@ function GenerarInner({ profile }) {
       const pasa = Object.values(porLinea).filter((x) => x.cant > x.saldo).length;
       if (pasa && !window.confirm(`Estás remitiendo más de lo que dice la orden de carga en ${pasa} renglón(es). ¿Registrar de todas formas?`)) return;
     }
-    if (modo === "pdf") {
+    if (modo === "pdf" && !modoAuto) {
       // Se verifica ANTES de registrar, para no gastar un número si después no se puede armar el PDF.
       const pl = planta || planta0;
       if (!EMPRESA_FISCAL[pl?.empresa]) return setError("La planta no tiene empresa asignada (MS Technologies o Stine Seed): completá el campo Empresa en Administración → Plantas.");
@@ -699,8 +706,8 @@ function GenerarInner({ profile }) {
     }
     setSaving(true);
     const payload = {
-      punto_venta: puntoVenta,
-      numero: num8(remito.numero),
+      punto_venta: modoAuto ? auto.punto_venta : puntoVenta,
+      numero: modoAuto ? "" : num8(remito.numero),
       fecha: remito.fecha,
       modalidad,
       planta_id: esAdmin ? plantaId : undefined,
@@ -762,13 +769,20 @@ function GenerarInner({ profile }) {
       const { data: rs } = await supabase.from("remitos").select("orden_salida").eq("id", data).maybeSingle();
       if (rs?.orden_salida) setSalidaOrden(rs.orden_salida);
     }
-    setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero), pdf: modo === "pdf" });
+    let pvEmitido = puntoVenta;
+    let numEmitido = num8(remito.numero);
+    if (modoAuto) {
+      const { data: rr } = await supabase.from("remitos").select("punto_venta, numero").eq("id", data).maybeSingle();
+      pvEmitido = rr?.punto_venta || auto.punto_venta;
+      numEmitido = rr?.numero || "";
+    }
+    setEmitido({ id: data, pv: pvEmitido, numero: numEmitido, pdf: modo === "pdf" });
     cargarLotes(plantaId);
     if (modoPallets) cargarPallets(plantaId || planta0?.id);
     cargarSugerido(puntoVenta);
     cargarOcDb(plantaId);
     if (modo === "pdf") {
-      const { error: eD } = await supabase.rpc("marcar_remito_digital", { p_remito_id: data });
+      const { error: eD } = modoAuto ? { error: null } : await supabase.rpc("marcar_remito_digital", { p_remito_id: data });
       if (eD) return setError(`El remito quedó registrado, pero no se pudo marcar como digital: ${friendlyError(eD)}`);
       await bajarPdf(data);
       return;
@@ -948,14 +962,26 @@ function GenerarInner({ profile }) {
             )}
           </Paso>
 
-          <Paso n="2" {...P("2")} resumen={`${puntoVenta}${remito.numero ? "-" + num8(remito.numero) : ""} · ${fmtFecha(remito.fecha)}`} titulo="Datos del remito" ayuda="El número es el que viene impreso en la hoja del talonario.">
+          <Paso n="2" {...P("2")} resumen={modoAuto ? `${auto.punto_venta}-${auto.siguiente} (automático) · ${fmtFecha(remito.fecha)}` : `${puntoVenta}${remito.numero ? "-" + num8(remito.numero) : ""} · ${fmtFecha(remito.fecha)}`} titulo="Datos del remito" ayuda="El número es el que viene impreso en la hoja del talonario.">
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label className={lab}>Punto de venta</label>
-                <input value={puntoVenta} readOnly className={inp} />
+                <input value={modoAuto ? auto.punto_venta : puntoVenta} readOnly className={inp} />
               </div>
+              {modoAuto ? (
               <div>
                 <label className={lab}>Número de remito</label>
+                <input value={`${auto.siguiente} (automático)`} readOnly className={`${inp} bg-stone-50 text-stone-600`} />
+                <div className={`text-[12px] mt-1 ${auto.dias_vencimiento <= 15 || !auto.leyenda_ok ? "text-amber-700" : "text-stone-500"}`}>
+                  Autoimpresión · CAI {auto.cai} · vence {fmtFecha(auto.cai_vencimiento)}
+                  {auto.dias_vencimiento <= 15 && ` · el CAI vence en ${auto.dias_vencimiento} día(s): pedí el nuevo`}
+                  {!auto.leyenda_ok && " · falta la leyenda del CAI (Talonarios)"}
+                </div>
+              </div>
+              ) : (
+              <div>
+                <label className={lab}>Número de remito</label>
+                {auto?.vencido && <div className="text-[12px] text-red-600 mb-1">El CAI de autoimpresión venció el {fmtFecha(auto.cai_vencimiento)}.</div>}
                 <input
                   value={remito.numero}
                   onChange={(e) => setRemito((r) => ({ ...r, numero: e.target.value.replace(/\D/g, "").slice(0, 8) }))}
@@ -979,6 +1005,7 @@ function GenerarInner({ profile }) {
                   </button>
                 )}
               </div>
+              )}
               <div>
                 <label className={lab}>Fecha</label>
                 <input type="date" value={remito.fecha} onChange={(e) => setRemito((r) => ({ ...r, fecha: e.target.value }))} className={inp} />
@@ -1455,7 +1482,7 @@ function GenerarInner({ profile }) {
           <div className="no-print flex items-end justify-between flex-wrap gap-3 pt-2">
             <div>
               <h2 className="text-[17px] font-semibold text-stone-900">Vista previa</h2>
-              <p className="text-[13px] text-stone-500">Así se imprime sobre el remito preimpreso. Revisá los datos antes de registrar.</p>
+              <p className="text-[13px] text-stone-500">{modoAuto ? "Es una referencia de los datos: al registrar se arma el PDF completo con todas sus copias, sin formulario preimpreso." : "Así se imprime sobre el remito preimpreso. Revisá los datos antes de registrar."}</p>
               <label className="flex items-center gap-2 mt-2 text-[13px] text-stone-600 cursor-pointer select-none">
                 <input type="checkbox" checked={mostrarGuia} onChange={(e) => setMostrarGuia(e.target.checked)} className="accent-emerald-700" />
                 Mostrar el boceto del formulario de fondo (no se imprime)
@@ -1470,14 +1497,20 @@ function GenerarInner({ profile }) {
                 <button onClick={() => { setMostrarPreview(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn-secundario">
                   Volver a editar
                 </button>
-                {esAdmin && (
+                {modoAuto ? (
+                  <button onClick={() => emitir("pdf")} disabled={saving} className="btn-primario">
+                    {saving ? "Registrando…" : "Registrar y descargar PDF"}
+                  </button>
+                ) : esAdmin && (
                   <button onClick={() => emitir("pdf")} disabled={saving} className="btn-secundario" title="Registra el remito y descarga el PDF digital: ese número del talonario queda usado y el formulario preimpreso no se usa.">
                     Registrar sin papel (PDF)
                   </button>
                 )}
+                {!modoAuto && (
                 <button onClick={() => emitir()} disabled={saving} className="btn-primario">
                   {saving ? "Registrando…" : "Registrar e imprimir"}
                 </button>
+                )}
               </div>
             )}
           </div>
