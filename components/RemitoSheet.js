@@ -3,7 +3,7 @@
 import Field from "@/components/Field";
 import GuiaFormulario from "@/components/GuiaFormulario";
 import { FIELD_COORDS, FUENTE_REMITO } from "@/lib/fieldCoords";
-import { QR_COORDS, normalizarGps, qrPath } from "@/lib/qr";
+import { QR_COORDS, QR_LEYENDA, normalizarGps, qrPath } from "@/lib/qr";
 import { fmtNum } from "@/lib/util";
 
 // CUIT / CUIL / DNI se imprimen solo con números, sin guiones ni puntos.
@@ -87,9 +87,14 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
         if (!link) return null;
         const qr = qrPath(link);
         return (
-          <svg viewBox={`0 0 ${qr.n} ${qr.n}`} shapeRendering="crispEdges" style={{ position: "absolute", left: `${QR_COORDS.left + offset.offsetX}mm`, top: `${QR_COORDS.top + offset.offsetY}mm`, width: `${QR_COORDS.size}mm`, height: `${QR_COORDS.size}mm` }}>
-            <path d={qr.d} fill="#000" />
-          </svg>
+          <>
+            <svg viewBox={`0 0 ${qr.n} ${qr.n}`} shapeRendering="crispEdges" style={{ position: "absolute", left: `${QR_COORDS.left + offset.offsetX}mm`, top: `${QR_COORDS.top + offset.offsetY}mm`, width: `${QR_COORDS.size}mm`, height: `${QR_COORDS.size}mm` }}>
+              <path d={qr.d} fill="#000" />
+            </svg>
+            <div style={{ position: "absolute", left: `${QR_COORDS.left + offset.offsetX}mm`, top: `${QR_COORDS.top + QR_COORDS.size + 0.6 + offset.offsetY}mm`, width: `${QR_COORDS.size}mm`, textAlign: "center", fontFamily: FUENTE_REMITO, fontSize: "5.5pt", fontWeight: 700, lineHeight: 1.15, color: "#111" }}>
+              {QR_LEYENDA.map((t) => <div key={t}>{t}</div>)}
+            </div>
+          </>
         );
       })()}
     </div>
