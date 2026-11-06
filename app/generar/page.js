@@ -3,6 +3,7 @@
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { EMPRESA_FISCAL } from "@/lib/remitoPdf";
 import { gpsDeRemito, normalizarGps } from "@/lib/qr";
+import { comprimirRangos, traerPallets, agruparPallets } from "@/lib/pallets";
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -101,6 +102,10 @@ function GenerarInner({ profile }) {
   const [parseError, setParseError] = useState("");
   const [remito, setRemito] = useState(remitoVacio());
   const [items, setItems] = useState([itemVacio()]);
+  // Traslado por pallets: rangos "desde-hasta" por tratamiento (numeración corrida).
+  const [modoPallets, setModoPallets] = useState(false);
+  const [rangos, setRangos] = useState([{ id: uid(), productoId: "", desde: "", hasta: "" }]);
+  const [palletsPlanta, setPalletsPlanta] = useState(null);
   const [mostrarPreview, setMostrarPreview] = useState(false);
   const [mostrarGuia, setMostrarGuia] = useState(true);
   const [copias, setCopias] = useCopias();
@@ -215,6 +220,17 @@ function GenerarInner({ profile }) {
     );
   }, [productos, lotes, modalidad]);
 
+  const cargarPallets = async (pid) => {
+    if (!pid) return setPalletsPlanta(null);
+    const { data } = await traerPallets(supabase, pid);
+    setPalletsPlanta(agruparPallets(data));
+  };
+  useEffect(() => {
+    if (modalidad === "traslado" && modoPallets) cargarPallets(plantaId || planta0?.id);
+    else setPalletsPlanta(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalidad, modoPallets, plantaId, planta0?.id]);
+
   useEffect(() => {
     if (ocPendiente && lotesPlanta && lotesPlanta === plantaId) {
       setOcPendiente("");
@@ -264,7 +280,16 @@ function GenerarInner({ profile }) {
     profile.rol === "admin" && modalidad !== "traslado" && !!remito.destinatario.trim() && !!remito.cuit.trim() &&
     (!destGuardado || (destGuardado.cuit || "") !== remito.cuit.trim() || (destGuardado.domicilio || "") !== remito.domicilio.trim() || (destGuardado.iva || "") !== remito.iva);
 
-  const itemsCalc = items.map((it) => {
+  const productosPallets = productos.filter((p) => p.por_pallets);
+  const rangosCalc = rangos.map((r) => {
+    const d = /^\d+$/.test(String(r.desde).trim()) ? Number(r.desde) : null;
+    const h = String(r.hasta).trim() === "" ? d : /^\d+$/.test(String(r.hasta).trim()) ? Number(r.hasta) : null;
+    const ok = d !== null && h !== null && d >= 1 && h >= d;
+    const p = productoDe(r.productoId);
+    const cant = ok ? h - d + 1 : 0;
+    return { ...r, d, h, ok, cant, desc: p && ok ? `${nombreConPresentacion(p.nombre, p.presentacion)} · ${d === h ? "PALLET " + d : `PALLETS ${d} AL ${h}`}`.toUpperCase() : "" };
+  });
+  const itemsCalc = modalidad === "traslado" && modoPallets ? rangosCalc.map((r) => ({ id: r.id, productoId: r.productoId, desc: r.desc, kgu: null, cant: r.cant, kgTotal: 0, libre: false, loteId: "", precinto: "" })) : items.map((it) => {
     const cant = Number(it.cantidad) || 0;
     const kgu = kgUnidadDe(it);
     // Genérico: los kilos son los que se escribieron en la fila (si no, kilos por unidad × cantidad, p. ej. al leer un Excel).
@@ -273,7 +298,7 @@ function GenerarInner({ profile }) {
   });
   const totalUnidades = itemsCalc.reduce((a, it) => a + it.cant, 0);
   const totalKgsAuto = itemsCalc.reduce((a, it) => a + it.kgTotal, 0);
-  const todosConKg = esGen ? totalKgsAuto > 0 : itemsCalc.every((it) => it.cant === 0 || it.kgu);
+  const todosConKg = modalidad === "traslado" && modoPallets ? false : esGen ? totalKgsAuto > 0 : itemsCalc.every((it) => it.cant === 0 || it.kgu);
 
   useEffect(() => {
     setRemito((r) => ({ ...r, totalKgs: totalKgsAuto && todosConKg ? String(Math.round(totalKgsAuto * 100) / 100) : "" }));
@@ -600,6 +625,22 @@ function GenerarInner({ profile }) {
     if (esTraslado && !destinoId) return "Elegí la planta de destino del traslado.";
     if (!remito.destinatario.trim()) return "Falta el destinatario.";
     if (!remito.provincia) return esTraslado ? "La planta de destino no tiene provincia cargada. Pedile al administrador que la complete en Administración → Plantas." : "Elegí la provincia de destino.";
+    if (esTraslado && modoPallets) {
+      const llenos = rangosCalc.filter((r) => r.productoId || String(r.desde).trim() || String(r.hasta).trim());
+      if (!llenos.length) return "Cargá al menos un rango de pallets.";
+      if (llenos.length > 15) return "El remito preimpreso admite hasta 15 renglones. Dividilo en dos remitos.";
+      for (const [i, r] of llenos.entries()) {
+        if (!r.productoId) return `Renglón ${i + 1}: elegí el tratamiento.`;
+        if (!r.ok) return `Renglón ${i + 1}: completá "desde" y "hasta" con números (desde 1 en adelante; "hasta" no puede ser menor que "desde").`;
+        for (const o of llenos.slice(0, i)) if (o.productoId === r.productoId && r.d <= o.h && r.h >= o.d) return `Renglón ${i + 1}: el rango se superpone con otro renglón del mismo tratamiento.`;
+        const g = palletsPlanta?.[r.productoId];
+        const libres = new Set(g?.libres || []);
+        const faltan = [];
+        for (let n = r.d; n <= r.h && faltan.length < 8; n++) if (!libres.has(n)) faltan.push(n);
+        if (faltan.length) return `Renglón ${i + 1}: los pallets ${faltan.join(", ")}${r.h - r.d + 1 > 8 ? " (y quizás más)" : ""} no están disponibles en tu planta (no existen, están en otra planta o en tránsito).`;
+      }
+      return "";
+    }
     if (esGen) {
       const sinCant = itemsCalc.findIndex((i) => i.cant <= 0 && (String(i.descripcion).trim() || String(i.kgs).trim() || String(i.unidad).trim()));
       if (sinCant >= 0) return `Fila ${sinCant + 1}: falta la cantidad.`;
@@ -699,7 +740,13 @@ function GenerarInner({ profile }) {
       }));
     // Con renglones de una orden de carga guardada se usa la función que controla el saldo y deja el vínculo.
     const deOrden = lista.some((x) => x.orden_linea_id);
-    const { data, error: err } = await supabase.rpc(esTraslado ? (deOrden ? "emitir_traslado_oc" : "emitir_traslado") : deOrden ? "emitir_remito_oc" : esGen ? "emitir_remito_generico" : "emitir_remito", { p_remito: payload, p_items: lista });
+    const llamada = esTraslado && modoPallets
+      ? supabase.rpc("emitir_traslado_pallets", {
+          p_remito: payload,
+          p_pallets: rangosCalc.filter((r) => r.ok && r.productoId).map((r) => ({ producto_id: r.productoId, desde: r.d, hasta: r.h })),
+        })
+      : supabase.rpc(esTraslado ? (deOrden ? "emitir_traslado_oc" : "emitir_traslado") : deOrden ? "emitir_remito_oc" : esGen ? "emitir_remito_generico" : "emitir_remito", { p_remito: payload, p_items: lista });
+    const { data, error: err } = await llamada;
     setSaving(false);
     if (err) return setError(friendlyError(err));
     if (patentesCambiadas) {
@@ -717,6 +764,7 @@ function GenerarInner({ profile }) {
     }
     setEmitido({ id: data, pv: puntoVenta, numero: num8(remito.numero), pdf: modo === "pdf" });
     cargarLotes(plantaId);
+    if (modoPallets) cargarPallets(plantaId || planta0?.id);
     cargarSugerido(puntoVenta);
     cargarOcDb(plantaId);
     if (modo === "pdf") {
@@ -1157,7 +1205,58 @@ function GenerarInner({ profile }) {
           </Paso>
 
           <Paso n="5" {...P("5")} resumen={itemsCalc.some((i) => i.cant > 0) ? `${itemsCalc.filter((i) => i.cant > 0).length} línea(s) · ${fmtNum(totalUnidades)} unidades` : ""} titulo="Mercadería" ayuda={esGen ? "Escribí las filas del remito: cantidad, unidad, descripción y kilos. No descuenta stock." : "Elegí el producto y el lote de tu planta. El stock se descuenta al registrar el remito."}>
-            {esGen ? (
+            {esTraslado && productosPallets.length > 0 && (
+              <label className="flex items-center gap-2 text-[13.5px] text-stone-700 mb-3 cursor-pointer">
+                <input type="checkbox" checked={modoPallets} onChange={(e) => setModoPallets(e.target.checked)} />
+                <span><b>Traslado por pallets</b> (numeración corrida por tratamiento: cargás “desde – hasta” y se calcula la cantidad)</span>
+              </label>
+            )}
+            {esTraslado && modoPallets ? (
+              <div>
+                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_110px_110px_90px_28px] gap-2 mb-1">
+                  <span className={lab}>Tratamiento</span>
+                  <span className={lab}>Pallet desde</span>
+                  <span className={lab}>Pallet hasta</span>
+                  <span className={lab}>Cantidad</span>
+                  <span />
+                </div>
+                <div className="space-y-2">
+                  {rangosCalc.map((r, idx) => {
+                    const g = palletsPlanta?.[r.productoId];
+                    const upd = (patch) => setRangos((a) => a.map((x) => (x.id === r.id ? { ...x, ...patch } : x)));
+                    return (
+                      <div key={r.id} className="space-y-1">
+                        <div className="grid grid-cols-[1fr_1fr_28px] md:grid-cols-[minmax(0,2fr)_110px_110px_90px_28px] gap-2 items-center">
+                          <select value={r.productoId} onChange={(e) => upd({ productoId: e.target.value })} aria-label={`Tratamiento, renglón ${idx + 1}`} className={`${inp} col-span-3 md:col-span-1`}>
+                            <option value="">Elegí el tratamiento…</option>
+                            {productosPallets.map((p) => <option key={p.id} value={p.id}>{nombreConPresentacion(p.nombre, p.presentacion)}</option>)}
+                          </select>
+                          <input value={r.desde} onChange={(e) => upd({ desde: e.target.value.replace(/\D/g, "") })} placeholder="Desde" inputMode="numeric" aria-label={`Desde, renglón ${idx + 1}`} className={`${inp} text-right`} />
+                          <input value={r.hasta} onChange={(e) => upd({ hasta: e.target.value.replace(/\D/g, "") })} placeholder="Hasta" inputMode="numeric" aria-label={`Hasta, renglón ${idx + 1}`} className={`${inp} text-right`} />
+                          <div className="text-right text-[14px] font-semibold tabular-nums col-span-1 hidden md:block">{r.ok ? fmtNum(r.cant) : "—"}</div>
+                          {rangos.length > 1 ? (
+                            <button type="button" onClick={() => setRangos((a) => a.filter((x) => x.id !== r.id))} className="text-stone-400 hover:text-red-600 text-lg leading-none justify-self-end" aria-label={`Quitar renglón ${idx + 1}`}>×</button>
+                          ) : <span />}
+                        </div>
+                        {r.productoId && palletsPlanta && (
+                          <div className="text-[12px] text-stone-500">
+                            Disponibles en tu planta: {g?.libres?.length ? <b className="text-stone-700">{comprimirRangos(g.libres)}</b> : "ninguno"}
+                            {g?.transito?.length ? ` · en tránsito: ${comprimirRangos(g.transito)}` : ""}
+                            {r.ok && <span className="md:hidden"> · cantidad: <b>{fmtNum(r.cant)}</b></span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-4 flex-wrap">
+                  <button type="button" disabled={rangos.length >= 15} onClick={() => setRangos((a) => [...a, { id: uid(), productoId: "", desde: "", hasta: "" }])} className="text-[13.5px] font-medium text-emerald-700 hover:text-emerald-800 disabled:text-stone-300">
+                    + Agregar rango
+                  </button>
+                  <span className="text-[12px] text-stone-400">{rangos.length} de 15 renglones · si es un solo pallet dejá “hasta” vacío o igual a “desde” · el sistema verifica que cada número esté en tu planta</span>
+                </div>
+              </div>
+            ) : esGen ? (
               <div>
                 <div className="hidden md:grid grid-cols-[84px_130px_minmax(0,1fr)_110px_28px] gap-2 mb-1">
                   <span className={lab}>Cantidad</span>

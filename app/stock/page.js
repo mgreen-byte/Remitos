@@ -7,6 +7,7 @@ import { traerTodo } from "@/lib/despachos";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, up, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
+import { comprimirRangos, traerPallets, agruparPallets } from "@/lib/pallets";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -54,11 +55,38 @@ function StockInner({ profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [pallets, setPallets] = useState({});
+  const [pf, setPf] = useState({ modo: "ingreso", productoId: "", desde: "", hasta: "", motivo: "" });
+  const esPal = (l) => l.lote === "PALLETS" && !!l.producto?.por_pallets;
+  const productosPallets = productos.filter((p) => p.por_pallets);
+  const cargarPallets = async () => {
+    if (!plantaId) return setPallets({});
+    const { data } = await traerPallets(supabase, plantaId);
+    setPallets(agruparPallets(data));
+  };
+  useEffect(() => {
+    cargarPallets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plantaId]);
+  const aplicarPallets = async (e) => {
+    e.preventDefault();
+    setMsg({ tipo: "", texto: "" });
+    const d = Number(pf.desde);
+    const h = pf.hasta === "" ? d : Number(pf.hasta);
+    const args = { p_producto_id: pf.productoId, p_desde: d, p_hasta: h, p_planta_id: plantaId, p_motivo: pf.motivo || null };
+    const { error } = await supabase.rpc(pf.modo === "ingreso" ? "cargar_pallets" : "eliminar_pallets", args);
+    if (error) return fail(error);
+    ok(pf.modo === "ingreso" ? `Se ingresaron los pallets ${d} a ${h} (${fmtNum(h - d + 1)}).` : `Se dieron de baja los pallets ${d} a ${h} (${fmtNum(h - d + 1)}).`);
+    setPf({ ...pf, desde: "", hasta: "", motivo: "" });
+    cargar();
+    cargarPallets();
+  };
+
   const cargar = async () => {
     if (!plantaId) return setLotes([]);
     const { data } = await supabase
       .from("lotes")
-      .select("id, lote, stock, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
+      .select("id, lote, stock, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad, por_pallets)")
       .eq("planta_id", plantaId)
       .order("lote");
     setLotes(data || []);
@@ -336,6 +364,43 @@ function StockInner({ profile }) {
         </form>
         )}
 
+        {(Object.keys(pallets).length > 0 || (puedeCargar && productosPallets.length > 0)) && (
+          <div className="panel p-4 space-y-3">
+            <div className="text-xs font-semibold text-stone-500 uppercase">Pallets numerados en esta planta</div>
+            {Object.keys(pallets).length === 0 && <div className="text-[13px] text-stone-500">No hay pallets en esta planta.</div>}
+            {Object.entries(pallets).map(([pid, g]) => {
+              const pr = productos.find((x) => x.id === pid);
+              return (
+                <div key={pid} className="text-[13.5px]">
+                  <b>{pr ? nombreConPresentacion(pr.nombre, pr.presentacion) : "—"}</b>
+                  <span className="text-stone-500"> · {fmtNum(g.libres.length)} disponibles</span>
+                  {g.libres.length > 0 && <div className="font-mono text-[12.5px] text-stone-700 break-words">{comprimirRangos(g.libres)}</div>}
+                  {g.transito.length > 0 && <div className="text-[12.5px] text-amber-800">En tránsito ({fmtNum(g.transito.length)}): <span className="font-mono">{comprimirRangos(g.transito)}</span></div>}
+                </div>
+              );
+            })}
+            {puedeCargar && productosPallets.length > 0 && (
+              <form onSubmit={aplicarPallets} className="border-t border-stone-100 pt-3 space-y-2">
+                <div className="flex gap-2 flex-wrap">
+                  <select value={pf.modo} onChange={(e) => setPf({ ...pf, modo: e.target.value })} className={`${inputCls} w-40`}>
+                    <option value="ingreso">Ingresar pallets</option>
+                    <option value="baja">Dar de baja</option>
+                  </select>
+                  <select required value={pf.productoId} onChange={(e) => setPf({ ...pf, productoId: e.target.value })} className={`${inputCls} flex-1 min-w-[180px]`}>
+                    <option value="">Tratamiento…</option>
+                    {productosPallets.map((x) => <option key={x.id} value={x.id}>{nombreConPresentacion(x.nombre, x.presentacion)}</option>)}
+                  </select>
+                  <input required value={pf.desde} onChange={(e) => setPf({ ...pf, desde: e.target.value.replace(/\D/g, "") })} placeholder="Desde" inputMode="numeric" className={`${inputCls} w-24 text-right`} />
+                  <input value={pf.hasta} onChange={(e) => setPf({ ...pf, hasta: e.target.value.replace(/\D/g, "") })} placeholder="Hasta" inputMode="numeric" className={`${inputCls} w-24 text-right`} />
+                  <input required={pf.modo === "baja"} value={pf.motivo} onChange={(e) => setPf({ ...pf, motivo: e.target.value })} placeholder={pf.modo === "baja" ? "Motivo (obligatorio)" : "Nota (opcional)"} className={`${inputCls} flex-1 min-w-[140px]`} />
+                  <button className="bg-emerald-700 text-white text-sm px-4 py-1.5 rounded">{pf.modo === "ingreso" ? "Ingresar" : "Dar de baja"}</button>
+                </div>
+                <div className="text-xs text-stone-400">La numeración es única por tratamiento. Cada número está en una sola planta; para moverlos usá un traslado por pallets.</div>
+              </form>
+            )}
+          </div>
+        )}
+
         <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm text-stone-600">
@@ -392,9 +457,9 @@ function StockInner({ profile }) {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                          {!soloLectura && <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-[13px] text-emerald-700 py-1">Ajustar</button>}
-                          {profile.rol === "admin" && <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-[13px] text-emerald-700 py-1">Cambiar producto</button>}
-                          {profile.rol === "admin" && (
+                          {!soloLectura && !esPal(l) && <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-[13px] text-emerald-700 py-1">Ajustar</button>}
+                          {profile.rol === "admin" && !esPal(l) && <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-[13px] text-emerald-700 py-1">Cambiar producto</button>}
+                          {profile.rol === "admin" && !esPal(l) && (
                             <label className="text-[13px] text-red-700 py-1 flex items-center gap-1">
                               <input type="checkbox" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} /> Eliminar
                             </label>
@@ -508,18 +573,18 @@ function StockInner({ profile }) {
                       <td className={`p-2 text-right ${Number(l.stock) - compDe(l) < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}`}>{fmtNum(Number(l.stock) - compDe(l))}</td>
                       <td className="p-2 text-right hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right md:whitespace-nowrap">
-                        {!soloLectura && (
+                        {!soloLectura && !esPal(l) && (
                           <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
                             Ajustar
                           </button>
                         )}
-                        {profile.rol === "admin" && (
+                        {profile.rol === "admin" && !esPal(l) && (
                           <label className="text-xs text-red-700 mr-3 cursor-pointer">
                             <input type="checkbox" className="mr-1 align-middle" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} />
                             Eliminar
                           </label>
                         )}
-                        {profile.rol === "admin" && (
+                        {profile.rol === "admin" && !esPal(l) && (
                           <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3 inline-block align-middle text-left leading-tight">
                             Cambiar<br />producto
                           </button>

@@ -189,7 +189,10 @@ function TrasladosInner({ profile }) {
                           <div className="w-full sm:w-auto sm:text-right text-[13px] flex flex-wrap items-center justify-between sm:block gap-x-4 gap-y-1">
                             <div>Enviado <b>{fmtNum(i.cantidad)}</b></div>
                             {r.estado === "recibido" && <div className={dif ? "text-amber-700 font-medium" : "text-emerald-700"}>Recibido <b>{i.cantidad_recibida == null ? "—" : fmtNum(i.cantidad_recibida)}</b></div>}
-                            {puedeRecibir && enPanel && panel.modo === "confirmar" && (
+                            {puedeRecibir && enPanel && panel.modo === "confirmar" && i.lote_texto === "PALLETS" && (
+                              <div className="text-[12px] text-stone-500 mt-1">Pallets: se recibe todo el envío (si algo no llegó, rechazá el traslado).</div>
+                            )}
+                            {puedeRecibir && enPanel && panel.modo === "confirmar" && i.lote_texto !== "PALLETS" && (
                               <label className="flex items-center justify-end gap-2 mt-1 text-stone-600">
                                 Recibido
                                 <input type="number" inputMode="decimal" min="0" max={i.cantidad} step="any" value={panel.cant[i.id]}

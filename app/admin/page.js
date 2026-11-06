@@ -106,6 +106,7 @@ function AdminInner({ profile }) {
               { key: "nombre", label: "Nombre (variedad / insumo / ensamblaje)", type: "text", upper: true },
               { key: "presentacion", label: "Presentación", type: "text", upper: true, placeholder: "BIG BAG 1000 KG" },
               { key: "kg_por_unidad", label: "Kg por unidad", type: "number" },
+              { key: "por_pallets", label: "Por pallets", type: "bool" },
               { key: "alias", label: "Alias (Excel)", type: "list", placeholder: "nombre 1, nombre 2" },
               { key: "activo", label: "Activo", type: "bool" },
             ]}
