@@ -436,7 +436,7 @@ function GenerarInner({ profile }) {
   const gruposDb = useMemo(() => {
     const m = new Map();
     for (const l of ocDb) {
-      const k = `${l.orden_id}||${norm(l.cliente)}`;
+      const k = `${l.orden_id}||${norm(l.cliente)}||${norm(l.domicilio)}||${norm(l.entregar_en)}`; // un remito por cliente Y por destino de entrega
       if (!m.has(k)) m.set(k, { clave: k, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, gps: l.gps, items: [], total: 0 });
       const g = m.get(k);
       g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
@@ -919,7 +919,7 @@ function GenerarInner({ profile }) {
                   <option value="">{gruposDb.length ? "Elegir orden y cliente…" : "No hay órdenes con saldo pendiente en esta planta"}</option>
                   {gruposDb.map((g) => (
                     <option key={g.clave} value={g.clave}>
-                      {g.ordenNumero} · {g.cliente} — saldo {fmtNum(g.total)} u.
+                      {g.ordenNumero} · {g.cliente}{g.domicilio ? ` → ${g.domicilio}` : ""} — saldo {fmtNum(g.total)} u.
                     </option>
                   ))}
                 </select>
@@ -943,7 +943,7 @@ function GenerarInner({ profile }) {
                         <option value="">Elegir cliente…</option>
                         {grupos.map((c) => (
                           <option key={c.clave} value={c.clave}>
-                            {c.cliente}{c.deposito ? ` · ${c.deposito}` : ""} — {c.totalCantidad} u. / {c.totalKilos} kg
+                            {c.cliente}{c.domicilio ? ` → ${c.domicilio}` : ""}{c.deposito ? ` · ${c.deposito}` : ""} — {c.totalCantidad} u. / {c.totalKilos} kg
                           </option>
                         ))}
                       </select>
