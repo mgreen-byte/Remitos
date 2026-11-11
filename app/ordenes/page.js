@@ -403,6 +403,24 @@ function OrdenesInner({ profile }) {
       },
     });
 
+  // Duplicar: abre el formulario de "Agregar línea" con los mismos datos, para cambiar lo que difiera (destino, lote, cantidad…).
+  const duplicar = (l) => {
+    setMsg(null);
+    setEdit({
+      ordenId: l.orden_id,
+      lineaId: null,
+      duplicado: true,
+      tieneRemitos: false,
+      data: {
+        planta_id: l.planta_id, cliente: l.cliente || "", cuit: l.cuit || "", contacto: l.contacto || "", telefono: l.telefono || "",
+        domicilio: l.domicilio || "", provincia: l.provincia || "", entregar_en: l.entregar_en || "", gps: l.gps || "", ov: l.ov || "",
+        producto_id: l.producto_id || "", producto_texto: l.producto_texto || "", presentacion: l.presentacion || "",
+        lote_texto: l.lote_texto || "", cantidad: "", kilos: "",
+      },
+    });
+    setTimeout(() => document.getElementById(`form-linea-${l.orden_id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+  };
+
   const setD = (patch) => setEdit((e) => ({ ...e, data: { ...e.data, ...patch } }));
 
   const elegirProducto = (id) => {
@@ -959,6 +977,7 @@ function OrdenesInner({ profile }) {
                             {o.estado !== "anulada" && puedeEditar(l, o) && (
                               <div className="flex gap-4 pt-0.5">
                                 <button onClick={() => editar(l)} className="text-emerald-700 text-[13.5px] py-1">Editar</button>
+                                <button onClick={() => duplicar(l)} className="text-emerald-700 text-[13.5px] py-1">Duplicar</button>
                                 {Number(l.remitido) === 0 && <button onClick={() => quitarLinea(l)} className="text-red-600 text-[13.5px] py-1">Quitar</button>}
                               </div>
                             )}
@@ -994,6 +1013,7 @@ function OrdenesInner({ profile }) {
                                     {o.estado !== "anulada" && puedeEditar(l, o) && (
                                       <>
                                         <button onClick={() => editar(l)} className="text-emerald-700 hover:underline text-[12.5px] mr-3">Editar</button>
+                                        <button onClick={() => duplicar(l)} className="text-emerald-700 hover:underline text-[12.5px] mr-3" title="Crea una línea nueva con los mismos datos">Duplicar</button>
                                         {Number(l.remitido) === 0 && <button onClick={() => quitarLinea(l)} className="text-red-600 hover:underline text-[12.5px]">Quitar</button>}
                                       </>
                                     )}
@@ -1009,8 +1029,11 @@ function OrdenesInner({ profile }) {
                       </div>
 
                       {edit && edit.ordenId === o.id && (
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
-                          <div className="font-medium text-[14px]">{edit.lineaId ? "Editar línea" : "Agregar línea"}</div>
+                        <div id={`form-linea-${o.id}`} className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
+                          <div className="font-medium text-[14px]">{edit.lineaId ? "Editar línea" : edit.duplicado ? "Duplicar línea" : "Agregar línea"}</div>
+                          {edit.duplicado && (
+                            <div className="text-[12.5px] text-stone-600">Se copiaron los datos de la línea. Cambiá lo que difiera (destino, lote, O/V, cantidad) y guardá: la línea original no se modifica. Dos líneas no pueden tener el mismo cliente, destino, O/V, producto y lote.</div>
+                          )}
                           {edit.tieneRemitos && (
                             <div className="text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
                               Esta línea ya tiene remitos: no se puede cambiar el cliente, el producto, el lote, la O/V ni la planta, y la cantidad no puede quedar por debajo de lo remitido.
