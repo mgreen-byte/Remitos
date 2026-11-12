@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto, matchPlanta } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
 import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { calKey, calidadInfo } from "@/lib/calidad";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
 
@@ -89,6 +90,7 @@ function GenerarInner({ profile }) {
   const [plantaId, setPlantaId] = useState(profile.planta?.id || "");
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [calMap, setCalMap] = useState({});
   const [lotesPlanta, setLotesPlanta] = useState(""); // planta a la que pertenecen los lotes cargados
   const [ocPendiente, setOcPendiente] = useState(""); // carga de la orden esperando que lleguen los lotes de su planta
   const [ivaOptions, setIvaOptions] = useState(IVA_DEFAULT);
@@ -177,11 +179,15 @@ function GenerarInner({ profile }) {
     if (!pid) { setLotes([]); setLotesPlanta(""); return; }
     const { data } = await supabase
       .from("lotes")
-      .select("id, lote, stock, producto_id")
+      .select("id, lote, stock, danado, producto_id")
       .eq("planta_id", pid)
       .eq("activo", true)
       .gt("stock", 0)
       .order("lote");
+    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado");
+    const cm = {};
+    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; });
+    setCalMap(cm);
     setLotes(data || []);
     setLotesPlanta(pid);
   };
@@ -244,6 +250,7 @@ function GenerarInner({ profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocPendiente, lotesPlanta, plantaId]);
 
+  const calDe = (l) => calMap[calKey(l.producto_id, l.lote)] || "aprobado";
   const lotesDe = (productoId) => lotes.filter((l) => l.producto_id === productoId);
   const productoDe = (id) => productos.find((p) => p.id === id);
   const loteDe = (id) => lotes.find((l) => l.id === id);
@@ -659,6 +666,8 @@ function GenerarInner({ profile }) {
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
         if (!it.loteId && (esTraslado || esSemilla(it))) return `Ítem ${i + 1}: elegí el lote.`;
+        const lq = it.loteId ? loteDe(it.loteId) : null;
+        if (lq && !esTraslado && calDe(lq) !== "aprobado") return `Ítem ${i + 1}: el lote ${lq.lote} está NO DISPONIBLE (estado de calidad: ${calidadInfo(calDe(lq)).t}). Elegí otro lote.`;
         if (esSemilla(it) && !precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
         if (esSemilla(it) && usaPrefijos) {
           if (!it.precPref) return `Ítem ${i + 1}: elegí el prefijo del precinto.`;
@@ -1373,8 +1382,8 @@ function GenerarInner({ profile }) {
                           <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={inp} disabled={!it.productoId}>
                             <option value="">{!esSemilla(it) && modalidad !== "traslado" ? "Sin lote (opcional)" : it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
                             {ls.map((x) => (
-                              <option key={x.id} value={x.id}>
-                                {x.lote} · {fmtNum(x.stock)} disp.
+                              <option key={x.id} value={x.id} disabled={calDe(x) !== "aprobado" && modalidad !== "traslado"}>
+                                {x.lote} · {calDe(x) !== "aprobado" && modalidad !== "traslado" ? `NO DISPONIBLE (${calidadInfo(calDe(x)).t})` : `${fmtNum(Number(x.stock) - Number(x.danado || 0))} disp.${Number(x.danado) > 0 ? ` (${fmtNum(x.danado)} dañadas)` : ""}`}
                               </option>
                             ))}
                           </select>

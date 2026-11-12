@@ -7,6 +7,8 @@ import { traerTodo } from "@/lib/despachos";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, up, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
+import CalidadLote from "@/components/CalidadLote";
+import { calKey } from "@/lib/calidad";
 import { comprimirRangos, traerPallets, agruparPallets } from "@/lib/pallets";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
@@ -34,6 +36,7 @@ function StockInner({ profile }) {
   const [abiertos, setAbiertos] = useState({}); // productos desplegados
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState({}); // lotes tildados para eliminar
+  const [calMap, setCalMap] = useState({});
   const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
@@ -86,10 +89,14 @@ function StockInner({ profile }) {
     if (!plantaId) return setLotes([]);
     const { data } = await supabase
       .from("lotes")
-      .select("id, lote, stock, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad, por_pallets)")
+      .select("id, lote, stock, danado, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad, por_pallets)")
       .eq("planta_id", plantaId)
       .order("lote");
     setLotes(data || []);
+    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado");
+    const cm = {};
+    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; });
+    setCalMap(cm);
     const { data: ln } = await supabase
       .from("v_ordenes_lineas_saldo")
       .select("id, producto_id, lote_texto, planta_id, saldo, orden_numero, cliente")
@@ -209,6 +216,11 @@ function StockInner({ profile }) {
     else if (ln.lote_texto && clavesLotes.has(loteKey(ln.producto_id, ln.lote_texto))) compPorLote[loteKey(ln.producto_id, ln.lote_texto)] = (compPorLote[loteKey(ln.producto_id, ln.lote_texto)] || 0) + sal;
     else compSinLote[ln.producto_id] = (compSinLote[ln.producto_id] || 0) + sal;
   }
+  const calDe = (l) => calMap[calKey(l.producto_id, l.lote)] || "aprobado";
+  const aprobadoL = (l) => calDe(l) === "aprobado";
+  const puedeCalidad = profile.rol === "admin" || profile.rol === "logistica";
+  // Disponible: solo lotes aprobados; se descuentan las unidades dañadas y lo comprometido.
+  const dispDe = (l) => (aprobadoL(l) ? Number(l.stock) - Number(l.danado || 0) - compDe(l) : 0);
   const compDe = (l) => compPorLote[loteKey(l.producto_id, l.lote)] || 0;
   const iniDe = (l) => Number(inicialPorLote[l.id] || 0);
   // Detalle del comprometido: una línea por orden/cliente (saldo pendiente).
@@ -254,18 +266,20 @@ function StockInner({ profile }) {
   for (const l of visibles) {
     let g = grupos.find((x) => x.id === l.producto_id);
     if (!g) {
-      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, inicial: 0, kg: 0, comp: 0, sinLote: compSinLote[l.producto_id] || 0 };
+      g = { id: l.producto_id, producto: l.producto, lotes: [], unidades: 0, inicial: 0, kg: 0, comp: 0, disp: 0, sinLote: compSinLote[l.producto_id] || 0 };
       grupos.push(g);
     }
     g.lotes.push(l);
     g.unidades += Number(l.stock);
     g.inicial += iniDe(l);
-    g.comp += compDe(l);
+    g.comp += aprobadoL(l) ? compDe(l) : 0;
+    g.disp += dispDe(l);
     g.kg += Number(l.stock) * Number(l.producto?.kg_por_unidad || 0);
   }
   grupos.sort((a, b) => nombreConPresentacion(a.producto?.nombre, a.producto?.presentacion).localeCompare(nombreConPresentacion(b.producto?.nombre, b.producto?.presentacion)));
   const abierto = (g) => !!q || !!abiertos[g.id];
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
+  const totalDisp = grupos.reduce((a, g) => a + g.disp - g.sinLote, 0);
   const totalComp = grupos.reduce((a, g) => a + g.comp + g.sinLote, 0);
   const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * Number(l.producto?.kg_por_unidad || 0), 0);
 
@@ -404,7 +418,7 @@ function StockInner({ profile }) {
         <div className="panel">
           <div className="p-4 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm text-stone-600">
-              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg · comprometido <b>{fmtNum(totalComp)}</b> · disponible <b className={totalUnidades - totalComp < 0 ? "text-red-600" : ""}>{fmtNum(totalUnidades - totalComp)}</b>
+              {visibles.length} lotes · <b>{fmtNum(totalUnidades)}</b> unidades · <b>{fmtNum(totalKg)}</b> kg · comprometido <b>{fmtNum(totalComp)}</b> · disponible <b className={totalDisp < 0 ? "text-red-600" : ""}>{fmtNum(totalDisp)}</b>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar variedad o lote…" className={`${inputCls} w-56`} />
@@ -424,7 +438,7 @@ function StockInner({ profile }) {
             )}
             {visibles.length === 0 && <div className="p-6 text-center text-stone-400 text-sm">No hay lotes cargados.</div>}
             {grupos.map((g) => {
-              const disp = g.unidades - g.comp - g.sinLote;
+              const disp = g.disp - g.sinLote;
               return (
                 <div key={g.id}>
                   <button type="button" onClick={() => setAbiertos({ ...abiertos, [g.id]: !abiertos[g.id] })} className="w-full text-left px-4 py-3 bg-stone-50/70 active:bg-stone-100">
@@ -443,7 +457,7 @@ function StockInner({ profile }) {
                     {g.sinLote > 0 && <div className="text-[11px] text-amber-700 mt-1 pl-5">{fmtNum(g.sinLote)} comprometidas sin lote asignado</div>}
                   </button>
                   {abierto(g) && g.lotes.map((l) => {
-                    const dl = Number(l.stock) - compDe(l);
+                    const dl = dispDe(l);
                     return (
                       <div key={l.id} className="pl-9 pr-4 py-2.5 border-t border-stone-100 space-y-1.5">
                         <div className="flex items-center justify-between gap-3">
@@ -453,7 +467,7 @@ function StockInner({ profile }) {
                           <div className="text-[12.5px] text-right whitespace-nowrap">
                             {iniDe(l) > 0 && <span className="text-stone-400">ini {fmtNum(iniDe(l))} · </span>}<b className={Number(l.stock) === 0 ? "text-stone-300" : ""}>{fmtNum(l.stock)}</b>
                             {compDe(l) > 0 && <button type="button" className="text-amber-800 underline decoration-dotted" onClick={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l), true)}> · {fmtNum(compDe(l))} compr.</button>}
-                            <span className={dl < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}> · {fmtNum(dl)} disp.</span>
+                            {aprobadoL(l) ? <span className={dl < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}> · {fmtNum(dl)} disp.</span> : <span className="text-stone-500"> · no disponible</span>}
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -465,6 +479,7 @@ function StockInner({ profile }) {
                             </label>
                           )}
                         </div>
+                        <CalidadLote lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} />
                         {ajuste && ajuste.loteId === l.id && (
                           <div className="bg-amber-50 rounded p-3 space-y-2 -ml-3">
                             <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-full`} />
@@ -554,7 +569,7 @@ function StockInner({ profile }) {
                         {g.comp + g.sinLote > 0 ? fmtNum(g.comp + g.sinLote) : "—"}
                         {g.sinLote > 0 && <div className="text-[10.5px] text-amber-700 font-normal">{fmtNum(g.sinLote)} sin lote asignado</div>}
                       </td>
-                      <td className={`p-2 text-right font-semibold ${g.unidades - g.comp - g.sinLote < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(g.unidades - g.comp - g.sinLote)}</td>
+                      <td className={`p-2 text-right font-semibold ${g.disp - g.sinLote < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(g.disp - g.sinLote)}</td>
                       <td className="p-2 text-right hidden md:table-cell">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
                       <td className="p-2"></td>
                     </tr>
@@ -565,12 +580,13 @@ function StockInner({ profile }) {
                       <td className="p-2 font-mono whitespace-nowrap cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
                         <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
                         {l.lote}
+                        <div className="font-sans" onClick={(e) => e.stopPropagation()}><CalidadLote compacto lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} /></div>
                       </td>
                       <td className="p-2 text-right text-stone-600 hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right text-stone-500">{iniDe(l) > 0 ? fmtNum(iniDe(l)) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className={`p-2 text-right text-amber-800 ${compDe(l) > 0 ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l))} onMouseLeave={() => setTip(null)}>{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
-                      <td className={`p-2 text-right ${Number(l.stock) - compDe(l) < 0 ? "text-red-600 font-semibold" : "text-emerald-800"}`}>{fmtNum(Number(l.stock) - compDe(l))}</td>
+                      <td className={`p-2 text-right ${dispDe(l) < 0 ? "text-red-600 font-semibold" : aprobadoL(l) ? "text-emerald-800" : "text-stone-400"}`}>{aprobadoL(l) ? fmtNum(dispDe(l)) : "—"}</td>
                       <td className="p-2 text-right hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
                       <td className="p-2 text-right md:whitespace-nowrap">
                         {!soloLectura && !esPal(l) && (
