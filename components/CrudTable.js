@@ -9,7 +9,7 @@ const inputCls = "border border-stone-300 rounded px-2 py-1 text-sm w-full";
 
 // Tabla editable genérica.
 // columns: [{key, label, type: text|number|select|bool|multi|list, options, upper, width, placeholder}]
-export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false, multiDelete = false }) {
+export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false, multiDelete = false, deleteRpc = null }) {
   const [rows, setRows] = useState([]);
   const [edit, setEdit] = useState(null); // {id|null, data}
   const [msg, setMsg] = useState("");
@@ -93,6 +93,14 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     if (!window.confirm(`¿Eliminar ${idsSel.length} registro${idsSel.length === 1 ? "" : "s"}? Esta acción no se puede deshacer.`)) return;
     setMsg("");
     const fallidos = [];
+    if (deleteRpc) {
+      const { data, error } = await supabase.rpc(deleteRpc, { p_ids: idsSel });
+      if (error) return setMsg(friendlyError(error));
+      setSel({});
+      await cargar();
+      const rech = data?.rechazados || [];
+      return setMsg(`Se eliminaron ${data?.eliminados ?? 0} de ${idsSel.length}.${rech.length ? ` No se pudieron eliminar: ${rech.map((r) => `${r.nombre} (${r.motivo})`).join(" · ")}. Para esos, desactivalos (columna Activo).` : ""}`);
+    }
     for (const id of idsSel) {
       const { error } = await supabase.from(table).delete().eq("id", id);
       if (error) {
