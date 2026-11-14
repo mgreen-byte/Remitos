@@ -9,12 +9,13 @@ const inputCls = "border border-stone-300 rounded px-2 py-1 text-sm w-full";
 
 // Tabla editable genérica.
 // columns: [{key, label, type: text|number|select|bool|multi|list, options, upper, width, placeholder}]
-export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false }) {
+export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false, multiDelete = false }) {
   const [rows, setRows] = useState([]);
   const [edit, setEdit] = useState(null); // {id|null, data}
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [importando, setImportando] = useState(false);
+  const [sel, setSel] = useState({}); // ids tildados para eliminar en bloque
   const [orden, setOrden] = useState(null); // {key, dir}: orden elegido tocando el título de una columna
 
   const valorOrden = (r, c) => {
@@ -84,6 +85,25 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     const { error } = await supabase.from(table).delete().eq("id", id);
     if (error) return setMsg(friendlyError(error));
     cargar();
+  };
+
+  const idsSel = Object.keys(sel).filter((k) => sel[k]);
+  const borrarSel = async () => {
+    if (!idsSel.length) return;
+    if (!window.confirm(`¿Eliminar ${idsSel.length} registro${idsSel.length === 1 ? "" : "s"}? Esta acción no se puede deshacer.`)) return;
+    setMsg("");
+    const fallidos = [];
+    for (const id of idsSel) {
+      const { error } = await supabase.from(table).delete().eq("id", id);
+      if (error) {
+        const r = rows.find((x) => x.id === id);
+        fallidos.push(`${r?.nombre || id}: ${friendlyError(error)}`);
+      }
+    }
+    setSel({});
+    await cargar();
+    const ok = idsSel.length - fallidos.length;
+    setMsg(`Se eliminaron ${ok} de ${idsSel.length}.${fallidos.length ? ` No se pudieron eliminar (si tienen lotes u otros datos asociados, desactivalos en su lugar): ${fallidos.join(" · ")}` : ""}`);
   };
 
   const celda = (c, d, set) => {
@@ -156,10 +176,24 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
       ) : (
         <div><button onClick={() => setImportando(true)} className="btn-secundario">Cargar catálogo desde Excel</button></div>
       ))}
+      {multiDelete && canDelete && (
+        <div className="flex items-center gap-3 text-sm">
+          <button disabled={!idsSel.length} onClick={borrarSel} className="bg-red-600 text-white text-xs px-3 py-1.5 rounded disabled:opacity-40">
+            Eliminar seleccionados ({idsSel.length})
+          </button>
+          {idsSel.length > 0 && <button onClick={() => setSel({})} className="text-xs text-stone-500 underline">Limpiar selección</button>}
+        </div>
+      )}
       <div className="panel overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-stone-500 bg-stone-50">
             <tr>
+              {multiDelete && canDelete && (
+                <th className="p-2 pl-4 w-8">
+                  <input type="checkbox" title="Seleccionar todos" checked={ordenadas.length > 0 && ordenadas.every((r) => sel[r.id])}
+                    onChange={(e) => setSel(e.target.checked ? Object.fromEntries(ordenadas.map((r) => [r.id, true])) : {})} />
+                </th>
+              )}
               {columns.map((c) => (
                 <th key={c.key} className="text-left p-2 first:pl-4 cursor-pointer select-none hover:text-stone-800" onClick={() => ordenarPor(c.key)} title="Tocá para ordenar">
                   {c.label}
@@ -172,7 +206,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
           <tbody>
             {canAdd && (
               <tr className="border-t border-stone-100">
-                <td colSpan={columns.length + 1} className="p-2 pl-4">
+                <td colSpan={columns.length + 1 + (multiDelete && canDelete ? 1 : 0)} className="p-2 pl-4">
                   {edit && !edit.id ? null : (
                     <button onClick={() => setEdit({ id: null, data: vacio() })} className="text-emerald-700 text-sm font-medium">
                       + Agregar
@@ -183,6 +217,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
             )}
             {edit && !edit.id && (
               <tr className="border-t border-stone-100 bg-emerald-50">
+                {multiDelete && canDelete && <td />}
                 {columns.map((c) => (
                   <td key={c.key} className="p-2 first:pl-4 align-top">
                     {celda(c, edit.data, setField)}
@@ -200,7 +235,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
             )}
             {loading && (
               <tr>
-                <td colSpan={columns.length + 1} className="p-4 text-center text-stone-400">
+                <td colSpan={columns.length + 1 + (multiDelete && canDelete ? 1 : 0)} className="p-4 text-center text-stone-400">
                   Cargando…
                 </td>
               </tr>
@@ -208,6 +243,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
             {ordenadas.map((r) =>
               edit?.id === r.id ? (
                 <tr key={r.id} className="border-t border-stone-100 bg-amber-50">
+                  {multiDelete && canDelete && <td />}
                   {columns.map((c) => (
                     <td key={c.key} className="p-2 first:pl-4 align-top">
                       {c.readOnlyOnEdit ? mostrar(c, r) : celda(c, edit.data, setField)}
@@ -223,7 +259,10 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
                   </td>
                 </tr>
               ) : (
-                <tr key={r.id} className="border-t border-stone-100">
+                <tr key={r.id} className={`border-t border-stone-100 ${sel[r.id] ? "bg-red-50" : ""}`}>
+                  {multiDelete && canDelete && (
+                    <td className="p-2 pl-4"><input type="checkbox" checked={!!sel[r.id]} onChange={(e) => setSel({ ...sel, [r.id]: e.target.checked })} /></td>
+                  )}
                   {columns.map((c) => (
                     <td key={c.key} className="p-2 first:pl-4">
                       {mostrar(c, r)}
