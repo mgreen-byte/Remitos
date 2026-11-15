@@ -4,6 +4,7 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, norm, up, fmtNum, nombreConPresentacion } from "@/lib/util";
+import { calidadInfo } from "@/lib/calidad";
 
 const nh = (s) => norm(s).replace(/[^a-z0-9]+/g, " ").trim();
 const ALIAS = {
@@ -15,12 +16,24 @@ const ALIAS = {
   peso: ["peso por unidad", "peso", "kg por unidad", "kg unidad"],
   prefijo: ["prefijo precinto", "prefijo", "prefijo de precinto"],
   cantidad: ["cantidad", "unidades", "stock", "cant", "cantidad unidades"],
+  calidad: ["calidad", "estado de calidad", "estado calidad", "calidad del lote"],
+  calibre: ["calibre"],
   nota: ["nota", "motivo", "observaciones", "comentario"],
 };
 // "26mst-sta" y "26MST - STA" son el mismo prefijo; "-" significa sin prefijo.
 const normPref = (v) => {
   const t = String(v ?? "").trim().toUpperCase().replace(/\s*-\s*/g, " - ").trim();
   return t === "-" ? "" : t;
+};
+// Texto de la columna CALIDAD -> estado. Vacío = no se indica (el lote nuevo queda en Pre inspección).
+const leerCalidad = (v) => {
+  const t = nh(v);
+  if (!t) return "";
+  if (/^no /.test(t) || t.includes("rechaz")) return "no_aprobado";
+  if (t.includes("pre") && (t.includes("dato") || /c d/.test(t))) return "pre_inspeccion_datos";
+  if (t.includes("pre")) return "pre_inspeccion";
+  if (t.includes("aprob")) return "aprobado";
+  return "?";
 };
 const sinPlanta = (n) => nh(n).replace(/^planta /, "");
 
@@ -45,16 +58,19 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([
-      ["ESTADO", "PLANTA", "CATEGORÍA", "VARIEDAD", "LOTE", "PESO POR UNIDAD", "PREFIJO PRECINTO", "STOCK"],
-      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "Original", prodsActivos[0]?.nombre || "NOMBRE DE LA VARIEDAD", "LOTE-1", prodsActivos[0]?.kg_por_unidad || 800, "26MST - STA", 10],
+      ["ESTADO", "PLANTA", "CATEGORÍA", "VARIEDAD", "LOTE", "PESO POR UNIDAD", "PREFIJO PRECINTO", "STOCK", "CALIDAD", "CALIBRE"],
+      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "Original", prodsActivos[0]?.nombre || "NOMBRE DE LA VARIEDAD", "LOTE-1", prodsActivos[0]?.kg_por_unidad || 800, "26MST - STA", 10, "APROBADO", ""],
+      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "", "HIBRIDO DE MAIZ 80M (EJEMPLO)", "LOTE-MAIZ-1", 18.5, "", 500, "PRE INSPECCION", "C2R"],
     ]);
-    ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 22 }, { wch: 34 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 22 }, { wch: 34 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
     const wi = XLSX.utils.aoa_to_sheet([
       ["Cómo completar"],
       ["Una fila por lote (si un lote tiene dos prefijos de precinto, van en dos filas: se suman las cantidades)."],
       ["STOCK es el stock inicial del lote en la planta donde se produjo (unidades: big bags / bolsas)."],
       ["Si volvés a subir un lote ya cargado con otro stock, la app te muestra la diferencia y vos decidís si se aplica."],
+      ["CALIDAD (opcional): APROBADO, PRE INSPECCION, PRE INSPECCION C/DATOS o NO APROBADO. Si queda vacía, el lote nuevo entra como PRE INSPECCION. Solo se aplica a lotes nuevos."],
+      ["Maíz en bolsas: PESO POR UNIDAD es el peso de la bolsa de ese lote y CALIBRE su calibre. Sin prefijo de precinto."],
       ["Variedad: si no coincide con el catálogo, la app te deja elegir el producto o crearlo."],
     ]);
     wi["!cols"] = [{ wch: 120 }];
@@ -100,7 +116,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
         if (![g("producto"), g("lote"), g("cantidad")].some((v) => String(v ?? "").trim())) continue;
         const cant = typeof g("cantidad") === "number" ? g("cantidad") : Number(String(g("cantidad")).replace(/\./g, "").replace(",", "."));
         const peso = Number(String(g("peso")).replace(",", ".")) || null;
-        const f = { plantaTxt: String(g("planta")).trim(), prodTxt: String(g("producto")).trim(), presTxt: String(g("presentacion")).trim(), peso, lote: up(String(g("lote")).trim()), categoria: String(g("categoria")).trim() };
+        const f = { plantaTxt: String(g("planta")).trim(), prodTxt: String(g("producto")).trim(), presTxt: String(g("presentacion")).trim(), peso, lote: up(String(g("lote")).trim()), categoria: String(g("categoria")).trim(), calidad: leerCalidad(g("calidad")), calidadTxt: String(g("calidad")).trim(), calibre: up(String(g("calibre")).trim()) };
         const key = [nh(f.plantaTxt), nh(f.prodTxt), peso || "", f.lote].join("|");
         let gr = mapa.get(key);
         if (!gr) {
@@ -113,6 +129,8 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
         const pf = normPref(g("prefijo"));
         if (pf && !gr.prefijos.includes(pf)) gr.prefijos.push(pf);
         if (!gr.categoria && f.categoria) gr.categoria = f.categoria;
+        if (!gr.calidad && f.calidad) { gr.calidad = f.calidad; gr.calidadTxt = f.calidadTxt; }
+        if (!gr.calibre && f.calibre) gr.calibre = f.calibre;
       }
       const out = [...mapa.values()];
       if (!out.length) throw new Error("El archivo no tiene filas para cargar.");
@@ -134,7 +152,8 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
     if (c.length === 1 && f.peso && Number(c[0].kg_por_unidad) && Number(c[0].kg_por_unidad) !== Number(f.peso)) return [];
     return c;
   };
-  const prodKey = (f) => `${nh(f.prodTxt)}|${f.peso || ""}`;
+  // Maíz en bolsas (fila con calibre): el peso es del lote, no del producto.
+  const prodKey = (f) => (f.calibre ? `${nh(f.prodTxt)}|maiz` : `${nh(f.prodTxt)}|${f.peso || ""}`);
 
   const filas = (grupos || []).map((f) => {
     const err = [...f.err0];
@@ -148,18 +167,21 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
     if (!planta) err.push(f.plantaTxt ? `elegí la planta para “${f.plantaTxt}”` : "falta la planta");
     if (!prod && !crear && f.prodTxt) err.push(cs.length > 1 ? `“${f.prodTxt}” tiene varias presentaciones: elegí cuál` : `elegí el producto para “${f.prodTxt}” o creálo`);
     if (!(f.cantidad > 0)) err.push("sin stock");
+    if (f.calidad === "?") err.push(`calidad “${f.calidadTxt}” no reconocida (usá APROBADO, PRE INSPECCION, PRE INSPECCION C/DATOS o NO APROBADO)`);
+    const esMaiz = prod ? prod.categoria === "maiz" : !!f.calibre;
+    if (esMaiz && !f.peso) err.push("falta el peso por bolsa (maíz)");
     const ex = planta && prod ? existentes[`${planta.id}|${prod.id}|${f.lote}`] : null;
     const base = ex ? (ex.inicial ?? ex.stock) : null;
     let accion = "nuevo";
     if (ex) accion = base === f.cantidad ? "igual" : aplicar[f.n] ? "ajustar" : "omitir";
-    return { ...f, err, planta, prod, crear, cs, ex, base, accion };
+    return { ...f, err, planta, prod, crear, cs, ex, base, accion, esMaiz };
   });
 
   const ok = filas.filter((f) => !f.err.length);
   const malas = filas.filter((f) => f.err.length);
   const aCargar = ok.filter((f) => f.accion === "nuevo" || f.accion === "ajustar");
   const totalU = aCargar.filter((f) => f.accion === "nuevo").reduce((a, f) => a + f.cantidad, 0);
-  const totalKg = aCargar.filter((f) => f.accion === "nuevo").reduce((a, f) => a + f.cantidad * Number(f.prod?.kg_por_unidad || f.peso || 0), 0);
+  const totalKg = aCargar.filter((f) => f.accion === "nuevo").reduce((a, f) => a + f.cantidad * Number((f.esMaiz ? f.peso : f.prod?.kg_por_unidad) || f.peso || 0), 0);
   const conDif = ok.filter((f) => f.accion === "omitir" || f.accion === "ajustar");
   const sinReconocer = [...new Map(filas.filter((f) => f.cs.length !== 1).map((f) => [prodKey(f), f])).values()];
   const crearTodas = () => {
@@ -179,7 +201,9 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
         if (f.crear && !creados[prodKey(f)]) {
           const { data, error } = await supabase
             .from("productos")
-            .insert({ categoria: "soja", grupo: "semilla", nombre: up(f.prodTxt), presentacion: f.peso ? `BIG BAG ${f.peso} KG` : "", kg_por_unidad: f.peso || null, alias: [f.prodTxt] })
+            .insert(f.esMaiz
+              ? { categoria: "maiz", grupo: "semilla", nombre: up(f.prodTxt), presentacion: "", kg_por_unidad: null, alias: [f.prodTxt] }
+              : { categoria: "soja", grupo: "semilla", nombre: up(f.prodTxt), presentacion: f.peso ? `BIG BAG ${f.peso} KG` : "", kg_por_unidad: f.peso || null, alias: [f.prodTxt] })
             .select()
             .single();
           if (error) throw error;
@@ -207,6 +231,18 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
       const extra = [...new Set(ok.flatMap((f) => f.prefijos))].map((pf) => ({ prefijo: pf, accion: "omitir" }));
       const { data, error } = await supabase.rpc("cargar_stock_reporte", { p_filas: [...filasRpc, ...extra] });
       if (error) throw error;
+      // 3) calidad, peso por bolsa y calibre: solo para los lotes nuevos de esta carga
+      const filasCal = aCargar.filter((f) => f.accion === "nuevo" && (f.calidad || f.esMaiz)).map((f) => ({
+        producto_id: (f.prod || creados[prodKey(f)]).id,
+        lote: f.lote,
+        estado: f.calidad || null,
+        kg: f.esMaiz ? f.peso : null,
+        calibre: f.esMaiz ? f.calibre || null : null,
+      }));
+      if (filasCal.length) {
+        const { error: eCal } = await supabase.rpc("calidad_masiva", { p_filas: filasCal });
+        if (eCal) throw new Error(`El stock se cargó, pero no se pudo guardar la calidad / peso / calibre: ${friendlyError(eCal)}`);
+      }
       const nuevos = data?.nuevos ?? 0;
       const ajust = data?.ajustados ?? 0;
       setResultado(`Listo: ${nuevos} lote(s) nuevo(s) (${fmtNum(totalU)} unidades · ${fmtNum(totalKg)} kg)${ajust ? `, ${ajust} lote(s) con diferencia aplicada` : ""}. Prefijos registrados: ${prefijosNuevos.length}.`);
@@ -280,6 +316,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
                   <th className="text-left p-2">Variedad</th>
                   <th className="text-left p-2">Lote</th>
                   <th className="text-left p-2">Prefijo</th>
+                  <th className="text-left p-2">Calidad</th>
                   <th className="text-right p-2">Stock reporte</th>
                   <th className="text-left p-2">Qué pasa</th>
                 </tr>
@@ -301,6 +338,10 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
                     </td>
                     <td className="p-2 font-mono">{f.lote}</td>
                     <td className="p-2 text-[12px]">{f.prefijos.length ? f.prefijos.join(" + ") : "—"}</td>
+                    <td className="p-2 text-[12px]">
+                      {f.calidad && f.calidad !== "?" ? calidadInfo(f.calidad).t : f.calidad === "?" ? <span className="text-red-700">{f.calidadTxt}</span> : <span className="text-stone-400">Pre inspección</span>}
+                      {f.esMaiz && <div className="text-[11px] text-stone-500">{f.peso ? `${fmtNum(f.peso)} kg` : "sin peso"}{f.calibre ? ` · cal. ${f.calibre}` : ""}</div>}
+                    </td>
                     <td className="p-2 text-right">{fmtNum(f.cantidad)}</td>
                     <td className="p-2">
                       {f.err.length ? <span className="text-red-700">{f.err.join("; ")}</span>
