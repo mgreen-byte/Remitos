@@ -291,7 +291,7 @@ function GenerarInner({ profile }) {
     if (!p) return "";
     const dl = datosDe(l);
     const kgLote = p.categoria === "maiz" && Number(dl.kg) ? `${fmtNum(dl.kg)} KG C/U` : "";
-    return [nombreConPresentacion(p.nombre, p.presentacion), dl.calibre ? `CALIBRE ${dl.calibre}` : "", l ? `LOTE ${l.lote}` : "", kgLote, precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
+    return [nombreConPresentacion(p.nombre, p.presentacion), dl.calibre ? `CALIBRE ${dl.calibre}` : "", l ? `LOTE ${l.lote}` : "", kgLote, precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", dl.calibre && /^CALIBRE\b/i.test(it.extra || "") ? "" : it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(datosDe(loteDe(it.loteId)).kg) || Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
@@ -427,14 +427,14 @@ function GenerarInner({ profile }) {
   const [ocDb, setOcDb] = useState([]);
   const [ocDbSel, setOcDbSel] = useState("");
   const cargarOcDb = async (pid) => {
-    if (!pid || (modalidad !== "soja" && modalidad !== "traslado")) return setOcDb([]);
+    if (!pid || (modalidad !== "soja" && modalidad !== "maiz" && modalidad !== "traslado")) return setOcDb([]);
     let q = supabase
       .from("v_ordenes_lineas_saldo")
       .select("*")
       .eq("planta_id", pid)
       .eq("orden_estado", "activa")
       .gt("saldo", 0);
-    q = modalidad === "traslado" ? q.eq("orden_modalidad", "traslado") : q.neq("orden_modalidad", "traslado");
+    q = q.eq("orden_modalidad", modalidad); // soja, maíz o traslado: cada modalidad ve solo sus órdenes
     const { data } = await q.order("orden_numero").order("prioridad", { nullsFirst: false }).order("cliente");
     setOcDb(data || []);
   };
@@ -931,7 +931,7 @@ function GenerarInner({ profile }) {
               </div>
             )}
 
-            {modalidad === "soja" && !esTraslado && (
+            {(modalidad === "soja" || modalidad === "maiz") && !esTraslado && (
               <div className="mt-5 pt-5 border-t border-stone-200">
                 <span className={lab}>Orden de carga guardada ({planta?.nombre || "tu planta"})</span>
                 <select value={ocDbSel} onChange={(e) => elegirOcDb(e.target.value)} disabled={!!emitido} className={inp}>

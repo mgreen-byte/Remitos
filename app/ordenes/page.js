@@ -201,10 +201,10 @@ function OrdenesInner({ profile }) {
         const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
         const parsed = parseOrdenDeCarga(rows);
-        if (parsed.modalidadDetectada === "maiz") throw new Error("Esta es una orden de maíz: por ahora acá se cargan solo las de soja.");
-        const { lineas: ls, depositosSinPlanta, sinCatalogo } = armarLineas(parsed, plantas, productos, "soja");
+        const modOc = parsed.modalidadDetectada === "maiz" ? "maiz" : "soja";
+        const { lineas: ls, depositosSinPlanta, sinCatalogo } = armarLineas(parsed, plantas, productos, modOc);
         if (!ls.length) throw new Error("La orden no trae clientes con cantidad para cargar. Revisá que tenga Cliente y Cantidad completos.");
-        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {} });
+        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {}, modalidad: modOc });
       } catch (err) {
         setPrev(null);
         setMsg({ tipo: "error", texto: err.message || "No pude leer el archivo." });
@@ -233,6 +233,10 @@ function OrdenesInner({ profile }) {
       p_lineas: lineasParaGuardar(efectivas),
       p_origen: "excel",
     });
+    if (!error && prev.modalidad === "maiz") {
+      const r3 = await supabase.rpc("fijar_modalidad_orden", { p_numero: up(prev.numero).trim(), p_modalidad: "maiz" });
+      if (r3.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude marcarla como orden de maíz: " + friendlyError(r3.error) });
+    }
     if (!error && prev.fechaCarga) {
       const r2 = await supabase.rpc("fijar_fecha_carga_excel", { p_numero: up(prev.numero).trim(), p_fecha: prev.fechaCarga });
       if (r2.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar la fecha de carga: " + friendlyError(r2.error) });
@@ -248,7 +252,7 @@ function OrdenesInner({ profile }) {
   // ---------- orden a mano (solo administrador) ----------
   const crearManual = async () => {
     setMsg(null);
-    const { data, error } = await supabase.rpc("crear_orden_manual", { p_numero: manual.numero, p_fecha: manual.fecha || null });
+    const { data, error } = await supabase.rpc("crear_orden_manual", { p_numero: manual.numero, p_fecha: manual.fecha || null, p_modalidad: manual.modalidad || "soja" });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     if (manual.fechaCarga) await supabase.rpc("fijar_fecha_carga", { p_orden_id: data, p_fecha: manual.fechaCarga });
     setManual(null);
@@ -638,7 +642,7 @@ function OrdenesInner({ profile }) {
             {!poderAdmin && <div className="text-[12px] text-stone-500">Se cargan solo las líneas de tu planta ({profile.planta?.nombre}). Si la orden ya existe, se reemplazan las de tu planta por las del archivo.</div>}
 
             {manual && poderAdmin && (
-              <div className="grid gap-3 sm:grid-cols-4 items-end border-t border-stone-200 pt-3">
+              <div className="grid gap-3 sm:grid-cols-5 items-end border-t border-stone-200 pt-3">
                 <div>
                   <label className={lab}>Número de orden</label>
                   <input value={manual.numero} onChange={(e) => setManual({ ...manual, numero: up(e.target.value) })} placeholder="Ej: OC-SF-002" className={inp} />
@@ -646,6 +650,13 @@ function OrdenesInner({ profile }) {
                 <div>
                   <label className={lab}>Fecha</label>
                   <input type="date" value={manual.fecha} onChange={(e) => setManual({ ...manual, fecha: e.target.value })} className={inp} />
+                </div>
+                <div>
+                  <label className={lab}>Tipo</label>
+                  <select value={manual.modalidad || "soja"} onChange={(e) => setManual({ ...manual, modalidad: e.target.value })} className={inp}>
+                    <option value="soja">Soja</option>
+                    <option value="maiz">Maíz</option>
+                  </select>
                 </div>
                 <div>
                   <label className={lab}>Fecha prevista de carga (opcional)</label>
@@ -1090,7 +1101,7 @@ function OrdenesInner({ profile }) {
                               <label className={lab}>Producto del catálogo</label>
                               <select value={edit.data.producto_id} onChange={(e) => elegirProducto(e.target.value)} disabled={edit.tieneRemitos} className={inp}>
                                 <option value="">— elegir —</option>
-                                {productos.filter((p) => p.categoria === "soja").map((p) => (
+                                {productos.filter((p) => p.categoria === "soja" || p.categoria === "maiz").map((p) => (
                                   <option key={p.id} value={p.id}>{p.nombre}{p.presentacion ? ` · ${p.presentacion}` : ""}</option>
                                 ))}
                               </select>
