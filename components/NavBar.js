@@ -39,6 +39,30 @@ export default function NavBar({ profile, children }) {
   const [pendientes, setPendientes] = useState(0);
   const [avisoTal, setAvisoTal] = useState(0);
   const [avisoCot, setAvisoCot] = useState(0);
+  // Usuario con más de una planta habilitada: puede cambiar la planta en la que está trabajando.
+  const [misPlantas, setMisPlantas] = useState([]);
+  const [cambiando, setCambiando] = useState(false);
+  useEffect(() => {
+    const ids = [...new Set([profile?.planta_id, ...(profile?.plantas_extra || [])].filter(Boolean))];
+    if (!profile || profile.rol === "admin" || ids.length < 2) return setMisPlantas([]);
+    supabase.from("plantas").select("id, nombre, punto_venta").in("id", ids).eq("activa", true).order("nombre").then(({ data }) => setMisPlantas(data || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, profile?.planta_id]);
+  const cambiarPlanta = async (id) => {
+    if (!id || id === profile?.planta_id) return;
+    setCambiando(true);
+    const { error } = await supabase.rpc("cambiar_mi_planta", { p_planta: id });
+    if (error) { setCambiando(false); window.alert(error.message); return; }
+    window.location.reload(); // todo lo que se ve pasa a ser de la planta nueva
+  };
+  const selectorPlanta = misPlantas.length > 1 && (
+    <label className="block mb-2">
+      <span className="block text-[11px] uppercase tracking-wide text-stone-400 mb-1">Trabajando en</span>
+      <select value={profile?.planta_id || ""} disabled={cambiando} onChange={(e) => cambiarPlanta(e.target.value)} className="w-full bg-ink-800 border border-ink-700 text-white text-[13px] rounded px-2 py-1.5">
+        {misPlantas.map((p) => <option key={p.id} value={p.id}>{p.nombre} (PV {p.punto_venta})</option>)}
+      </select>
+    </label>
+  );
   useEffect(() => { setMenu(false); }, [pathname]);
   useEffect(() => {
     if (!profile) return;
@@ -129,6 +153,7 @@ export default function NavBar({ profile, children }) {
           })}
         </nav>
         <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
+          {selectorPlanta}
           <div className="font-medium text-white truncate">{profile?.nombre}</div>
           <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">
@@ -158,6 +183,7 @@ export default function NavBar({ profile, children }) {
                   );
                 })}
               </nav>
+              {selectorPlanta && <div className="mx-4 mt-3">{selectorPlanta}</div>}
               <button onClick={logout} className="m-4 text-left px-4 py-3 rounded-md border border-ink-700 text-emerald-300 text-[15px]">Cerrar sesión</button>
             </div>
           </div>

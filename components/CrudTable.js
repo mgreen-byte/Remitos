@@ -169,7 +169,8 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     const v = r[c.key];
     if (c.type === "bool") return v ? "Sí" : "No";
     if (c.type === "select") return c.options.find((o) => o.value === v)?.label ?? "—";
-    if (c.type === "multi" || c.type === "list") return (v || []).join(", ") || "—";
+    if (c.type === "multi") return (v || []).map((x) => c.options?.find((o) => o.value === x)?.label ?? x).join(", ") || "—";
+    if (c.type === "list") return (v || []).join(", ") || "—";
     return v === null || v === undefined || v === "" ? "—" : String(v);
   };
 

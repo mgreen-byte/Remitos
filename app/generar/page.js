@@ -80,7 +80,8 @@ export default function GenerarPage() {
 
 function GenerarInner({ profile }) {
   const esAdmin = profile.rol === "admin";
-  const modalidadesPermitidas = [...(profile.modalidades?.length ? profile.modalidades : ["soja", "maiz", "generico"]), "traslado"];
+  // El administrador ve siempre todas las modalidades; el resto, las que tenga habilitadas en Administración → Usuarios.
+  const modalidadesPermitidas = [...(profile.rol === "admin" || !profile.modalidades?.length ? ["soja", "maiz", "generico"] : profile.modalidades), "traslado"];
 
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
   const [plantas, setPlantas] = useState([]);
@@ -357,10 +358,10 @@ function GenerarInner({ profile }) {
   // Grupos de la orden (cliente + depósito). El operador solo ve los que salen de su planta;
   // el administrador ve todos y, al elegir uno, se cambia a la planta del depósito.
   const grupos = useMemo(() => {
-    const lista = (ocData?.clientes || []).map((c) => ({ ...c, plantaOc: matchPlanta(c.deposito, plantas) }));
+    const lista = (ocData?.clientes || []).map((c) => ({ ...c, plantaOc: matchPlanta(c.deposito, plantas, modalidad) }));
     if (esAdmin) return lista;
     return lista.filter((c) => !c.plantaOc || c.plantaOc.id === planta?.id);
-  }, [ocData, plantas, esAdmin, planta?.id]);
+  }, [ocData, plantas, esAdmin, planta?.id, modalidad]);
   const ocados = (ocData?.clientes.length || 0) - grupos.length;
 
   const selectCliente = (clave, yaEnPlanta = false) => {
