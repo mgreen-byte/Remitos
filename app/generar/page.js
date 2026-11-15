@@ -948,7 +948,8 @@ function GenerarInner({ profile }) {
               </div>
             )}
 
-            {modalidad !== "generico" && !esTraslado && (
+            {/* Leer un Excel de orden sin guardarlo: solo Administrador (y Logística). La planta despacha desde las órdenes guardadas. */}
+            {modalidad !== "generico" && !esTraslado && (esAdmin || profile.rol === "logistica") && (
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2 items-end">
                 <div>
                   <span className={lab}>{modalidad === "soja" ? "O subir un Excel de orden de carga (opcional)" : "Orden de carga (Excel, opcional)"}</span>
