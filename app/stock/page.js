@@ -384,7 +384,7 @@ function StockInner({ profile }) {
                 </option>
               ))}
             </select>
-            <input required value={form.lote} onChange={(e) => setForm({ ...form, lote: up(e.target.value) })} placeholder="N° de lote" className={`${inputCls} w-36`} />
+            <input required value={form.lote} onChange={(e) => { const lote = up(e.target.value); const pre = lote.includes("-") ? lote.split("-")[0].trim() : ""; setForm({ ...form, lote, calibre: formMaiz && (!form.calibre || form.calibre === (form.lote.includes("-") ? form.lote.split("-")[0].trim() : "")) ? pre : form.calibre }); }} placeholder={formMaiz ? "Lote (CALIBRE - PARTIDA)" : "N° de lote"} className={`${inputCls} ${formMaiz ? "w-52" : "w-36"}`} />
             <input required value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value.replace(",", ".") })} placeholder="Unidades" inputMode="decimal" className={`${inputCls} w-28`} />
             {formMaiz && (
               <>

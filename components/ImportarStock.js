@@ -60,7 +60,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
     const ws = XLSX.utils.aoa_to_sheet([
       ["ESTADO", "PLANTA", "CATEGORÍA", "VARIEDAD", "LOTE", "PESO POR UNIDAD", "PREFIJO PRECINTO", "STOCK", "CALIDAD", "CALIBRE", "PRESENTACIÓN"],
       ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "Original", prodsActivos[0]?.nombre || "NOMBRE DE LA VARIEDAD", "LOTE-1", prodsActivos[0]?.kg_por_unidad || 800, "26MST - STA", 10, "APROBADO", "", ""],
-      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "", "HIBRIDO DE MAIZ (EJEMPLO)", "LOTE-MAIZ-1", 18.5, "", 500, "PRE INSPECCION", "C2R", "80000 SEMILLAS"],
+      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "", "HIBRIDO DE MAIZ (EJEMPLO)", "R2C - ESA060010D", 18.5, "", 500, "PRE INSPECCION", "R2C", "80000 SEMILLAS"],
     ]);
     ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 22 }, { wch: 34 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
@@ -71,6 +71,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
       ["Si volvés a subir un lote ya cargado con otro stock, la app te muestra la diferencia y vos decidís si se aplica."],
       ["CALIDAD (opcional): APROBADO, PRE INSPECCION, PRE INSPECCION C/DATOS o NO APROBADO. Si queda vacía, el lote nuevo entra como PRE INSPECCION. Solo se aplica a lotes nuevos."],
       ["PRESENTACIÓN (opcional): para maíz, las semillas por bolsa (ej. 80000 SEMILLAS). Tiene que coincidir con la presentación del producto en el catálogo; el mismo híbrido en 60 mil y 80 mil son dos productos."],
+      ["Maíz: el LOTE se carga como CALIBRE - PARTIDA, con espacio antes y después del guion (ej. R2C - ESA060010D), igual que en el sistema administrativo. Si la columna CALIBRE queda vacía, se toma de la parte anterior al guion."],
       ["Maíz en bolsas: PESO POR UNIDAD es el peso de la bolsa de ese lote y CALIBRE su calibre. Sin prefijo de precinto."],
       ["Variedad: si no coincide con el catálogo, la app te deja elegir el producto o crearlo."],
     ]);
@@ -241,7 +242,8 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
         lote: f.lote,
         estado: f.calidad || null,
         kg: f.esMaiz ? f.peso : null,
-        calibre: f.esMaiz ? f.calibre || null : null,
+        // Maíz: si no viene la columna CALIBRE, se toma del lote (CALIBRE-PARTIDA).
+        calibre: f.esMaiz ? f.calibre || (f.lote.includes("-") ? f.lote.split("-")[0].trim() : "") || null : null,
       }));
       if (filasCal.length) {
         const { error: eCal } = await supabase.rpc("calidad_masiva", { p_filas: filasCal });
@@ -344,7 +346,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
                     <td className="p-2 text-[12px]">{f.prefijos.length ? f.prefijos.join(" + ") : "—"}</td>
                     <td className="p-2 text-[12px]">
                       {f.calidad && f.calidad !== "?" ? calidadInfo(f.calidad).t : f.calidad === "?" ? <span className="text-red-700">{f.calidadTxt}</span> : <span className="text-stone-400">Pre inspección</span>}
-                      {f.esMaiz && <div className="text-[11px] text-stone-500">{f.peso ? `${fmtNum(f.peso)} kg` : "sin peso"}{f.calibre ? ` · cal. ${f.calibre}` : ""}</div>}
+                      {f.esMaiz && <div className="text-[11px] text-stone-500">{f.peso ? `${fmtNum(f.peso)} kg` : "sin peso"}{f.calibre || f.lote.includes("-") ? ` · cal. ${f.calibre || f.lote.split("-")[0].trim()}` : ""}</div>}
                     </td>
                     <td className="p-2 text-right">{fmtNum(f.cantidad)}</td>
                     <td className="p-2">

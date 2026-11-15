@@ -291,7 +291,7 @@ function GenerarInner({ profile }) {
     if (!p) return "";
     const dl = datosDe(l);
     const kgLote = p.categoria === "maiz" && Number(dl.kg) ? `${fmtNum(dl.kg)} KG C/U` : "";
-    return [nombreConPresentacion(p.nombre, p.presentacion), dl.calibre ? `CALIBRE ${dl.calibre}` : "", l ? `LOTE ${l.lote}` : "", kgLote, precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", dl.calibre && /^CALIBRE\b/i.test(it.extra || "") ? "" : it.extra].filter(Boolean).join(" · ").toUpperCase();
+    return [nombreConPresentacion(p.nombre, p.presentacion), dl.calibre && !(l && up(l.lote).replace(/\s*-\s*/, "-").startsWith(`${up(dl.calibre)}-`)) ? `CALIBRE ${dl.calibre}` : "", l ? `LOTE ${l.lote}` : "", kgLote, precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", (dl.calibre || (l && p.categoria === "maiz")) && /^CALIBRE\b/i.test(it.extra || "") ? "" : it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
   const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(datosDe(loteDe(it.loteId)).kg) || Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
@@ -407,7 +407,8 @@ function GenerarInner({ profile }) {
         };
       }
       const ls = lotesDe(prod.id);
-      const porTexto = oc.loteOc ? ls.find((l) => up(l.lote) === up(oc.loteOc)) : null;
+      const sinEsp = (t) => up(t).replace(/\s*-\s*/g, "-").trim(); // "R2C - X" y "R2C-X" son el mismo lote
+      const porTexto = oc.loteOc ? ls.find((l) => sinEsp(l.lote) === sinEsp(oc.loteOc)) : null;
       return {
         ...itemVacio(),
         productoId: prod.id,
