@@ -6,6 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { calKey, traerDatosLotes } from "@/lib/calidad";
 import { fmtNum, fmtFecha, norm, cotAtrasado, nombreConPresentacion } from "@/lib/util";
 
 const esBigBag = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
@@ -16,6 +17,7 @@ export default function InicioPage() {
 
 function InicioInner({ profile }) {
   const [lotes, setLotes] = useState([]);
+  const [datosLotes, setDatosLotes] = useState({});
   const [plantas, setPlantas] = useState([]);
   const [transito, setTransito] = useState([]);
   const [cotPend, setCotPend] = useState([]);
@@ -32,7 +34,7 @@ function InicioInner({ profile }) {
     for (let desde = 0; ; desde += 1000) {
       const { data, error } = await supabase
         .from("lotes")
-        .select("id, lote, stock, planta_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
+        .select("id, lote, stock, planta_id, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
         .gt("stock", 0)
         .order("lote")
         .range(desde, desde + 999);
@@ -48,6 +50,7 @@ function InicioInner({ profile }) {
     setTransito(tr || []);
     const { data: cp } = await supabase.from("v_cot_pendientes").select("remito_id, planta, created_at").limit(5000);
     setCotPend(cp || []);
+    setDatosLotes(await traerDatosLotes(supabase));
     setLotes(todos);
     setPlantas(pl || []);
     setActualizado(new Date());
@@ -62,8 +65,8 @@ function InicioInner({ profile }) {
     return lotes
       .filter((l) => (soloBB ? esBigBag(l.producto) : true))
       .filter((l) => !nq || norm(`${l.lote} ${l.producto?.nombre} ${l.producto?.presentacion}`).includes(nq))
-      .map((l) => ({ ...l, kg: l.producto?.kg_por_unidad ? l.stock * l.producto.kg_por_unidad : null }));
-  }, [lotes, soloBB, q]);
+      .map((l) => { const kgu = Number(datosLotes[calKey(l.producto_id, l.lote)]?.kg) || Number(l.producto?.kg_por_unidad) || 0; return { ...l, kg: kgu ? l.stock * kgu : null }; });
+  }, [lotes, soloBB, q, datosLotes]);
 
   const porPlanta = useMemo(
     () =>

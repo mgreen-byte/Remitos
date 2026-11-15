@@ -31,12 +31,13 @@ function StockInner({ profile }) {
   const [tip, setTip] = useState(null); // cartel flotante de Comprometido: {x, y, titulo, items, total}
   const [ocLineas, setOcLineas] = useState([]); // líneas de órdenes activas con saldo (comprometido)
   const [verAgotados, setVerAgotados] = useState(false);
-  const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "" });
+  const [form, setForm] = useState({ productoId: "", lote: "", cantidad: "", motivo: "", kg: "", calibre: "" });
   const [msg, setMsg] = useState({ tipo: "", texto: "" });
   const [abiertos, setAbiertos] = useState({}); // productos desplegados
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState({}); // lotes tildados para eliminar
   const [calMap, setCalMap] = useState({});
+  const [datosMap, setDatosMap] = useState({}); // peso por bolsa y calibre por producto+lote (maíz)
   const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
@@ -93,10 +94,12 @@ function StockInner({ profile }) {
       .eq("planta_id", plantaId)
       .order("lote");
     setLotes(data || []);
-    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado");
+    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado, kg_unidad, calibre");
     const cm = {};
-    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; });
+    const dm = {};
+    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; dm[`${c.producto_id}||${c.lote_key}`] = { kg: c.kg_unidad, calibre: c.calibre }; });
     setCalMap(cm);
+    setDatosMap(dm);
     const { data: ln } = await supabase
       .from("v_ordenes_lineas_saldo")
       .select("id, producto_id, lote_texto, planta_id, saldo, orden_numero, cliente")
@@ -128,6 +131,9 @@ function StockInner({ profile }) {
   const ok = (texto) => setMsg({ tipo: "ok", texto });
   const fail = (e) => setMsg({ tipo: "error", texto: friendlyError(e) });
 
+  // Maíz en bolsas: el peso por bolsa y el calibre se cargan con el lote (si el lote ya los tiene, no hace falta repetirlos).
+  const formMaiz = productos.find((p) => p.id === form.productoId)?.categoria === "maiz";
+  const formDatos = datosMap[calKey(form.productoId, form.lote)] || {};
   const ingresar = async (e) => {
     e.preventDefault();
     setMsg({ tipo: "", texto: "" });
@@ -139,8 +145,13 @@ function StockInner({ profile }) {
       p_motivo: form.motivo || null,
     });
     if (error) return fail(error);
+    if (formMaiz && (form.kg || form.calibre)) {
+      const kg = Number(String(form.kg).replace(",", ".")) || formDatos.kg || null;
+      const { error: e2 } = await supabase.rpc("definir_datos_lote", { p_producto: form.productoId, p_lote: form.lote, p_kg: kg, p_calibre: form.calibre || formDatos.calibre || null });
+      if (e2) { cargar(); return fail(e2); }
+    }
     ok(`Se ingresaron ${fmtNum(form.cantidad)} unidades al lote ${up(form.lote)}.`);
-    setForm({ productoId: form.productoId, lote: "", cantidad: "", motivo: "" });
+    setForm({ productoId: form.productoId, lote: "", cantidad: "", motivo: "", kg: "", calibre: "" });
     cargar();
   };
 
@@ -216,6 +227,10 @@ function StockInner({ profile }) {
     else if (ln.lote_texto && clavesLotes.has(loteKey(ln.producto_id, ln.lote_texto))) compPorLote[loteKey(ln.producto_id, ln.lote_texto)] = (compPorLote[loteKey(ln.producto_id, ln.lote_texto)] || 0) + sal;
     else compSinLote[ln.producto_id] = (compSinLote[ln.producto_id] || 0) + sal;
   }
+  const datosDe = (l) => datosMap[calKey(l.producto_id, l.lote)] || {};
+  // Kg por unidad: el del lote (maíz en bolsas) o, si no tiene, el fijo del producto.
+  const kgDe = (l) => Number(datosDe(l).kg) || Number(l.producto?.kg_por_unidad) || 0;
+  const esMaizL = (l) => l.producto?.categoria === "maiz";
   const calDe = (l) => calMap[calKey(l.producto_id, l.lote)] || "aprobado";
   const aprobadoL = (l) => calDe(l) === "aprobado";
   const puedeCalidad = profile.rol === "admin" || profile.rol === "logistica";
@@ -274,14 +289,14 @@ function StockInner({ profile }) {
     g.inicial += iniDe(l);
     g.comp += aprobadoL(l) ? compDe(l) : 0;
     g.disp += dispDe(l);
-    g.kg += Number(l.stock) * Number(l.producto?.kg_por_unidad || 0);
+    g.kg += Number(l.stock) * kgDe(l);
   }
   grupos.sort((a, b) => nombreConPresentacion(a.producto?.nombre, a.producto?.presentacion).localeCompare(nombreConPresentacion(b.producto?.nombre, b.producto?.presentacion)));
   const abierto = (g) => !!q || !!abiertos[g.id];
   const totalUnidades = visibles.reduce((a, l) => a + Number(l.stock), 0);
   const totalDisp = grupos.reduce((a, g) => a + g.disp - g.sinLote, 0);
   const totalComp = grupos.reduce((a, g) => a + g.comp + g.sinLote, 0);
-  const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * Number(l.producto?.kg_por_unidad || 0), 0);
+  const totalKg = visibles.reduce((a, l) => a + Number(l.stock) * kgDe(l), 0);
 
   return (
     <NavBar profile={profile}>
@@ -371,6 +386,12 @@ function StockInner({ profile }) {
             </select>
             <input required value={form.lote} onChange={(e) => setForm({ ...form, lote: up(e.target.value) })} placeholder="N° de lote" className={`${inputCls} w-36`} />
             <input required value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value.replace(",", ".") })} placeholder="Unidades" inputMode="decimal" className={`${inputCls} w-28`} />
+            {formMaiz && (
+              <>
+                <input required={!formDatos.kg} value={form.kg} onChange={(e) => setForm({ ...form, kg: e.target.value.replace(",", ".") })} placeholder={formDatos.kg ? `Kg por bolsa (${fmtNum(formDatos.kg)})` : "Kg por bolsa"} inputMode="decimal" className={`${inputCls} w-36`} />
+                <input required={!formDatos.calibre} value={form.calibre} onChange={(e) => setForm({ ...form, calibre: up(e.target.value) })} placeholder={formDatos.calibre ? `Calibre (${formDatos.calibre})` : "Calibre"} className={`${inputCls} w-32`} />
+              </>
+            )}
             <input value={form.motivo} onChange={(e) => setForm({ ...form, motivo: e.target.value })} placeholder="Nota (opcional)" className={`${inputCls} flex-1 min-w-[140px]`} />
             <button className="bg-emerald-700 text-white text-sm px-4 py-1.5 rounded">Ingresar</button>
           </div>
@@ -479,7 +500,7 @@ function StockInner({ profile }) {
                             </label>
                           )}
                         </div>
-                        <CalidadLote lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} />
+                        <CalidadLote lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} datos={datosDe(l)} esMaiz={esMaizL(l)} />
                         {ajuste && ajuste.loteId === l.id && (
                           <div className="bg-amber-50 rounded p-3 space-y-2 -ml-3">
                             <input value={ajuste.delta} onChange={(e) => setAjuste({ ...ajuste, delta: e.target.value.replace(",", ".") })} placeholder={puedeSumar ? "+/− unidades" : "− unidades (baja)"} className={`${inputCls} w-full`} />
@@ -570,7 +591,7 @@ function StockInner({ profile }) {
                         {g.sinLote > 0 && <div className="text-[10.5px] text-amber-700 font-normal">{fmtNum(g.sinLote)} sin lote asignado</div>}
                       </td>
                       <td className={`p-2 text-right font-semibold ${g.disp - g.sinLote < 0 ? "text-red-600" : "text-emerald-800"}`}>{fmtNum(g.disp - g.sinLote)}</td>
-                      <td className="p-2 text-right hidden md:table-cell">{g.producto?.kg_por_unidad ? fmtNum(g.kg) : "—"}</td>
+                      <td className="p-2 text-right hidden md:table-cell">{g.kg > 0 ? fmtNum(g.kg) : "—"}</td>
                       <td className="p-2"></td>
                     </tr>
                     {abierto(g) && g.lotes.map((l) => (
@@ -580,14 +601,14 @@ function StockInner({ profile }) {
                       <td className="p-2 font-mono whitespace-nowrap cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
                         <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
                         {l.lote}
-                        <div className="font-sans" onClick={(e) => e.stopPropagation()}><CalidadLote compacto lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} /></div>
+                        <div className="font-sans" onClick={(e) => e.stopPropagation()}><CalidadLote compacto lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} datos={datosDe(l)} esMaiz={esMaizL(l)} /></div>
                       </td>
-                      <td className="p-2 text-right text-stone-600 hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right text-stone-600 hidden md:table-cell">{kgDe(l) ? fmtNum(kgDe(l)) : "—"}</td>
                       <td className="p-2 text-right text-stone-500">{iniDe(l) > 0 ? fmtNum(iniDe(l)) : "—"}</td>
                       <td className={`p-2 text-right font-semibold ${Number(l.stock) === 0 ? "text-stone-300" : ""}`}>{fmtNum(l.stock)}</td>
                       <td className={`p-2 text-right text-amber-800 ${compDe(l) > 0 ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l))} onMouseLeave={() => setTip(null)}>{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
                       <td className={`p-2 text-right ${dispDe(l) < 0 ? "text-red-600 font-semibold" : aprobadoL(l) ? "text-emerald-800" : "text-stone-400"}`}>{aprobadoL(l) ? fmtNum(dispDe(l)) : "—"}</td>
-                      <td className="p-2 text-right hidden md:table-cell">{l.producto?.kg_por_unidad ? fmtNum(l.stock * l.producto.kg_por_unidad) : "—"}</td>
+                      <td className="p-2 text-right hidden md:table-cell">{kgDe(l) ? fmtNum(l.stock * kgDe(l)) : "—"}</td>
                       <td className="p-2 text-right md:whitespace-nowrap">
                         {!soloLectura && !esPal(l) && (
                           <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">

@@ -4,11 +4,13 @@ import { supabase } from "../lib/supabaseClient";
 import { ESTADOS_CALIDAD, calidadInfo } from "../lib/calidad";
 
 // Etiqueta de calidad + unidades dañadas de un lote, con panel de gestión (solo admin / logística).
-export default function CalidadLote({ lote, estado, puede, onCambio, compacto }) {
+export default function CalidadLote({ lote, estado, puede, onCambio, compacto, datos = {}, esMaiz = false }) {
   const [abierto, setAbierto] = useState(false);
   const [cant, setCant] = useState("");
   const [motivo, setMotivo] = useState("");
   const [msg, setMsg] = useState("");
+  const [kg, setKg] = useState(null); // null = sin tocar
+  const [calibre, setCalibre] = useState(null);
   const [busy, setBusy] = useState(false);
   const info = calidadInfo(estado);
   const danado = Number(lote.danado || 0);
@@ -31,9 +33,22 @@ export default function CalidadLote({ lote, estado, puede, onCambio, compacto })
     onCambio && onCambio();
   };
 
+  const guardarDatos = async () => {
+    const k = kg === null ? datos.kg : Number(String(kg).replace(",", ".")) || null;
+    const c = calibre === null ? datos.calibre : calibre;
+    setBusy(true); setMsg("");
+    const { error } = await supabase.rpc("definir_datos_lote", { p_producto: lote.producto_id, p_lote: lote.lote, p_kg: k, p_calibre: c || null });
+    setBusy(false);
+    if (error) return setMsg(error.message);
+    setKg(null); setCalibre(null);
+    onCambio && onCambio();
+  };
+
   return (
     <div className={compacto ? "inline-flex flex-wrap items-center gap-1.5" : "flex flex-wrap items-center gap-2"}>
       <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${info.cls}`}>{info.t}</span>
+      {datos.calibre && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Calibre {datos.calibre}</span>}
+      {esMaiz && !datos.kg && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">Falta kg por bolsa</span>}
       {danado > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">{danado} dañado{danado === 1 ? "" : "s"}</span>}
       {puede && <button type="button" onClick={() => setAbierto(!abierto)} className="text-[12px] text-emerald-700 underline decoration-dotted">{abierto ? "Cerrar" : "Calidad"}</button>}
       {abierto && (
@@ -57,6 +72,16 @@ export default function CalidadLote({ lote, estado, puede, onCambio, compacto })
               {danado > 0 && <button disabled={busy} onClick={() => danio("descartar")} className="text-xs text-red-700 underline">Descartar (dar de baja del stock)</button>}
             </div>
           </div>
+          {esMaiz && (
+            <div>
+              <div className="text-xs text-stone-500 mb-1">Peso por bolsa y calibre del lote (valen para todas las plantas)</div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <input value={kg === null ? (datos.kg ?? "") : kg} onChange={(e) => setKg(e.target.value)} inputMode="decimal" placeholder="Kg por bolsa" className="border border-stone-300 rounded px-2 py-1.5 w-28 bg-white" />
+                <input value={calibre === null ? (datos.calibre ?? "") : calibre} onChange={(e) => setCalibre(e.target.value.toUpperCase())} placeholder="Calibre" className="border border-stone-300 rounded px-2 py-1.5 w-28 bg-white" />
+                <button disabled={busy || (kg === null && calibre === null)} onClick={guardarDatos} className="bg-emerald-700 text-white text-xs px-3 py-1.5 rounded disabled:opacity-50">Guardar</button>
+              </div>
+            </div>
+          )}
           {msg && <div className="text-xs text-red-700">{msg}</div>}
         </div>
       )}

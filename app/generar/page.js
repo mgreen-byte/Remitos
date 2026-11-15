@@ -91,6 +91,7 @@ function GenerarInner({ profile }) {
   const [productos, setProductos] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [calMap, setCalMap] = useState({});
+  const [datosMap, setDatosMap] = useState({}); // peso por bolsa y calibre por producto+lote (maíz)
   const [lotesPlanta, setLotesPlanta] = useState(""); // planta a la que pertenecen los lotes cargados
   const [ocPendiente, setOcPendiente] = useState(""); // carga de la orden esperando que lleguen los lotes de su planta
   const [ivaOptions, setIvaOptions] = useState(IVA_DEFAULT);
@@ -184,10 +185,12 @@ function GenerarInner({ profile }) {
       .eq("activo", true)
       .gt("stock", 0)
       .order("lote");
-    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado");
+    const { data: cal } = await supabase.from("calidad_lotes").select("producto_id, lote_key, estado, kg_unidad, calibre");
     const cm = {};
-    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; });
+    const dm = {};
+    (cal || []).forEach((c) => { cm[`${c.producto_id}||${c.lote_key}`] = c.estado; dm[`${c.producto_id}||${c.lote_key}`] = { kg: c.kg_unidad, calibre: c.calibre }; });
     setCalMap(cm);
+    setDatosMap(dm);
     setLotes(data || []);
     setLotesPlanta(pid);
   };
@@ -250,6 +253,7 @@ function GenerarInner({ profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocPendiente, lotesPlanta, plantaId]);
 
+  const datosDe = (l) => (l ? datosMap[calKey(l.producto_id, l.lote)] || {} : {});
   const calDe = (l) => calMap[calKey(l.producto_id, l.lote)] || "aprobado";
   const lotesDe = (productoId) => lotes.filter((l) => l.producto_id === productoId);
   const productoDe = (id) => productos.find((p) => p.id === id);
@@ -269,8 +273,11 @@ function GenerarInner({ profile }) {
   const pad4 = (v) => (String(v ?? "").trim() ? String(v).trim().padStart(4, "0") : ""); // 20 -> 0020, 120 -> 0120
   // Solo las semillas llevan precinto (y lote obligatorio); insumos y ensamblajes no.
   const esSemilla = (it) => { const p = productoDe(it.productoId); return !p || (p.grupo || "semilla") === "semilla"; };
+  // El maíz en bolsas es semilla (lote obligatorio) pero no lleva precinto.
+  const esMaiz = (it) => productoDe(it.productoId)?.categoria === "maiz";
+  const llevaPrecinto = (it) => esSemilla(it) && !esMaiz(it);
   const precintoTxt = (it) => {
-    if (!esSemilla(it)) return "";
+    if (!llevaPrecinto(it)) return "";
     if (!usaPrefijos) return up(it.precinto || "").trim();
     const d = pad4(it.precDesde);
     const h = pad4(it.precHasta);
@@ -282,9 +289,11 @@ function GenerarInner({ profile }) {
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
     if (!p) return "";
-    return [nombreConPresentacion(p.nombre, p.presentacion), l ? `LOTE ${l.lote}` : "", precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
+    const dl = datosDe(l);
+    const kgLote = p.categoria === "maiz" && Number(dl.kg) ? `${fmtNum(dl.kg)} KG C/U` : "";
+    return [nombreConPresentacion(p.nombre, p.presentacion), dl.calibre ? `CALIBRE ${dl.calibre}` : "", l ? `LOTE ${l.lote}` : "", kgLote, precintoTxt(it) ? `PRECINTO ${precintoTxt(it)}` : "", it.extra].filter(Boolean).join(" · ").toUpperCase();
   };
-  const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(productoDe(it.productoId)?.kg_por_unidad) || null);
+  const kgUnidadDe = (it) => (it.libre || esGen ? Number(it.kgUnidad) || null : Number(datosDe(loteDe(it.loteId)).kg) || Number(productoDe(it.productoId)?.kg_por_unidad) || null);
 
   // Maestro de destinatarios: el administrador puede guardarlo (o actualizarlo) desde el propio remito.
   const destGuardado = destinatarios.find((d) => up(d.nombre) === up(remito.destinatario).trim()) || null;
@@ -668,8 +677,9 @@ function GenerarInner({ profile }) {
         if (!it.loteId && (esTraslado || esSemilla(it))) return `Ítem ${i + 1}: elegí el lote.`;
         const lq = it.loteId ? loteDe(it.loteId) : null;
         if (lq && !esTraslado && calDe(lq) !== "aprobado") return `Ítem ${i + 1}: el lote ${lq.lote} está NO DISPONIBLE (estado de calidad: ${calidadInfo(calDe(lq)).t}). Elegí otro lote.`;
-        if (esSemilla(it) && !precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
-        if (esSemilla(it) && usaPrefijos) {
+        if (llevaPrecinto(it) && !precintoTxt(it)) return `Ítem ${i + 1}: falta el precinto (es obligatorio).`;
+        if (esMaiz(it) && it.loteId && !it.kgu) return `Ítem ${i + 1}: el lote ${loteDe(it.loteId)?.lote || ""} no tiene cargado el peso por bolsa. Cargalo en Stock (botón Calidad del lote).`;
+        if (llevaPrecinto(it) && usaPrefijos) {
           if (!it.precPref) return `Ítem ${i + 1}: elegí el prefijo del precinto.`;
           const cp = cantPrecintos(it);
           if (cp === null) return `Ítem ${i + 1}: los números de precinto "desde" y "hasta" tienen que ser números, y "hasta" no puede ser menor que "desde".`;
@@ -1383,7 +1393,7 @@ function GenerarInner({ profile }) {
                             <option value="">{!esSemilla(it) && modalidad !== "traslado" ? "Sin lote (opcional)" : it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
                             {ls.map((x) => (
                               <option key={x.id} value={x.id} disabled={calDe(x) !== "aprobado" && modalidad !== "traslado"}>
-                                {x.lote} · {calDe(x) !== "aprobado" && modalidad !== "traslado" ? `NO DISPONIBLE (${calidadInfo(calDe(x)).t})` : `${fmtNum(Number(x.stock) - Number(x.danado || 0))} disp.${Number(x.danado) > 0 ? ` (${fmtNum(x.danado)} dañadas)` : ""}`}
+                                {x.lote} · {calDe(x) !== "aprobado" && modalidad !== "traslado" ? `NO DISPONIBLE (${calidadInfo(calDe(x)).t})` : `${datosDe(x).calibre ? `cal. ${datosDe(x).calibre} · ` : ""}${fmtNum(Number(x.stock) - Number(x.danado || 0))} disp.${Number(x.danado) > 0 ? ` (${fmtNum(x.danado)} dañadas)` : ""}`}
                               </option>
                             ))}
                           </select>
@@ -1408,7 +1418,7 @@ function GenerarInner({ profile }) {
                       <div className="flex gap-x-4 gap-y-1 flex-wrap">
                         {!it.libre && (
                           <>
-                            {!esSemilla(it) ? null : usaPrefijos ? (
+                            {!llevaPrecinto(it) ? null : usaPrefijos ? (
                               <span className="flex items-center gap-1.5 flex-wrap">
                                 <select value={it.precPref} onChange={(e) => updItem(it.id, { precPref: e.target.value })} className={`px-2 py-1 text-[12px] ${!it.precPref && it.cant > 0 ? "!border-red-400" : ""}`}>
                                   <option value="">Prefijo del precinto…</option>
