@@ -58,11 +58,11 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([
-      ["ESTADO", "PLANTA", "CATEGORÍA", "VARIEDAD", "LOTE", "PESO POR UNIDAD", "PREFIJO PRECINTO", "STOCK", "CALIDAD", "CALIBRE"],
-      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "Original", prodsActivos[0]?.nombre || "NOMBRE DE LA VARIEDAD", "LOTE-1", prodsActivos[0]?.kg_por_unidad || 800, "26MST - STA", 10, "APROBADO", ""],
-      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "", "HIBRIDO DE MAIZ 80M (EJEMPLO)", "LOTE-MAIZ-1", 18.5, "", 500, "PRE INSPECCION", "C2R"],
+      ["ESTADO", "PLANTA", "CATEGORÍA", "VARIEDAD", "LOTE", "PESO POR UNIDAD", "PREFIJO PRECINTO", "STOCK", "CALIDAD", "CALIBRE", "PRESENTACIÓN"],
+      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "Original", prodsActivos[0]?.nombre || "NOMBRE DE LA VARIEDAD", "LOTE-1", prodsActivos[0]?.kg_por_unidad || 800, "26MST - STA", 10, "APROBADO", "", ""],
+      ["INICIAL", plantas[0]?.nombre || "NOMBRE DE LA PLANTA", "", "HIBRIDO DE MAIZ (EJEMPLO)", "LOTE-MAIZ-1", 18.5, "", 500, "PRE INSPECCION", "C2R", "80000 SEMILLAS"],
     ]);
-    ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 22 }, { wch: 34 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 10 }];
+    ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 22 }, { wch: 34 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
     const wi = XLSX.utils.aoa_to_sheet([
       ["Cómo completar"],
@@ -70,6 +70,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
       ["STOCK es el stock inicial del lote en la planta donde se produjo (unidades: big bags / bolsas)."],
       ["Si volvés a subir un lote ya cargado con otro stock, la app te muestra la diferencia y vos decidís si se aplica."],
       ["CALIDAD (opcional): APROBADO, PRE INSPECCION, PRE INSPECCION C/DATOS o NO APROBADO. Si queda vacía, el lote nuevo entra como PRE INSPECCION. Solo se aplica a lotes nuevos."],
+      ["PRESENTACIÓN (opcional): para maíz, las semillas por bolsa (ej. 80000 SEMILLAS). Tiene que coincidir con la presentación del producto en el catálogo; el mismo híbrido en 60 mil y 80 mil son dos productos."],
       ["Maíz en bolsas: PESO POR UNIDAD es el peso de la bolsa de ese lote y CALIBRE su calibre. Sin prefijo de precinto."],
       ["Variedad: si no coincide con el catálogo, la app te deja elegir el producto o crearlo."],
     ]);
@@ -117,7 +118,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
         const cant = typeof g("cantidad") === "number" ? g("cantidad") : Number(String(g("cantidad")).replace(/\./g, "").replace(",", "."));
         const peso = Number(String(g("peso")).replace(",", ".")) || null;
         const f = { plantaTxt: String(g("planta")).trim(), prodTxt: String(g("producto")).trim(), presTxt: String(g("presentacion")).trim(), peso, lote: up(String(g("lote")).trim()), categoria: String(g("categoria")).trim(), calidad: leerCalidad(g("calidad")), calidadTxt: String(g("calidad")).trim(), calibre: up(String(g("calibre")).trim()) };
-        const key = [nh(f.plantaTxt), nh(f.prodTxt), peso || "", f.lote].join("|");
+        const key = [nh(f.plantaTxt), nh(f.prodTxt), nh(f.presTxt), peso || "", f.lote].join("|");
         let gr = mapa.get(key);
         if (!gr) {
           gr = { n: i + 1, ...f, cantidad: 0, prefijos: [], filasOrig: [], err0: [] };
@@ -148,12 +149,15 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
       const w = c.filter((p) => Number(p.kg_por_unidad) === Number(f.peso));
       if (w.length) c = w;
     }
-    if (c.length > 1 && f.presTxt) c = c.filter((p) => nh(p.presentacion) === nh(f.presTxt));
+    const presIgual = (p) => { const a = nh(p.presentacion).replace(/ /g, ""); const b = nh(f.presTxt).replace(/ /g, ""); return a === b || (!!a && !!b && (a.includes(b) || b.includes(a))); };
+    if (c.length > 1 && f.presTxt) c = c.filter(presIgual);
+    // Maíz: mismo híbrido con otra cantidad de semillas por bolsa es otro producto.
+    if (c.length === 1 && c[0].categoria === "maiz" && f.presTxt && c[0].presentacion && !presIgual(c[0])) return [];
     if (c.length === 1 && f.peso && Number(c[0].kg_por_unidad) && Number(c[0].kg_por_unidad) !== Number(f.peso)) return [];
     return c;
   };
   // Maíz en bolsas (fila con calibre): el peso es del lote, no del producto.
-  const prodKey = (f) => (f.calibre ? `${nh(f.prodTxt)}|maiz` : `${nh(f.prodTxt)}|${f.peso || ""}`);
+  const prodKey = (f) => (f.calibre ? `${nh(f.prodTxt)}|maiz|${nh(f.presTxt)}` : `${nh(f.prodTxt)}|${f.peso || ""}`);
 
   const filas = (grupos || []).map((f) => {
     const err = [...f.err0];
@@ -202,7 +206,7 @@ export default function ImportarStock({ profile, plantas, productos, onClose, on
           const { data, error } = await supabase
             .from("productos")
             .insert(f.esMaiz
-              ? { categoria: "maiz", grupo: "semilla", nombre: up(f.prodTxt), presentacion: "", kg_por_unidad: null, alias: [f.prodTxt] }
+              ? { categoria: "maiz", grupo: "semilla", nombre: up(f.prodTxt), presentacion: up(f.presTxt || ""), kg_por_unidad: null, alias: [f.prodTxt] }
               : { categoria: "soja", grupo: "semilla", nombre: up(f.prodTxt), presentacion: f.peso ? `BIG BAG ${f.peso} KG` : "", kg_por_unidad: f.peso || null, alias: [f.prodTxt] })
             .select()
             .single();
