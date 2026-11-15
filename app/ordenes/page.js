@@ -99,6 +99,8 @@ function OrdenesInner({ profile }) {
   const lineasDe = useMemo(() => {
     const m = {};
     for (const l of lineas) (m[l.orden_id] ||= []).push(l);
+    // Se respeta el orden del Excel (posicion): es el orden de carga del camión. Las que no lo tienen quedan al final.
+    for (const k of Object.keys(m)) m[k] = m[k].map((l, i) => [l, i]).sort((a, b) => (a[0].posicion ?? 1e9) - (b[0].posicion ?? 1e9) || a[1] - b[1]).map((x) => x[0]);
     return m;
   }, [lineas]);
 
@@ -187,7 +189,8 @@ function OrdenesInner({ profile }) {
     const ls = (lineasDe[o.id] || []).filter((x) => x.planta_id === pid);
     return ls.length > 0 && ls.every((x) => Number(x.saldo) <= 0);
   };
-  const puedeEditar = (l, o) => !soloVista && (esAdmin || ((poderAdmin || l.planta_id === miPlanta) && !(o && completaPlanta(o, l.planta_id))));
+  // Solo Administrador y Logística modifican órdenes. Despacho de planta: ve, despacha y descarga el PDF.
+  const puedeEditar = (l, o) => esAdmin || (poderAdmin && !(o && completaPlanta(o, l.planta_id)));
 
   // ---------- carga de Excel ----------
   const handleFile = (e) => {
@@ -588,7 +591,7 @@ function OrdenesInner({ profile }) {
           </div>
         )}
 
-        {vista === "clientes" && !soloVista && (
+        {vista === "clientes" && poderAdmin && (
           <div className="panel p-4 space-y-3">
             <div className="flex flex-wrap items-end gap-4">
               <div>
@@ -967,12 +970,21 @@ function OrdenesInner({ profile }) {
                         </>
                       ) : (
                         <>
+                      {ls.length > 0 && ls.every((l) => l.posicion != null) ? (
+                        <div className="mb-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[13px] px-3 py-2">
+                          <b>Cargar el camión en el orden de esta lista, de arriba hacia abajo.</b> El renglón 1 es el <b>último destino</b>: se carga primero, contra el pecho del camión. El último renglón es el <b>primer destino</b>: se carga al final, atrás.
+                        </div>
+                      ) : poderAdmin && ls.length > 0 ? (
+                        <div className="mb-2 rounded border border-stone-200 bg-stone-50 text-stone-600 text-[12.5px] px-3 py-2">
+                          Esta orden no tiene guardado el orden de carga del camión (se cargó antes de este cambio o a mano). Volvé a subir el Excel para que los renglones queden en el orden del archivo.
+                        </div>
+                      ) : null}
                       <div className="md:hidden divide-y divide-stone-100">
                         {ls.map((l) => (
                           <div key={l.id} className="py-2.5 space-y-1">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="font-medium text-[14px] break-words">{l.cliente}</div>
+                                <div className="font-medium text-[14px] break-words">{l.posicion != null && <span className="text-stone-400 font-normal mr-1.5">{ls.indexOf(l) + 1}.</span>}{l.cliente}</div>
                                 <div className="text-[12px] text-stone-400">{[l.domicilio, l.provincia].filter(Boolean).join(" · ")}</div>
                               </div>
                               <div className="text-right shrink-0">
@@ -1008,7 +1020,7 @@ function OrdenesInner({ profile }) {
                             {ls.map((l) => (
                               <Fragment key={l.id}>
                                 <tr className="border-b border-stone-100 align-top">
-                                  <td className="p-2">{l.planta_nombre}</td>
+                                  <td className="p-2">{l.posicion != null && <span className="text-stone-400 mr-1.5">{ls.indexOf(l) + 1}.</span>}{l.planta_nombre}</td>
                                   <td className="p-2">
                                     {l.cliente}
                                     <div className="text-[11.5px] text-stone-400">{[l.domicilio, l.provincia].filter(Boolean).join(" · ")}</div>
@@ -1140,7 +1152,7 @@ function OrdenesInner({ profile }) {
                         {o.modalidad === "traslado" && poderAdmin && o.estado === "activa" && (!lineaT || lineaT.ordenId !== o.id) && (
                           <button onClick={() => abrirLineaT(o.id, o.planta_origen_id, null)} className={btn2}>+ Agregar lote</button>
                         )}
-                        {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
+                        {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && poderAdmin && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
                         <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt })} className={btn2}>Descargar PDF</button>

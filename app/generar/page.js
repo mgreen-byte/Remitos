@@ -437,7 +437,7 @@ function GenerarInner({ profile }) {
       .eq("orden_estado", "activa")
       .gt("saldo", 0);
     q = q.eq("orden_modalidad", modalidad); // soja, maíz o traslado: cada modalidad ve solo sus órdenes
-    const { data } = await q.order("orden_numero").order("prioridad", { nullsFirst: false }).order("cliente");
+    const { data } = await q.order("orden_numero").order("posicion", { nullsFirst: false }).order("prioridad", { nullsFirst: false }).order("cliente"); // posicion = orden del Excel (orden de carga del camión)
     setOcDb(data || []);
   };
   useEffect(() => {
