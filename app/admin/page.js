@@ -37,7 +37,7 @@ function AdminInner({ profile }) {
 
   return (
     <NavBar profile={profile}>
-      <div className="max-w-6xl mx-auto p-6 space-y-4">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-6 space-y-4">
         <div className="flex gap-1 flex-wrap">
           {tabs.map(([id, label]) => (
             <button
@@ -63,7 +63,7 @@ function AdminInner({ profile }) {
               { key: "nombre_sistema", label: "Nombre en sistema contable", type: "text", placeholder: "Como figura el depósito en el sistema" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "domicilio_fiscal", label: "Dirección fiscal (encabezado del remito PDF)", type: "text", placeholder: "Calle y N° | (CP) Localidad | Provincia" },
-              { key: "gps", label: "Ubicación (link de Google Maps) · QR de los traslados hacia esta planta", type: "text", placeholder: "https://maps.app.goo.gl/…" },
+              { key: "gps", label: "Ubicación (link de Maps, QR de traslados)", type: "text", placeholder: "https://maps.app.goo.gl/…" },
               { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
               { key: "empresa", label: "Empresa (formulario)", type: "select", nullable: true, options: Object.entries(EMPRESAS_ETIQUETA).map(([value, label]) => ({ value, label })) },
               { key: "despacha", label: "Despacha", type: "select", options: [{ value: "ambos", label: "Soja y maíz" }, { value: "soja", label: "Solo soja" }, { value: "maiz", label: "Solo maíz" }] },

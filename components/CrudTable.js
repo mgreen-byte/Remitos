@@ -205,7 +205,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
                 </th>
               )}
               {columns.map((c) => (
-                <th key={c.key} className="text-left p-2 first:pl-4 cursor-pointer select-none hover:text-stone-800" onClick={() => ordenarPor(c.key)} title="Tocá para ordenar">
+                <th key={c.key} className="text-left p-2 first:pl-4 align-bottom leading-tight min-w-[80px] max-w-[190px] cursor-pointer select-none hover:text-stone-800" onClick={() => ordenarPor(c.key)} title="Tocá para ordenar">
                   {c.label}
                   <span className="ml-1 text-emerald-700">{orden?.key === c.key ? (orden.dir === "asc" ? "▲" : "▼") : ""}</span>
                 </th>
@@ -274,7 +274,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
                     <td className="p-2 pl-4"><input type="checkbox" checked={!!sel[r.id]} onChange={(e) => setSel({ ...sel, [r.id]: e.target.checked })} /></td>
                   )}
                   {columns.map((c) => (
-                    <td key={c.key} className="p-2 first:pl-4">
+                    <td key={c.key} className="p-2 first:pl-4 whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis" title={typeof r[c.key] === "string" && r[c.key].length > 30 ? r[c.key] : undefined}>
                       {mostrar(c, r)}
                     </td>
                   ))}
