@@ -708,6 +708,8 @@ function GenerarInner({ profile }) {
       if (!it.desc) return `Ítem ${i + 1}: falta el producto o la descripción.`;
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
+        if (profile.rol === "operador" && !esTraslado && !esGen && esSemilla(it) && !it.ordenLineaId)
+          return `Ítem ${i + 1}: la semilla solo se despacha desde una orden de carga. Elegí la orden en "Orden de carga guardada"; si no está cargada, pedísela a Logística.`;
         if (!it.loteId && (esTraslado || esSemilla(it))) return `Ítem ${i + 1}: elegí el lote.`;
         const lq = it.loteId ? loteDe(it.loteId) : null;
         if (lq && !esTraslado && calDe(lq) !== "aprobado") return `Ítem ${i + 1}: el lote ${lq.lote} está NO DISPONIBLE (estado de calidad: ${calidadInfo(calDe(lq)).t}). Elegí otro lote.`;
@@ -968,6 +970,11 @@ function GenerarInner({ profile }) {
             {(modalidad === "soja" || modalidad === "maiz") && !esTraslado && (
               <div className="mt-5 pt-5 border-t border-stone-200">
                 <span className={lab}>Orden de carga guardada ({planta?.nombre || "tu planta"})</span>
+                {profile.rol === "operador" && !ocDbSel && (
+                  <div className="mb-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[13px] px-3 py-2">
+                    La semilla solo se despacha desde una orden de carga: elegí la orden acá abajo. Si no aparece, pedile a Logística que la cargue.
+                  </div>
+                )}
                 <select value={ocDbSel} onChange={(e) => elegirOcDb(e.target.value)} disabled={!!emitido} className={inp}>
                   <option value="">{gruposDb.length ? "Elegir orden y cliente…" : "No hay órdenes con saldo pendiente en esta planta"}</option>
                   {gruposDb.map((g) => (
