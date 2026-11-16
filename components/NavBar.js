@@ -108,7 +108,7 @@ export default function NavBar({ profile, children }) {
   const grupoDe = (href) => GRUPO[href] || "Configuración";
   const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);
   // Franja con la planta en la que se está trabajando (color por empresa, para no emitir en la planta equivocada).
-  const EMP = { ms: ["MS Technologies", "bg-sky-700"], stine: ["Stine Seed", "bg-emerald-700"] };
+  const EMP = { ms: ["MS Technologies", "bg-emerald-700"], stine: ["Stine Seed", "bg-sky-700"] }; // azul = Stine Seed, verde = MS Technologies
   const emp = EMP[profile?.planta?.empresa] || null;
   const franjaPlanta = profile?.planta && profile.rol !== "admin" && (
     <div className={`no-print ${emp ? emp[1] : "bg-stone-700"} text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]`}>
