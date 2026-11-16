@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { Fragment, useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
@@ -8,7 +9,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, up, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import ImportarStock from "@/components/ImportarStock";
 import CalidadLote from "@/components/CalidadLote";
-import { calKey } from "@/lib/calidad";
+import { calKey, ESTADOS_CALIDAD } from "@/lib/calidad";
 import { comprimirRangos, traerPallets, agruparPallets } from "@/lib/pallets";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
@@ -37,7 +38,11 @@ function StockInner({ profile }) {
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState({}); // lotes tildados para eliminar
   const [calMap, setCalMap] = useState({});
-  const [datosMap, setDatosMap] = useState({}); // peso por bolsa y calibre por producto+lote (maíz)
+  const [datosMap, setDatosMap] = useState({});
+  const [fCat, setFCat] = useState(""); // filtro rápido: soja / maíz
+  const [fCal, setFCal] = useState(""); // filtro rápido: estado de calidad
+  const [menuLote, setMenuLote] = useState(null); // lote con el menú "Acciones" abierto
+  const [calAbierta, setCalAbierta] = useState(null); // lote con el panel de calidad abierto // peso por bolsa y calibre por producto+lote (maíz)
   const [reasig, setReasig] = useState(null); // {loteId, productoId}
   const [ajuste, setAjuste] = useState(null); // {loteId, delta, motivo}
   const [transito, setTransito] = useState([]);
@@ -180,7 +185,7 @@ function StockInner({ profile }) {
   const eliminarSel = async () => {
     const ids = Object.keys(sel).filter((k) => sel[k]);
     if (!ids.length) return;
-    if (!confirm(`¿Eliminar ${ids.length} lote(s) cargado(s) por error? Se borran con su stock y su historial. No se puede deshacer.`)) return;
+    if (!(await confirmar(`¿Eliminar ${ids.length} lote(s) cargado(s) por error? Se borran con su stock y su historial. No se puede deshacer.`))) return;
     setMsg({ tipo: "", texto: "" });
     const { data, error } = await supabase.rpc("eliminar_lotes", { p_ids: ids });
     if (error) return fail(error);
@@ -190,7 +195,7 @@ function StockInner({ profile }) {
   };
 
   const eliminarMov = async (m, loteId) => {
-    if (!confirm(`¿Eliminar este ${m.tipo} de ${fmtNum(m.cantidad)} unidades? El stock del lote se corrige en ${fmtNum(-m.cantidad)}.`)) return;
+    if (!(await confirmar(`¿Eliminar este ${m.tipo} de ${fmtNum(m.cantidad)} unidades? El stock del lote se corrige en ${fmtNum(-m.cantidad)}.`))) return;
     const motivo = window.prompt("Motivo (opcional, queda registrado):", "Carga duplicada");
     if (motivo === null) return;
     setMsg({ tipo: "", texto: "" });
@@ -275,6 +280,8 @@ function StockInner({ profile }) {
   const q = norm(busqueda);
   const visibles = lotes
     .filter((l) => verAgotados || Number(l.stock) > 0)
+    .filter((l) => !fCat || l.producto?.categoria === fCat)
+    .filter((l) => !fCal || (fCal === "danado" ? Number(l.danado) > 0 : calDe(l) === fCal))
     .filter((l) => !q || norm(`${l.producto?.nombre || ""} ${l.producto?.presentacion || ""} ${l.lote}`).includes(q));
   // Agrupados por producto: producto -> lotes -> movimientos.
   const grupos = [];
@@ -373,8 +380,9 @@ function StockInner({ profile }) {
         )}
 
         {puedeCargar && (
-        <form onSubmit={ingresar} className="panel p-4 space-y-3">
-          <div className="text-xs font-semibold text-stone-500 uppercase">Ingresar stock de un lote</div>
+        <details className="panel group">
+          <summary className="p-4 cursor-pointer select-none text-xs font-semibold text-stone-500 uppercase flex items-center gap-2"><span className="text-stone-400 group-open:rotate-90 transition-transform">▸</span>Ingresar stock de un lote</summary>
+        <form onSubmit={ingresar} className="px-4 pb-4 space-y-3">
           <div className="flex gap-2 flex-wrap">
             <select required value={form.productoId} onChange={(e) => setForm({ ...form, productoId: e.target.value })} className={`${inputCls} flex-1 min-w-[220px]`}>
               <option value="">Producto…</option>
@@ -397,11 +405,13 @@ function StockInner({ profile }) {
           </div>
           <div className="text-xs text-stone-400">Si el lote ya existe, la cantidad se suma al stock actual.</div>
         </form>
+        </details>
         )}
 
         {(Object.keys(pallets).length > 0 || (puedeCargar && productosPallets.length > 0)) && (
-          <div className="panel p-4 space-y-3">
-            <div className="text-xs font-semibold text-stone-500 uppercase">Pallets numerados en esta planta</div>
+          <details className="panel group">
+            <summary className="p-4 cursor-pointer select-none text-xs font-semibold text-stone-500 uppercase flex items-center gap-2"><span className="text-stone-400 group-open:rotate-90 transition-transform">▸</span>Pallets numerados en esta planta{Object.keys(pallets).length > 0 && <span className="normal-case font-normal text-stone-400">· {Object.keys(pallets).length} tratamiento(s)</span>}</summary>
+          <div className="px-4 pb-4 space-y-3">
             {Object.keys(pallets).length === 0 && <div className="text-[13px] text-stone-500">No hay pallets en esta planta.</div>}
             {Object.entries(pallets).map(([pid, g]) => {
               const pr = productos.find((x) => x.id === pid);
@@ -434,6 +444,7 @@ function StockInner({ profile }) {
               </form>
             )}
           </div>
+          </details>
         )}
 
         <div className="panel">
@@ -449,6 +460,15 @@ function StockInner({ profile }) {
             <label className="text-xs text-stone-500 flex items-center gap-1">
               <input type="checkbox" checked={verAgotados} onChange={(e) => setVerAgotados(e.target.checked)} /> Mostrar agotados
             </label>
+          </div>
+          <div className="px-4 pb-3 flex flex-wrap gap-1.5 items-center text-[12.5px]">
+            {[["", "Todo"], ["soja", "Soja"], ["maiz", "Maíz"]].map(([v, t]) => (
+              <button key={v || "t"} type="button" onClick={() => setFCat(v)} className={`px-2.5 py-1 rounded-full border ${fCat === v ? "bg-emerald-700 text-white border-emerald-700" : "border-stone-300 text-stone-600 hover:bg-stone-50"}`}>{t}</button>
+            ))}
+            <span className="mx-1 text-stone-300">|</span>
+            {[["", "Cualquier calidad"], ...ESTADOS_CALIDAD.map((e) => [e.v, e.t]), ["danado", "Con dañados"]].map(([v, t]) => (
+              <button key={v || "c"} type="button" onClick={() => setFCal(v)} className={`px-2.5 py-1 rounded-full border ${fCal === v ? "bg-stone-800 text-white border-stone-800" : "border-stone-300 text-stone-600 hover:bg-stone-50"}`}>{t}</button>
+            ))}
           </div>
           {compSinProducto > 0 && (
             <div className="px-4 pb-2 text-xs text-amber-800">Hay {fmtNum(compSinProducto)} unidades en órdenes de carga de esta planta sin producto identificado: no se descuentan de ningún lote.</div>
@@ -601,7 +621,7 @@ function StockInner({ profile }) {
                       <td className="p-2 font-mono whitespace-nowrap cursor-pointer hover:underline" onClick={() => verMovs(l.id)} title="Ver movimientos">
                         <span className="inline-block w-4 text-stone-400">{movs.loteId === l.id ? "▾" : "▸"}</span>
                         {l.lote}
-                        <div className="font-sans" onClick={(e) => e.stopPropagation()}><CalidadLote compacto lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} datos={datosDe(l)} esMaiz={esMaizL(l)} /></div>
+                        <div className="font-sans" onClick={(e) => e.stopPropagation()}><CalidadLote compacto sinBoton abiertoCtl={calAbierta === l.id} onToggle={(v) => setCalAbierta(v ? l.id : null)} lote={l} estado={calDe(l)} puede={puedeCalidad} onCambio={cargar} datos={datosDe(l)} esMaiz={esMaizL(l)} /></div>
                       </td>
                       <td className="p-2 text-right text-stone-600 hidden md:table-cell">{kgDe(l) ? fmtNum(kgDe(l)) : "—"}</td>
                       <td className="p-2 text-right text-stone-500">{iniDe(l) > 0 ? fmtNum(iniDe(l)) : "—"}</td>
@@ -609,24 +629,21 @@ function StockInner({ profile }) {
                       <td className={`p-2 text-right text-amber-800 ${compDe(l) > 0 ? "cursor-help" : ""}`} onMouseEnter={(e) => mostrarTip(e, `Lote ${l.lote}`, detalleLote(l))} onMouseLeave={() => setTip(null)}>{compDe(l) > 0 ? fmtNum(compDe(l)) : "—"}</td>
                       <td className={`p-2 text-right ${dispDe(l) < 0 ? "text-red-600 font-semibold" : aprobadoL(l) ? "text-emerald-800" : "text-stone-400"}`}>{aprobadoL(l) ? fmtNum(dispDe(l)) : "—"}</td>
                       <td className="p-2 text-right hidden md:table-cell">{kgDe(l) ? fmtNum(l.stock * kgDe(l)) : "—"}</td>
-                      <td className="p-2 text-right md:whitespace-nowrap">
-                        {!soloLectura && !esPal(l) && (
-                          <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-xs text-emerald-700 hover:underline mr-3">
-                            Ajustar
-                          </button>
+                      <td className="p-2 text-right md:whitespace-nowrap relative">
+                        {sel[l.id] && <span className="text-[11px] text-red-700 mr-2">tildado para eliminar</span>}
+                        <button type="button" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); const abajo = window.innerHeight - r.bottom < 220; setMenuLote(menuLote?.id === l.id ? null : { id: l.id, right: Math.max(8, window.innerWidth - r.right), top: abajo ? undefined : r.bottom + 4, bottom: abajo ? window.innerHeight - r.top + 4 : undefined }); }} className="text-xs border border-stone-300 rounded px-2.5 py-1 text-stone-700 hover:bg-stone-50">Acciones ▾</button>
+                        {menuLote?.id === l.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setMenuLote(null)} />
+                            <div style={{ position: "fixed", right: menuLote.right, top: menuLote.top, bottom: menuLote.bottom }} className="z-20 w-56 bg-white border border-stone-200 rounded-md shadow-lg py-1 text-left text-[13px] whitespace-normal">
+                              <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); verMovs(l.id); }}>Ver movimientos</button>
+                              {!soloLectura && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setAjuste({ loteId: l.id, delta: "", motivo: "" }); }}>Ajustar stock</button>}
+                              {puedeCalidad && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setCalAbierta(l.id); }}>Calidad y bolsas dañadas{esMaizL(l) ? " · peso y calibre" : ""}</button>}
+                              {profile.rol === "admin" && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setReasig({ loteId: l.id, productoId: "" }); }}>Cambiar producto</button>}
+                              {profile.rol === "admin" && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-700" onClick={() => { setMenuLote(null); setSel({ ...sel, [l.id]: !sel[l.id] }); }}>{sel[l.id] ? "Destildar (no eliminar)" : "Tildar para eliminar"}</button>}
+                            </div>
+                          </>
                         )}
-                        {profile.rol === "admin" && !esPal(l) && (
-                          <label className="text-xs text-red-700 mr-3 cursor-pointer">
-                            <input type="checkbox" className="mr-1 align-middle" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} />
-                            Eliminar
-                          </label>
-                        )}
-                        {profile.rol === "admin" && !esPal(l) && (
-                          <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-xs text-emerald-700 hover:underline mr-3 inline-block align-middle text-left leading-tight">
-                            Cambiar<br />producto
-                          </button>
-                        )}
-
                       </td>
                     </tr>
                     {ajuste && ajuste.loteId === l.id && (

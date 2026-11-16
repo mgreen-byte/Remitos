@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, up, norm, fmtCuit } from "@/lib/util";
@@ -69,7 +70,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
   };
 
   const borrar = async (r) => {
-    if (!window.confirm(`¿Borrar a ${r.nombre}? Los remitos ya emitidos no se modifican.`)) return;
+    if (!(await confirmar(`¿Borrar a ${r.nombre}? Los remitos ya emitidos no se modifican.`))) return;
     const { error: err } = await supabase.from(table).delete().eq("id", r.id);
     if (err) return setError(friendlyError(err));
     setAviso("Registro borrado.");

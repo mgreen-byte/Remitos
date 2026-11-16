@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { descargarOrdenPdf } from "@/lib/ordenPdf";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -355,7 +356,7 @@ function OrdenesInner({ profile }) {
     await buscarRenglones();
   };
   const vincularSuelto = async (r) => {
-    if (!window.confirm(`Registrar el remito ${r.punto_venta}-${r.numero} en la orden ${r.orden_carga}? No cambia el stock ni el remito.`)) return;
+    if (!(await confirmar(`Registrar el remito ${r.punto_venta}-${r.numero} en la orden ${r.orden_carga}? No cambia el stock ni el remito.`))) return;
     const { error } = await supabase.rpc("registrar_orden_desde_remito", { p_remito_id: r.id });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setMsg({ tipo: "ok", texto: `Remito ${r.punto_venta}-${r.numero} registrado en la orden ${r.orden_carga}.` });
@@ -464,7 +465,7 @@ function OrdenesInner({ profile }) {
   };
 
   const quitarLinea = async (l) => {
-    if (!window.confirm(`¿Quitar la línea de ${l.cliente} · ${l.producto_texto} · ${l.lote_texto || "sin lote"}?`)) return;
+    if (!(await confirmar(`¿Quitar la línea de ${l.cliente} · ${l.producto_texto} · ${l.lote_texto || "sin lote"}?`))) return;
     const { error } = await supabase.rpc("quitar_orden_linea", { p_linea_id: l.id });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setMsg({ tipo: "ok", texto: "Línea quitada." });
@@ -480,7 +481,7 @@ function OrdenesInner({ profile }) {
     await cargar();
   };
   const reabrirOrden = async (o) => {
-    if (!window.confirm(`¿Reabrir la orden ${o.numero}? Vuelve a comprometer stock con su saldo pendiente.`)) return;
+    if (!(await confirmar(`¿Reabrir la orden ${o.numero}? Vuelve a comprometer stock con su saldo pendiente.`))) return;
     const { error } = await supabase.rpc("reabrir_orden", { p_orden_id: o.id });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setMsg({ tipo: "ok", texto: `Orden ${o.numero} reabierta.` });
@@ -495,7 +496,7 @@ function OrdenesInner({ profile }) {
   };
 
   const eliminar = async (o) => {
-    if (!window.confirm(`¿Eliminar la orden ${o.numero} y todas sus líneas? No se puede deshacer. Solo se puede si no tiene remitos.`)) return;
+    if (!(await confirmar(`¿Eliminar la orden ${o.numero} y todas sus líneas? No se puede deshacer. Solo se puede si no tiene remitos.`))) return;
     const { error } = await supabase.rpc("eliminar_orden", { p_orden_id: o.id });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setAbierta(null);
@@ -861,7 +862,12 @@ function OrdenesInner({ profile }) {
                     <span className="text-[12.5px] text-stone-500">creada {fmtFecha(o.fecha)} · {o.origen === "manual" ? "creada a mano" : "desde Excel"}{o.creado_por_nombre ? ` · ${o.creado_por_nombre}` : ""}</span>
                     <span className="text-[12.5px] text-stone-500">{o.modalidad === "traslado" ? `${nombrePlantaT(o.planta_origen_id)} → ${nombrePlantaT(o.planta_destino_id)}` : plantasOrden.join(", ")}</span>
                     {o.modalidad === "traslado" && miPlanta && o.planta_destino_id === miPlanta && <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-violet-50 text-violet-800 border-violet-200">Llega a tu planta</span>}
-                    <span className="ml-auto text-[13px] text-stone-700">Pedido {fmtNum(ped)} · Remitido {fmtNum(rem)} · Saldo <b>{fmtNum(Math.max(0, ped - rem))}</b></span>
+                    <span className="ml-auto text-[13px] text-stone-700 flex items-center gap-2">
+                      <span className="hidden sm:inline-block w-24 h-1.5 rounded-full bg-stone-200 overflow-hidden" title={`${ped > 0 ? Math.round((Math.min(rem, ped) / ped) * 100) : 0}% remitido`}>
+                        <span className={`block h-full ${rem >= ped && ped > 0 ? "bg-emerald-600" : "bg-amber-500"}`} style={{ width: `${ped > 0 ? Math.min(100, (rem / ped) * 100) : 0}%` }} />
+                      </span>
+                      <span>Pedido {fmtNum(ped)} · Remitido {fmtNum(rem)} · Saldo <b>{fmtNum(Math.max(0, ped - rem))}</b></span>
+                    </span>
                   </button>
                   {open && (
                     <div className="border-t border-stone-200 px-4 py-3 space-y-3">
@@ -970,6 +976,29 @@ function OrdenesInner({ profile }) {
                         </>
                       ) : (
                         <>
+                      {/* Despachar: un botón por cliente y destino con saldo; abre Nuevo remito con todo precargado */}
+                      {(esAdmin || (profile.rol === "operador" && miPlanta)) && o.estado === "activa" && (() => {
+                        const m = new Map();
+                        for (const l of ls) {
+                          if (!(Number(l.saldo) > 0) || (!esAdmin && l.planta_id !== miPlanta)) continue;
+                          const k = `${o.id}||${norm(l.cliente)}||${norm(l.domicilio)}||${norm(l.entregar_en)}`;
+                          if (!m.has(k)) m.set(k, { k, cliente: l.cliente, domicilio: l.domicilio, planta_id: l.planta_id, planta: l.planta_nombre, saldo: 0 });
+                          m.get(k).saldo += Number(l.saldo);
+                        }
+                        const gs = [...m.values()];
+                        if (!gs.length) return null;
+                        return (
+                          <div className="mb-2 flex flex-wrap gap-2 items-center">
+                            <span className="text-[12.5px] text-stone-500">Despachar:</span>
+                            {gs.map((g) => (
+                              <a key={g.k} href={`/generar?oc=${encodeURIComponent(g.k)}&mod=${o.modalidad === "maiz" ? "maiz" : "soja"}&planta=${g.planta_id}`} className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white text-[13px] rounded-md px-3 py-1.5" title={[g.domicilio, esAdmin ? g.planta : ""].filter(Boolean).join(" · ")}>
+                                <span className="font-medium">{g.cliente}</span>
+                                <span className="opacity-80">{fmtNum(g.saldo)} u. →</span>
+                              </a>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       {ls.length > 0 && ls.every((l) => l.posicion != null) ? (
                         <div className="mb-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[13px] px-3 py-2">
                           <b>Cargar el camión en el orden de esta lista, de arriba hacia abajo.</b> El renglón 1 es el <b>último destino</b>: se carga primero, contra el pecho del camión. El último renglón es el <b>primer destino</b>: se carga al final, atrás.

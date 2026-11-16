@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, friendlyError } from "@/lib/util";
@@ -71,7 +72,7 @@ export default function ExportContable({ plantas }) {
 
   const exportar = async () => {
     if (!pendientes.length || hayFaltantes) return;
-    if (!window.confirm(`Se va a descargar el CSV con ${pendientes.length} renglón(es) y quedan marcados como exportados. ¿Seguimos?`)) return;
+    if (!(await confirmar(`Se va a descargar el CSV con ${pendientes.length} renglón(es) y quedan marcados como exportados. ¿Seguimos?`))) return;
     setBusy("exportar"); setMsg({ tipo: "", texto: "" });
     const { error } = await supabase.rpc("marcar_exportados", { p_items: pendientes.map((x) => x.item_id) });
     if (error) { setBusy(""); return setMsg({ tipo: "error", texto: friendlyError(error) }); }
@@ -90,7 +91,7 @@ export default function ExportContable({ plantas }) {
     setBusy("");
   };
   const deshacer = async (e) => {
-    if (!window.confirm(`¿Deshacer esta exportación? Sus ${e.renglones} renglón(es) vuelven a quedar pendientes de exportar.`)) return;
+    if (!(await confirmar(`¿Deshacer esta exportación? Sus ${e.renglones} renglón(es) vuelven a quedar pendientes de exportar.`))) return;
     setBusy(e.id);
     const { error } = await supabase.rpc("deshacer_exportacion", { p_id: e.id });
     setBusy("");

@@ -102,6 +102,30 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" ? [["/reportes", "Reportes", "reportes"]] : []),
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
+  // Secciones del menú (solo títulos; los permisos de cada entrada no cambian).
+  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/traslados": "Operación", "/historial": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
+  const ORDEN_GRUPOS = ["Operación", "Stock", "Fiscal", "Análisis", "Configuración"];
+  const grupoDe = (href) => GRUPO[href] || "Configuración";
+  const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);
+  // Franja con la planta en la que se está trabajando (color por empresa, para no emitir en la planta equivocada).
+  const EMP = { ms: ["MS Technologies", "bg-sky-700"], stine: ["Stine Seed", "bg-emerald-700"] };
+  const emp = EMP[profile?.planta?.empresa] || null;
+  const franjaPlanta = profile?.planta && profile.rol !== "admin" && (
+    <div className={`no-print ${emp ? emp[1] : "bg-stone-700"} text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]`}>
+      <span className="opacity-80">Trabajando en</span>
+      {misPlantas.length > 1 ? (
+        <select value={profile.planta_id || ""} disabled={cambiando} onChange={(e) => cambiarPlanta(e.target.value)} className="bg-white/15 border border-white/30 rounded px-2 py-0.5 text-[13px] font-semibold text-white [&>option]:text-stone-900">
+          {misPlantas.map((p) => <option key={p.id} value={p.id}>{p.nombre} (PV {p.punto_venta})</option>)}
+        </select>
+      ) : (
+        <b>{profile.planta.nombre}</b>
+      )}
+      <span className="opacity-80">PV {profile.planta.punto_venta}</span>
+      {emp && <span className="font-semibold uppercase tracking-wide text-[11.5px] bg-white/20 rounded px-1.5 py-0.5">{emp[0]}</span>}
+      {misPlantas.length > 1 && <span className="opacity-80 text-[12px]">· podés cambiar de planta desde acá</span>}
+    </div>
+  );
+
 
   const titulo = (items.find(([href]) => href === pathname) || [])[1] || "";
   const hayAvisos = pendientes + avisoCot + avisoTal > 0;
@@ -126,14 +150,17 @@ export default function NavBar({ profile, children }) {
             {hayAvisos && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-400" />}
           </button>
         </div>
-        <nav className="hidden md:flex md:flex-col gap-1 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-x-auto">
-          {items.map(([href, label, icono]) => {
+        <nav className="hidden md:flex md:flex-col gap-0.5 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-y-auto">
+          {secciones.map(([g, its]) => (
+            <div key={g} className="mb-1.5">
+              <div className="px-3 pt-2 pb-1 text-[10.5px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
+          {its.map(([href, label, icono]) => {
             const activo = pathname === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-[13.5px] font-medium whitespace-nowrap transition ${
+                className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-[13.5px] font-medium whitespace-nowrap transition ${
                   activo ? "bg-emerald-600 text-white shadow-sm" : "text-stone-300 hover:bg-ink-700 hover:text-white"
                 }`}
               >
@@ -151,9 +178,10 @@ export default function NavBar({ profile, children }) {
               </Link>
             );
           })}
+            </div>
+          ))}
         </nav>
         <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
-          {selectorPlanta}
           <div className="font-medium text-white truncate">{profile?.nombre}</div>
           <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">
@@ -172,7 +200,10 @@ export default function NavBar({ profile, children }) {
                 <button onClick={() => setMenu(false)} aria-label="Cerrar menú" className="p-2 text-stone-300 text-2xl leading-none">×</button>
               </div>
               <nav className="flex-1 p-2 space-y-1">
-                {items.map(([href, label, icono]) => {
+                {secciones.map(([g, its]) => (
+                  <div key={g}>
+                    <div className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
+                {its.map(([href, label, icono]) => {
                   const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : 0;
                   return (
                     <Link key={href} href={href} className={`flex items-center gap-3 px-4 py-3.5 rounded-md text-[16px] font-medium ${pathname === href ? "bg-emerald-600 text-white" : "text-stone-200 active:bg-ink-700"}`}>
@@ -182,14 +213,15 @@ export default function NavBar({ profile, children }) {
                     </Link>
                   );
                 })}
+                  </div>
+                ))}
               </nav>
-              {selectorPlanta && <div className="mx-4 mt-3">{selectorPlanta}</div>}
               <button onClick={logout} className="m-4 text-left px-4 py-3 rounded-md border border-ink-700 text-emerald-300 text-[15px]">Cerrar sesión</button>
             </div>
           </div>
         )}
       </aside>
-      <main className="print-reset flex-1 min-w-0">{children}</main>
+      <main className="print-reset flex-1 min-w-0">{franjaPlanta}{children}</main>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export default function AuthGuard({ children, adminOnly, roles }) {
       }
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("*, planta:plantas(id, nombre, punto_venta, activa)")
+        .select("*, planta:plantas(id, nombre, punto_venta, activa, empresa)")
         .eq("id", session.user.id)
         .single();
       if (!active) return;

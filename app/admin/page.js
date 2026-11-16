@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useState, useEffect } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
@@ -288,7 +289,7 @@ function Precios({ profile }) {
     cargar();
   };
   const borrar = async (id) => {
-    if (!confirm("¿Borrar este precio?")) return;
+    if (!(await confirmar("¿Borrar este precio?"))) return;
     const { error } = await supabase.from("precios").delete().eq("id", id);
     if (error) return setMsg(friendlyError(error));
     cargar();

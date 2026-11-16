@@ -4,8 +4,11 @@ import { supabase } from "../lib/supabaseClient";
 import { ESTADOS_CALIDAD, calidadInfo } from "../lib/calidad";
 
 // Etiqueta de calidad + unidades dañadas de un lote, con panel de gestión (solo admin / logística).
-export default function CalidadLote({ lote, estado, puede, onCambio, compacto, datos = {}, esMaiz = false }) {
-  const [abierto, setAbierto] = useState(false);
+export default function CalidadLote({ lote, estado, puede, onCambio, compacto, datos = {}, esMaiz = false, abiertoCtl, onToggle, sinBoton = false }) {
+  const [abiertoInt, setAbiertoInt] = useState(false);
+  // Puede manejarse desde afuera (menú "Acciones" de Stock) o con su propio botón.
+  const abierto = abiertoCtl ?? abiertoInt;
+  const setAbierto = (v) => (onToggle ? onToggle(v) : setAbiertoInt(v));
   const [cant, setCant] = useState("");
   const [motivo, setMotivo] = useState("");
   const [msg, setMsg] = useState("");
@@ -47,12 +50,13 @@ export default function CalidadLote({ lote, estado, puede, onCambio, compacto, d
   return (
     <div className={compacto ? "inline-flex flex-wrap items-center gap-1.5" : "flex flex-wrap items-center gap-2"}>
       <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${info.cls}`}>{info.t}</span>
-      {datos.calibre && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Calibre {datos.calibre}</span>}
+      {datos.calibre && !String(lote.lote || "").toUpperCase().replace(/\s*-\s*/, "-").startsWith(`${String(datos.calibre).toUpperCase()}-`) && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Calibre {datos.calibre}</span>}
       {esMaiz && !datos.kg && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">Falta kg por bolsa</span>}
       {danado > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">{danado} dañado{danado === 1 ? "" : "s"}</span>}
-      {puede && <button type="button" onClick={() => setAbierto(!abierto)} className="text-[12px] text-emerald-700 underline decoration-dotted">{abierto ? "Cerrar" : "Calidad"}</button>}
+      {puede && !sinBoton && <button type="button" onClick={() => setAbierto(!abierto)} className="text-[12px] text-emerald-700 underline decoration-dotted">{abierto ? "Cerrar" : "Calidad"}</button>}
       {abierto && (
-        <div className="basis-full bg-stone-50 border border-stone-200 rounded p-3 space-y-3 text-sm">
+        <div className="basis-full bg-stone-50 border border-stone-200 rounded p-3 space-y-3 text-sm whitespace-normal">
+          {sinBoton && <div className="flex justify-end -mb-2"><button type="button" onClick={() => setAbierto(false)} className="text-[12px] text-stone-500 underline">Cerrar</button></div>}
           <div>
             <div className="text-xs text-stone-500 mb-1">Estado de calidad del lote {lote.lote} (vale para todas las plantas)</div>
             <select disabled={busy} value={estado} onChange={(e) => cambiar(e.target.value)} className="border border-stone-300 rounded px-2 py-1.5 bg-white">

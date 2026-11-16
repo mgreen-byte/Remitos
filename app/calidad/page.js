@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
@@ -79,7 +80,7 @@ function CalidadInner({ profile }) {
 
   const aplicar = async () => {
     if (!nuevo || !idsSel.length) return;
-    if (!window.confirm(`¿Pasar ${idsSel.length} lote${idsSel.length === 1 ? "" : "s"} a "${calidadInfo(nuevo).t}"?`)) return;
+    if (!(await confirmar(`¿Pasar ${idsSel.length} lote${idsSel.length === 1 ? "" : "s"} a "${calidadInfo(nuevo).t}"?`))) return;
     setBusy(true);
     setMsg({ tipo: "", texto: "" });
     const { data, error } = await supabase.rpc("calidad_masiva", { p_filas: idsSel.map((f) => ({ producto_id: f.producto_id, lote: f.lote, estado: nuevo })) });

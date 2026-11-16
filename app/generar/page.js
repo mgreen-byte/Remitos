@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { EMPRESA_FISCAL } from "@/lib/remitoPdf";
 import { gpsDeRemito, normalizarGps } from "@/lib/qr";
@@ -495,6 +496,29 @@ function GenerarInner({ profile }) {
     aplicarGrupo(g, g.ordenNumero);
   };
 
+  // Llegada desde Órdenes de carga → botón "Despachar": /generar?oc=<clave>&mod=soja|maiz&planta=<id>
+  const ocDeLink = useRef(null);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const oc = sp.get("oc");
+    if (!oc) return;
+    ocDeLink.current = oc;
+    const mod = sp.get("mod");
+    if (mod && modalidadesPermitidas.includes(mod)) setModalidad(mod);
+    const pl = sp.get("planta");
+    if (pl && esAdmin) setPlantaId(pl);
+    window.history.replaceState(null, "", window.location.pathname); // que un F5 no vuelva a precargar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!ocDeLink.current || !gruposDb.some((g) => g.clave === ocDeLink.current)) return;
+    if (!plantaId || lotesPlanta !== plantaId) return; // espera a tener el stock de la planta para elegir los lotes solo
+    const clave = ocDeLink.current;
+    ocDeLink.current = null;
+    elegirOcDb(clave);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gruposDb, lotesPlanta, plantaId]);
+
   // ---------- transporte / chofer ----------
   const applyTransportista = (id) => {
     const t = transportistas.find((x) => x.id === id);
@@ -707,14 +731,14 @@ function GenerarInner({ profile }) {
       return setError(msg);
     }
     const libres = itemsCalc.filter((i) => i.cant > 0 && i.libre).length;
-    if (libres && modalidad !== "generico" && !window.confirm(`Hay ${libres} ítem(s) sin lote del stock: no descuentan stock. ¿Registrar de todas formas?`)) return;
+    if (libres && modalidad !== "generico" && !(await confirmar(`Hay ${libres} ítem(s) sin lote del stock: no descuentan stock. ¿Registrar de todas formas?`))) return;
     if (esAdmin) {
       const porLinea = {};
       itemsCalc.filter((i) => i.ordenLineaId && i.cant > 0).forEach((i) => {
         porLinea[i.ordenLineaId] = { cant: (porLinea[i.ordenLineaId]?.cant || 0) + i.cant, saldo: Number(i.saldo) };
       });
       const pasa = Object.values(porLinea).filter((x) => x.cant > x.saldo).length;
-      if (pasa && !window.confirm(`Estás remitiendo más de lo que dice la orden de carga en ${pasa} renglón(es). ¿Registrar de todas formas?`)) return;
+      if (pasa && !(await confirmar(`Estás remitiendo más de lo que dice la orden de carga en ${pasa} renglón(es). ¿Registrar de todas formas?`))) return;
     }
     if (modo === "pdf" && !modoAuto) {
       // Se verifica ANTES de registrar, para no gastar un número si después no se puede armar el PDF.
@@ -1413,8 +1437,16 @@ function GenerarInner({ profile }) {
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 flex-wrap text-[12px]">
                       <div className="text-stone-400 min-w-0">
+                        {l && (
+                          <span className="mr-2 inline-flex flex-wrap items-center gap-1 align-middle">
+                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${calidadInfo(calDe(l)).cls}`}>{calidadInfo(calDe(l)).t}</span>
+                            {datosDe(l).calibre && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Calibre {datosDe(l).calibre}</span>}
+                            {Number(datosDe(l).kg) > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">{fmtNum(datosDe(l).kg)} kg c/u</span>}
+                            {Number(l.danado) > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">{fmtNum(l.danado)} dañadas</span>}
+                          </span>
+                        )}
                         {it.hint && <span className="text-amber-700 mr-2">{it.hint}</span>}
-                        {it.cant > 0 && l && it.cant > Number(l.stock) && <span className="text-red-600 mr-2">Supera el stock del lote ({fmtNum(l.stock)}).</span>}
+                        {it.cant > 0 && l && it.cant > Number(l.stock) - Number(l.danado || 0) && <span className="text-red-600 mr-2">Supera lo disponible del lote ({fmtNum(Number(l.stock) - Number(l.danado || 0))}).</span>}
                         {it.desc && <span>Se imprime: {it.desc}</span>}
                         {it.kgu > 0 && it.cant > 0 && <span className="ml-2 font-medium text-stone-700">{fmtNum(it.cant * it.kgu)} kg</span>}
                       </div>

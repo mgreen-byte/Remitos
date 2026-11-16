@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, up } from "@/lib/util";
@@ -81,7 +82,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
   };
 
   const borrar = async (id) => {
-    if (!window.confirm("¿Borrar este registro?")) return;
+    if (!(await confirmar("¿Borrar este registro?"))) return;
     const { error } = await supabase.from(table).delete().eq("id", id);
     if (error) return setMsg(friendlyError(error));
     cargar();
@@ -90,7 +91,7 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
   const idsSel = Object.keys(sel).filter((k) => sel[k]);
   const borrarSel = async () => {
     if (!idsSel.length) return;
-    if (!window.confirm(`¿Eliminar ${idsSel.length} registro${idsSel.length === 1 ? "" : "s"}? Esta acción no se puede deshacer.`)) return;
+    if (!(await confirmar(`¿Eliminar ${idsSel.length} registro${idsSel.length === 1 ? "" : "s"}? Esta acción no se puede deshacer.`))) return;
     setMsg("");
     const fallidos = [];
     if (deleteRpc) {

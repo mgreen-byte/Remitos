@@ -18,6 +18,7 @@ export default function InicioPage() {
 function InicioInner({ profile }) {
   const [lotes, setLotes] = useState([]);
   const [datosLotes, setDatosLotes] = useState({});
+  const [pendExport, setPendExport] = useState(0);
   const [plantas, setPlantas] = useState([]);
   const [transito, setTransito] = useState([]);
   const [cotPend, setCotPend] = useState([]);
@@ -34,7 +35,7 @@ function InicioInner({ profile }) {
     for (let desde = 0; ; desde += 1000) {
       const { data, error } = await supabase
         .from("lotes")
-        .select("id, lote, stock, planta_id, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
+        .select("id, lote, stock, danado, planta_id, producto_id, producto:productos(nombre, presentacion, categoria, kg_por_unidad)")
         .gt("stock", 0)
         .order("lote")
         .range(desde, desde + 999);
@@ -51,6 +52,10 @@ function InicioInner({ profile }) {
     const { data: cp } = await supabase.from("v_cot_pendientes").select("remito_id, planta, created_at").limit(5000);
     setCotPend(cp || []);
     setDatosLotes(await traerDatosLotes(supabase));
+    if (profile.rol === "admin") {
+      supabase.rpc("export_contable", { p_desde: null, p_hasta: null, p_planta: null, p_ver: "pendientes", p_exportacion: null }, { count: "exact", head: true })
+        .then(({ count, error: e }) => !e && setPendExport(count || 0));
+    }
     setLotes(todos);
     setPlantas(pl || []);
     setActualizado(new Date());
@@ -153,6 +158,33 @@ function InicioInner({ profile }) {
         </div>
 
         {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">{error}</div>}
+
+        {/* Avisos: calidad, dañados y pendientes de exportar */}
+        {(() => {
+          const conStock = lotes.filter((l) => Number(l.stock) > 0 && l.lote !== "PALLETS");
+          const est = (l) => datosLotes[calKey(l.producto_id, l.lote)]?.estado || "aprobado";
+          const pre = new Set(conStock.filter((l) => est(l) === "pre_inspeccion" || est(l) === "pre_inspeccion_datos").map((l) => calKey(l.producto_id, l.lote))).size;
+          const noAp = new Set(conStock.filter((l) => est(l) === "no_aprobado").map((l) => calKey(l.producto_id, l.lote))).size;
+          const dan = lotes.reduce((a, l) => a + Number(l.danado || 0), 0);
+          const puedeCal = profile.rol === "admin" || profile.rol === "logistica";
+          const tarjetas = [
+            pre > 0 && { href: puedeCal ? "/calidad" : "/stock", n: pre, t: pre === 1 ? "lote en pre inspección con stock" : "lotes en pre inspección con stock", cls: "bg-amber-50 border-amber-200 text-amber-900" },
+            noAp > 0 && { href: puedeCal ? "/calidad" : "/stock", n: noAp, t: noAp === 1 ? "lote no aprobado con stock" : "lotes no aprobados con stock", cls: "bg-red-50 border-red-200 text-red-800" },
+            dan > 0 && { href: "/stock", n: fmtNum(dan), t: "unidades dañadas en stock", cls: "bg-orange-50 border-orange-200 text-orange-900" },
+            pendExport > 0 && { href: "/reportes", n: pendExport, t: pendExport === 1 ? "renglón pendiente de exportar al sistema contable" : "renglones pendientes de exportar al sistema contable", cls: "bg-sky-50 border-sky-200 text-sky-900" },
+          ].filter(Boolean);
+          if (!tarjetas.length) return null;
+          return (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {tarjetas.map((c) => (
+                <Link key={c.t} href={c.href} className={`block rounded-lg border px-4 py-3 ${c.cls}`}>
+                  <div className="text-[22px] font-semibold leading-tight">{c.n}</div>
+                  <div className="text-[12.5px]">{c.t} <span className="underline">Ver</span></div>
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
 
         {cotPend.length > 0 && (
           <Link href="/cot" className={`block rounded-lg border px-4 py-3 text-[13.5px] ${cotPend.some((x) => cotAtrasado(x.created_at)) ? "bg-red-50 border-red-200 text-red-800" : "bg-amber-50 border-amber-200 text-amber-900"}`}>

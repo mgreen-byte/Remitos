@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -215,7 +216,7 @@ function CotInner({ profile }) {
     cargar();
   };
   const quitar = async (r) => {
-    if (!confirm(`¿Sacar el remito ${r.punto_venta}-${r.numero} de este COT? Vuelve a quedar como COT pendiente.`)) return;
+    if (!(await confirmar(`¿Sacar el remito ${r.punto_venta}-${r.numero} de este COT? Vuelve a quedar como COT pendiente.`))) return;
     const { error } = await supabase.rpc("quitar_remito_de_cot", { p_remito_id: r.id });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setMsg({ tipo: "ok", texto: "Remito sacado del COT." });

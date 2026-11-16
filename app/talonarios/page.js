@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmar } from "@/lib/confirmar";
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -143,8 +144,8 @@ function Inner({ profile }) {
               </div>
             </div>
             <button
-              onClick={() => {
-                if (!control && !window.confirm("Al activarlo, las plantas sin talonario activo no podrán emitir remitos. ¿Cargaste los talonarios de todas?")) return;
+              onClick={async () => {
+                if (!control && !(await confirmar("Al activarlo, las plantas sin talonario activo no podrán emitir remitos. ¿Cargaste los talonarios de todas?"))) return;
                 run(() => supabase.rpc("set_control_talonarios", { p_activo: !control }), control ? "Control apagado." : "Control activado.");
               }}
               className={control ? "btn-secundario" : "btn-primario"}
