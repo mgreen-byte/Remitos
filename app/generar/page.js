@@ -1157,28 +1157,23 @@ function GenerarInner({ profile }) {
               <div className="space-y-3">
                 <div>
                   <label className={lab}>Transportista</label>
-                  <select
+                  <BuscadorSelect
                     value={remito.transportistaId}
-                    onChange={(e) => {
-                      if (e.target.value === "__nuevo__") {
+                    onChange={(v) => {
+                      if (v === "__nuevo__") {
                         setNuevoTransp({ nombre: "", cuit: "", domicilio: "" });
                         setRemito((r) => ({ ...r, transportistaId: "" }));
                       } else {
                         setNuevoTransp(null);
                         setErrorTransp("");
-                        applyTransportista(e.target.value);
+                        applyTransportista(v);
                       }
                     }}
+                    options={transportistas.map((t) => ({ value: t.id, label: t.nombre, sub: t.cuit ? fmtCuit(t.cuit) : "", buscar: t.domicilio || "" }))}
+                    extras={[{ value: "", label: "Cargar a mano…" }, { value: "__nuevo__", label: "+ Agregar transporte nuevo…", alFinal: true }]}
+                    placeholder="Escribí nombre o CUIT…"
                     className={inp}
-                  >
-                    <option value="">Cargar a mano…</option>
-                    {transportistas.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.nombre}
-                      </option>
-                    ))}
-                    <option value="__nuevo__">+ Agregar transporte nuevo…</option>
-                  </select>
+                  />
                 </div>
                 {nuevoTransp && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
