@@ -61,6 +61,15 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
       if (c.digits && c.exact && c.required && v.length !== c.digits) return setError(`${c.label}: tienen que ser ${c.digits} dígitos, sin guiones.`);
       payload[c.key] = v === "" ? null : v;
     }
+    // CUIL / CUIT repetido: se compara solo por dígitos y se dice a quién está asignado.
+    if (claveUnica && payload[claveUnica]) {
+      const dig = String(payload[claveUnica]).replace(/\D/g, "");
+      const otro = rows.find((r) => r.id !== form.id && String(r[claveUnica] ?? "").replace(/\D/g, "") === dig);
+      if (otro) {
+        const col = columns.find((c) => c.key === claveUnica);
+        return setError(`${col?.label || "El dato"} ${fmtCuit(dig)} ya está cargado a nombre de ${otro.nombre}${otro.chasis ? ` (chasis ${otro.chasis})` : ""}. No se puede cargar de nuevo: buscalo en la lista y editalo si hace falta.`);
+      }
+    }
     const req = form.id ? supabase.from(table).update(payload).eq("id", form.id) : supabase.from(table).insert(payload);
     const { error: err } = await req;
     if (err) return setError(friendlyError(err));
@@ -102,6 +111,20 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
         )}
       </header>
 
+      {(() => {
+        // Registros que ya comparten el mismo CUIL / CUIT (cargados antes de este control): para revisar y unificar.
+        if (!claveUnica) return null;
+        const m = {};
+        for (const r of rows) { const d = String(r[claveUnica] ?? "").replace(/\D/g, ""); if (d) (m[d] ||= []).push(r.nombre); }
+        const rep = Object.entries(m).filter(([, ns]) => ns.length > 1);
+        if (!rep.length) return null;
+        return (
+          <div className="rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[13.5px] px-4 py-3">
+            <b>Hay {rep.length} {rep.length === 1 ? "CUIL/CUIT cargado" : "CUIL/CUIT cargados"} más de una vez</b> (de antes de este control). Conviene dejar uno solo y borrar o corregir los otros:
+            <ul className="mt-1 list-disc pl-5">{rep.map(([d, ns]) => <li key={d}>{fmtCuit(d)}: {ns.join(" · ")}</li>)}</ul>
+          </div>
+        );
+      })()}
       {aviso && <div className="rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13.5px] px-4 py-3">{aviso}</div>}
 
       {importando && (

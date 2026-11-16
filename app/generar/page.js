@@ -575,6 +575,13 @@ function GenerarInner({ profile }) {
     if (!nuevoChofer?.nombre?.trim()) return setErrorChofer("Completá el nombre.");
     const dni = (nuevoChofer.dni || "").replace(/\D/g, "");
     if (dni.length !== 11) return setErrorChofer("El CUIL tiene que tener 11 dígitos numéricos.");
+    // CUIL ya cargado (con o sin guiones): no se crea otro, se usa el existente y se avisa a quién pertenece.
+    const yaEsta = choferes.find((c) => String(c.dni || "").replace(/\D/g, "") === dni);
+    if (yaEsta) {
+      setNuevoChofer(null);
+      applyChofer(yaEsta.id);
+      return setErrorChofer(`El CUIL ${fmtCuit(dni)} ya está cargado a nombre de ${yaEsta.nombre}: lo seleccioné de la lista. Si el nombre no es correcto, avisale al administrador.`);
+    }
     const { data, error } = await supabase
       .from("choferes")
       .insert({ nombre: up(nuevoChofer.nombre), dni, chasis: up(nuevoChofer.chasis), acoplado: up(nuevoChofer.acoplado) })
