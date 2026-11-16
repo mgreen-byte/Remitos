@@ -86,6 +86,23 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
     cargar();
   };
 
+  const campo = (c, extra = "") => (
+    <input
+      value={form.data[c.key] ?? ""}
+      onChange={(e) => {
+        let v = e.target.value;
+        if (c.upper) v = up(v);
+        if (c.compact) v = v.replace(/[\s.\-]/g, "");
+        if (c.digits) v = v.replace(/\D/g, "").slice(0, c.digits);
+        setForm((f) => ({ ...f, data: { ...f.data, [c.key]: v } }));
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") guardar(); if (e.key === "Escape") { setForm(null); setError(""); } }}
+      placeholder={c.placeholder}
+      inputMode={c.digits ? "numeric" : undefined}
+      className={`w-full px-2.5 py-1.5 text-[13.5px] ${extra}`}
+    />
+  );
+
   const mostrar = (c, r) => {
     const v = r[c.key];
     if (v === null || v === undefined || v === "") return <span className="text-stone-300">—</span>;
@@ -93,7 +110,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
   };
 
   return (
-    <div className="print-reset max-w-5xl mx-auto px-6 py-8 space-y-5">
+    <div className="print-reset max-w-[1400px] mx-auto px-4 md:px-6 py-8 space-y-5">
       <header className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-[22px] font-semibold text-stone-900">{titulo}</h1>
@@ -131,7 +148,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
         <ImportarExcel table={table} singular={singular} columns={columns} claveUnica={claveUnica} existentes={rows} onClose={() => setImportando(false)} onDone={cargar} />
       )}
 
-      {form && (
+      {form && !form.id && (
         <section className="panel p-6">
           <h2 className="paso-titulo mb-4">{form.id ? `Editar ${singular.toLowerCase()}` : `Nuevo ${singular.toLowerCase()}`}</h2>
           <div className="grid gap-4 md:grid-cols-6">
@@ -165,7 +182,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
         </section>
       )}
 
-      {!form && error && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-[13.5px] px-4 py-3">{error}</div>}
+      {(!form || form.id) && error && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-[13.5px] px-4 py-3">{error}</div>}
 
       <section className="panel">
         <div className="p-4 flex items-center justify-between gap-3 flex-wrap border-b border-stone-200">
@@ -198,18 +215,29 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
                   </td>
                 </tr>
               )}
-              {visibles.map((r) => (
+              {visibles.map((r) => form?.id === r.id ? (
+                <tr key={r.id} className="border-t border-stone-100 bg-amber-50/70">
+                  {columns.map((c, i) => (
+                    <td key={c.key} className="px-2 py-2 align-top">{campo(c, i === 0 ? "font-medium" : "")}</td>
+                  ))}
+                  <td className="px-4 py-2 text-[12.5px] text-stone-400 align-top">{r.creado_por_nombre || "—"}</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap align-top">
+                    <button onClick={guardar} className="btn-primario !py-1.5 !px-3 mr-2">Guardar</button>
+                    <button onClick={() => { setForm(null); setError(""); }} className="text-stone-500 hover:text-stone-800 text-[13px]">Cancelar</button>
+                  </td>
+                </tr>
+              ) : (
                 <tr key={r.id} className="border-t border-stone-100 hover:bg-stone-50/60">
                   {columns.map((c, i) => (
-                    <td key={c.key} className={`px-4 py-3 ${i === 0 ? "font-medium text-stone-800" : "text-stone-600"}`}>{mostrar(c, r)}</td>
+                    <td key={c.key} className={`px-4 py-3 whitespace-nowrap ${i === 0 ? "font-medium text-stone-800" : "text-stone-600"}`}>{mostrar(c, r)}</td>
                   ))}
-                  <td className="px-4 py-3 text-[12.5px] text-stone-400">
+                  <td className="px-4 py-3 text-[12.5px] text-stone-400 whitespace-nowrap">
                     {r.creado_por_nombre || "—"}
-                    {r.modificado_por_nombre && <div>Editado por {r.modificado_por_nombre}</div>}
+                    {r.modificado_por_nombre && <span> · editó {r.modificado_por_nombre}</span>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {!soloLectura && (
-                      <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
+                      <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
                         Editar
                       </button>
                     )}

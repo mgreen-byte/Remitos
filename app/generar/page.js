@@ -1,5 +1,6 @@
 "use client";
 
+import BuscadorSelect from "@/components/BuscadorSelect";
 import { confirmar } from "@/lib/confirmar";
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { EMPRESA_FISCAL } from "@/lib/remitoPdf";
@@ -1211,24 +1212,19 @@ function GenerarInner({ profile }) {
               <div className="space-y-3">
                 <div>
                   <label className={lab}>Chofer</label>
-                  <select
+                  <BuscadorSelect
                     value={remito.choferId}
-                    onChange={(e) => {
-                      if (e.target.value === "__nuevo__") {
+                    onChange={(v) => {
+                      if (v === "__nuevo__") {
                         setNuevoChofer({ nombre: "", dni: "", chasis: "", acoplado: "" });
                         setRemito((r) => ({ ...r, choferId: "" }));
-                      } else applyChofer(e.target.value);
+                      } else applyChofer(v);
                     }}
+                    options={choferes.map((c) => ({ value: c.id, label: c.nombre, sub: fmtCuit(c.dni), buscar: `${c.chasis || ""} ${c.acoplado || ""}` }))}
+                    extras={[{ value: "", label: "Cargar a mano…" }, { value: "__nuevo__", label: "+ Agregar chofer nuevo…", alFinal: true }]}
+                    placeholder="Escribí nombre, CUIL o patente…"
                     className={inp}
-                  >
-                    <option value="">Cargar a mano…</option>
-                    {choferes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre} — {c.dni}
-                      </option>
-                    ))}
-                    <option value="__nuevo__">+ Agregar chofer nuevo…</option>
-                  </select>
+                  />
                 </div>
                 {nuevoChofer && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
