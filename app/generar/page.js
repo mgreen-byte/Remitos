@@ -86,6 +86,8 @@ function GenerarInner({ profile }) {
   const modalidadesPermitidas = [...(profile.rol === "admin" || !profile.modalidades?.length ? ["soja", "maiz", "generico"] : profile.modalidades), "traslado"];
 
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
+  // Lo que despacha la planta (Administración → Plantas → Despacha) recorta las modalidades del usuario.
+  const despachaOk = (m, pl) => !pl?.despacha || pl.despacha === "ambos" || (m !== "soja" && m !== "maiz") || m === pl.despacha;
   const [plantas, setPlantas] = useState([]);
   const [prefijos, setPrefijos] = useState([]);
   const [destinatarios, setDestinatarios] = useState([]);
@@ -141,6 +143,12 @@ function GenerarInner({ profile }) {
   // Datos completos de la planta (empresa, provincia) desde la lista de plantas.
   const planta = plantas.find((p) => p.id === planta0?.id) || planta0;
   const puntoVenta = planta?.punto_venta || "";
+  const modalidadesVisibles = modalidadesPermitidas.filter((m) => despachaOk(m, planta));
+  useEffect(() => {
+    // Si la planta no despacha la modalidad elegida, pasa a la primera que sí.
+    if (planta && !modalidadesVisibles.includes(modalidad) && modalidadesVisibles.length) setModalidad(modalidadesVisibles[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planta?.id, planta?.despacha]);
 
   // ---------- carga de datos ----------
   useEffect(() => {
@@ -908,7 +916,7 @@ function GenerarInner({ profile }) {
               <div>
                 <span className={lab}>Modalidad</span>
                 <div className="flex gap-2">
-                  {MODALIDADES.filter((m) => modalidadesPermitidas.includes(m.id)).map((m) => (
+                  {MODALIDADES.filter((m) => modalidadesVisibles.includes(m.id)).map((m) => (
                     <button
                       key={m.id}
                       onClick={() => reiniciar(m.id)}

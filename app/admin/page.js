@@ -66,6 +66,7 @@ function AdminInner({ profile }) {
               { key: "gps", label: "Ubicación (link de Google Maps) · QR de los traslados hacia esta planta", type: "text", placeholder: "https://maps.app.goo.gl/…" },
               { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
               { key: "empresa", label: "Empresa (formulario)", type: "select", nullable: true, options: Object.entries(EMPRESAS_ETIQUETA).map(([value, label]) => ({ value, label })) },
+              { key: "despacha", label: "Despacha", type: "select", options: [{ value: "ambos", label: "Soja y maíz" }, { value: "soja", label: "Solo soja" }, { value: "maiz", label: "Solo maíz" }] },
               { key: "activa", label: "Activa", type: "bool" },
             ]}
           />

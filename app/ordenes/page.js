@@ -694,13 +694,13 @@ function OrdenesInner({ profile }) {
 
             {prev.depositosSinPlanta.length > 0 && (
               <div className="rounded border border-amber-200 bg-amber-50 p-3 space-y-2 text-[13px] text-amber-900">
-                <div className="font-medium">Depósitos que no reconozco: elegí a qué planta corresponde cada uno.</div>
+                <div className="font-medium">Depósitos que no reconozco (o sin una planta que despache {prev.modalidad === "maiz" ? "maíz" : "soja"} con ese nombre): elegí a qué planta corresponde cada uno.</div>
                 {prev.depositosSinPlanta.map((d) => (
                   <div key={d} className="flex items-center gap-3 flex-wrap">
                     <span className="min-w-[180px]">“{d}”</span>
                     <select value={prev.mapa[d] || ""} onChange={(e) => setPrev({ ...prev, mapa: { ...prev.mapa, [d]: e.target.value } })} className={`${inp} max-w-xs`}>
                       <option value="">— no cargar —</option>
-                      {plantasEditables.map((p) => (
+                      {plantasEditables.filter((p) => !p.despacha || p.despacha === "ambos" || p.despacha === (prev.modalidad || "soja")).map((p) => (
                         <option key={p.id} value={p.id}>{p.nombre}</option>
                       ))}
                     </select>
