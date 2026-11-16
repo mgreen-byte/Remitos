@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
+import ExportContable from "@/components/ExportContable";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, friendlyError } from "@/lib/util";
@@ -186,6 +187,7 @@ function ReportesInner({ profile }) {
             {rep.filas.length > MAX_VISTA && <div className="text-[12px] text-stone-400">Vista previa de las primeras {MAX_VISTA} filas. Los archivos descargados traen todas.</div>}
           </section>
         )}
+        <ExportContable plantas={plantas} />
       </div>
     </NavBar>
   );

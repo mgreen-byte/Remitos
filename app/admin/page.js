@@ -59,6 +59,7 @@ function AdminInner({ profile }) {
               { key: "nombre", label: "Planta", type: "text", upper: true },
               { key: "punto_venta", label: "Punto de venta", type: "text", digits: 4, placeholder: "0001" },
               { key: "prefijo", label: "Prefijo (órdenes de traslado)", type: "text", upper: true, placeholder: "STA" },
+              { key: "nombre_sistema", label: "Nombre en sistema contable", type: "text", placeholder: "Como figura el depósito en el sistema" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "domicilio_fiscal", label: "Dirección fiscal (encabezado del remito PDF)", type: "text", placeholder: "Calle y N° | (CP) Localidad | Provincia" },
               { key: "gps", label: "Ubicación (link de Google Maps) · QR de los traslados hacia esta planta", type: "text", placeholder: "https://maps.app.goo.gl/…" },
