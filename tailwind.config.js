@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 // MARCA (Brand Manual Stine 2023): colores y tipografías de toda la plataforma.
-// emerald = verde Stine · sky = azul Stine · amber = dorado · ink = oliva (menú) · stone = grises cálidos.
+// emerald = verde Stine · sky = azul Stine · amber = dorado · ink = verde oscuro (menú) · stone = grises cálidos.
 module.exports = {
   content: ["./app/**/*.{js,jsx}", "./components/**/*.{js,jsx}"],
   theme: {
@@ -53,11 +53,11 @@ module.exports = {
           800: "#6a4c1d",
           900: "#4f3916",
         },
-        // Verdes oliva de la paleta secundaria (#404828 y #585F46): fondo del menú
+        // Fondo del menú lateral: verde muy oscuro (el de antes, mejor contraste)
         ink: {
-          700: "#585F46",
-          800: "#4a5333",
-          900: "#404828",
+          700: "#1c3326",
+          800: "#14281d",
+          900: "#0c1812",
         },
         // Grises cálidos, con el negro de marca (PROCESS BLACK C, #231F20) = 900
         stone: {
