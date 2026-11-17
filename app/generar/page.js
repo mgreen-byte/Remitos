@@ -716,6 +716,8 @@ function GenerarInner({ profile }) {
       if (!it.desc) return `Ítem ${i + 1}: falta el producto o la descripción.`;
       if (esTraslado && it.libre) return `Ítem ${i + 1}: en un traslado todo tiene que salir de un lote con stock.`;
       if (!it.libre) {
+        if (profile.rol === "operador" && esTraslado && !modoPallets && !it.ordenLineaId)
+          return `Ítem ${i + 1}: los traslados entre plantas solo se hacen desde una orden de traslado. Elegí la orden en "Orden de traslado guardada"; si no está, pedísela a Logística.`;
         if (profile.rol === "operador" && !esTraslado && !esGen && esSemilla(it) && !it.ordenLineaId)
           return `Ítem ${i + 1}: la semilla solo se despacha desde una orden de carga. Elegí la orden en "Orden de carga guardada"; si no está cargada, pedísela a Logística.`;
         if (!it.loteId && (esTraslado || esSemilla(it))) return `Ítem ${i + 1}: elegí el lote.`;
@@ -950,6 +952,11 @@ function GenerarInner({ profile }) {
               <div className="mt-5 pt-5 border-t border-stone-200 grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <span className={lab}>Orden de traslado guardada ({planta?.nombre || "tu planta"})</span>
+                  {profile.rol === "operador" && !ocDbSel && !modoPallets && (
+                    <div className="mb-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[13px] px-3 py-2">
+                      Los traslados entre plantas solo se hacen desde una orden de traslado: elegila acá abajo. Si no aparece, pedile a Logística que la cree.
+                    </div>
+                  )}
                   <select value={ocDbSel} onChange={(e) => (e.target.value ? elegirOcTr(e.target.value) : (setOcDbSel(""), setSalidaOrden(null), setDestinoId(""), setItems([itemVacio()]), setRemito((r) => ({ ...r, ordenCarga: "" }))))} disabled={!!emitido} className={inp}>
                     <option value="">{gruposTr.length ? "Sin orden (traslado libre) o elegir una…" : "No hay órdenes de traslado con saldo pendiente en esta planta"}</option>
                     {gruposTr.map((g) => (
