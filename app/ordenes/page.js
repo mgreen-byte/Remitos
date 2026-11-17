@@ -828,7 +828,7 @@ function OrdenesInner({ profile }) {
             <option value="pendientes">Con saldo pendiente</option>
             <option value="todas">Todas</option>
           </select>
-          <select value={orden} onChange={(e) => setOrden(e.target.value)} className={`${inp} max-w-[240px]`} aria-label="Ordenar por">
+          <select value={orden} onChange={(e) => setOrden(e.target.value)} className={`${inp} max-w-[300px]`} aria-label="Ordenar por">
             <option value="pend">Ordenar: pendientes primero</option>
             <option value="num_asc">N° de orden: A → Z</option>
             <option value="num_desc">N° de orden: Z → A</option>

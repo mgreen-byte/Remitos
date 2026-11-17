@@ -1,42 +1,76 @@
 /** @type {import('tailwindcss').Config} */
-// PALETA DE MARCA: para cambiar los colores de toda la plataforma, editá los
-// valores de "emerald" (verde Stine #15964B) e "ink" (fondo oscuro del menú) y "stone" (grises) acá abajo.
+// MARCA (Brand Manual Stine 2023): colores y tipografías de toda la plataforma.
+// emerald = verde Stine · sky = azul Stine · amber = dorado · ink = oliva (menú) · stone = grises cálidos.
 module.exports = {
   content: ["./app/**/*.{js,jsx}", "./components/**/*.{js,jsx}"],
   theme: {
     extend: {
+      // Tipografías del manual de marca Stine 2023: Montserrat (textos) y Oswald (títulos y subtítulos).
+      // Abolition W00 (títulos destacados) es una fuente paga: mientras no esté, los títulos usan Oswald.
       fontFamily: {
-        sans: ['"Instrument Sans"', "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        sans: ["Montserrat", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: ['"Abolition W00"', "Oswald", "Montserrat", "sans-serif"],
+        titulo: ["Oswald", "Montserrat", "sans-serif"],
       },
+      // Paleta del manual de marca Stine 2023.
       colors: {
+        // Verde Stine (PANTONE 355 C, #009D57) = 600
         emerald: {
-          50: "#eefaf2",
-          100: "#d5f2de",
-          200: "#aee5c0",
-          300: "#78d196",
-          400: "#3fb86a",
-          500: "#1fa458",
-          600: "#15964b",
-          700: "#117a3e",
-          800: "#0f6033",
-          900: "#0d4a29",
+          50: "#eaf7f0",
+          100: "#cdeedb",
+          200: "#9bdcb8",
+          300: "#5fc690",
+          400: "#24b06d",
+          500: "#0aa864",
+          600: "#009D57",
+          700: "#008249",
+          800: "#00663a",
+          900: "#004d2c",
         },
+        // Azul Stine (PANTONE 286 C, #005FAE) = 700
+        sky: {
+          50: "#eaf2fb",
+          100: "#d0e3f6",
+          200: "#a2c6ed",
+          300: "#6ea5e0",
+          400: "#3a84d0",
+          500: "#0f6fc0",
+          600: "#0066b8",
+          700: "#005FAE",
+          800: "#004c8b",
+          900: "#003a6b",
+        },
+        // Dorado de la paleta secundaria (PANTONE 142 C, #DFB062) = 400; se usa para avisos
+        amber: {
+          50: "#fcf7ec",
+          100: "#f8ecd2",
+          200: "#f1d9a6",
+          300: "#e8c47c",
+          400: "#DFB062",
+          500: "#c9973f",
+          600: "#a87a2c",
+          700: "#855f22",
+          800: "#6a4c1d",
+          900: "#4f3916",
+        },
+        // Verdes oliva de la paleta secundaria (#404828 y #585F46): fondo del menú
         ink: {
-          700: "#1c3326",
-          800: "#14281d",
-          900: "#0c1812",
+          700: "#585F46",
+          800: "#4a5333",
+          900: "#404828",
         },
+        // Grises cálidos, con el negro de marca (PROCESS BLACK C, #231F20) = 900
         stone: {
-          50: "#f6faf7",
-          100: "#eef3ef",
-          200: "#e6eae8",
-          300: "#d3dad7",
-          400: "#9ba7a2",
-          500: "#6a7873",
-          600: "#4e5b56",
-          700: "#38433f",
-          800: "#26302d",
-          900: "#18201d",
+          50: "#f8f7f4",
+          100: "#f1efea",
+          200: "#e5e2db",
+          300: "#d1ccc2",
+          400: "#a39d92",
+          500: "#77716a",
+          600: "#5a5550",
+          700: "#433f3c",
+          800: "#2f2b2a",
+          900: "#231F20",
         },
       },
       boxShadow: {
