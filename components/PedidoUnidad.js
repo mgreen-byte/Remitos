@@ -78,6 +78,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
           <label className={lab}>Tipo de unidad</label>
           <select value={tipo} onChange={(e) => guardarTipo(e.target.value)} className={inp}>
             <option value="">A definir</option>
+            {tipo && !TIPOS_UNIDAD.includes(tipo) && <option value={tipo}>{tipo}</option>}
             {TIPOS_UNIDAD.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
