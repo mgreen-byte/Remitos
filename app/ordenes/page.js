@@ -1,5 +1,6 @@
 "use client";
 
+import PedidoUnidad from "@/components/PedidoUnidad";
 import { confirmar } from "@/lib/confirmar";
 import { descargarOrdenPdf } from "@/lib/ordenPdf";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
@@ -40,6 +41,7 @@ function estadoOrden(o, lineas) {
 
 function OrdenesInner({ profile }) {
   const esAdmin = profile.rol === "admin";
+  const [pedidoUnidad, setPedidoUnidad] = useState(null); // orden con el pedido de unidad abierto
   const poderAdmin = esAdmin || profile.rol === "logistica"; // Logística opera sobre todas las plantas, pero no edita órdenes completadas
   const soloVista = profile.rol === "consulta";
   const miPlanta = profile.planta?.id || null;
@@ -976,6 +978,7 @@ function OrdenesInner({ profile }) {
                         </>
                       ) : (
                         <>
+                      {pedidoUnidad === o.id && <PedidoUnidad orden={o} lineas={ls} plantas={plantas} productos={productos} onCerrar={() => setPedidoUnidad(null)} />}
                       {/* Despachar: un botón por cliente y destino con saldo; abre Nuevo remito con todo precargado */}
                       {(esAdmin || (profile.rol === "operador" && miPlanta)) && o.estado === "activa" && (() => {
                         const m = new Map();
@@ -1184,7 +1187,10 @@ function OrdenesInner({ profile }) {
                         {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && poderAdmin && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
-                        <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt })} className={btn2}>Descargar PDF</button>
+                        {esAdmin && o.modalidad !== "traslado" && ls.length > 0 && (
+                          <button onClick={() => setPedidoUnidad(pedidoUnidad === o.id ? null : o.id)} className={btn2}>Pedido de unidad</button>
+                        )}
+                        <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt, empresa: plantas.find((p) => p.id === (o.modalidad === "traslado" ? o.planta_origen_id : ls[0]?.planta_id))?.empresa || "" })} className={btn2}>Descargar PDF</button>
                         {(poderAdmin || soloVista) && (
                           <button onClick={() => (log?.id === o.id ? setLog(null) : verLog(o.id))} className={btn2}>{log?.id === o.id ? "Ocultar cambios" : "Ver cambios"}</button>
                         )}
