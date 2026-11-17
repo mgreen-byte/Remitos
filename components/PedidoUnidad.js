@@ -103,7 +103,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
           <div>Fecha de carga: <b>{orden.fecha_carga ? String(orden.fecha_carga).slice(0, 10).split("-").reverse().join("/") : "—"}</b></div>
           <div>Carga: <b>{fmt(totU)} u. · {fmt(totKg)} kg</b>{!pendiente && <span className="text-stone-500"> (ya remitida: se muestra lo pedido)</span>}</div>
           <div>
-            Recorrido (solo ida):{" "}
+            Kms:{" "}
             {km.cargando ? <span className="text-stone-500">calculando…</span> : km.sinOrigen ? <span className="text-red-700">falta la ubicación del depósito</span> : km.total != null ? <b>{fmt(km.total)} km{km.estimado ? " (estimado)" : ""}</b> : "—"}
           </div>
           {km.estimado && <div className="text-[12px] text-amber-700">No respondió el servicio de rutas: es una estimación en línea recta + 30%.</div>}
@@ -115,7 +115,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
       <div className="rounded border border-stone-200 bg-white overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead className="bg-stone-50 text-xs text-stone-500">
-            <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Destino</th><th className="p-2 text-left">Producto · lote</th><th className="p-2 text-right">Cant.</th><th className="p-2 text-right">Kg</th><th className="p-2 text-right">Km</th></tr>
+            <tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Destino</th><th className="p-2 text-left">Material / Variedad · lote</th><th className="p-2 text-right">Cant.</th><th className="p-2 text-right">Kg</th><th className="p-2 text-right">Km</th></tr>
           </thead>
           <tbody>
             {destinos.map((d, i) => (
