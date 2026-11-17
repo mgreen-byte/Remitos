@@ -123,6 +123,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
                 <td className="p-2">
                   <div className="font-medium">{d.cliente}</div>
                   <div className="text-stone-500 text-[12px]">{[d.localidad, d.provincia].filter(Boolean).join(", ") || d.domicilio}</div>
+                  {(d.contacto || d.telefono) ? <div className="text-[12px] text-stone-700">Contacto: {[d.contacto, d.telefono].filter(Boolean).join(" · ")}</div> : <div className="text-[12px] text-amber-700">sin contacto</div>}
                   {!d.gps && <div className="text-[12px] text-red-700">sin ubicación</div>}
                 </td>
                 <td className="p-2">{d.items.map((it, k) => <div key={k}>{it.producto}{it.lote ? <span className="text-stone-500"> · {it.lote}</span> : ""}</div>)}</td>
