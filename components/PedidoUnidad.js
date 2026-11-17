@@ -8,10 +8,19 @@ import { TIPOS_UNIDAD, armarDestinos, textoPedido, descargarPedidoPdf } from "@/
 
 const EMPRESA_NOMBRE = { ms: "MS Technologies", stine: "Stine Seed" };
 const fmt = (n) => Number(n || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+// Domicilio + provincia, sin repetir la provincia si ya está escrita en el domicilio
+const domicilioPlanta = (p) => { const d = String(p?.domicilio || "").trim(); const pr = String(p?.provincia || "").trim(); return d && pr && d.toUpperCase().includes(pr.toUpperCase()) ? d : [d, pr].filter(Boolean).join(", "); };
 
 // Pedido de unidad al transporte (solo administrador): depósito, recorrido con km y detalle de la orden.
 export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerrar }) {
-  const planta = plantas.find((p) => p.id === lineas[0]?.planta_id) || null;
+  // La planta se vuelve a leer al abrir, para tomar el contacto y horario recién cargados en Administración.
+  const plantaLista = plantas.find((p) => p.id === lineas[0]?.planta_id) || null;
+  const [plantaFresca, setPlantaFresca] = useState(null);
+  useEffect(() => {
+    if (!plantaLista?.id) return;
+    supabase.from("plantas").select("*").eq("id", plantaLista.id).single().then(({ data }) => data && setPlantaFresca(data));
+  }, [plantaLista?.id]);
+  const planta = plantaFresca || plantaLista;
   const { destinos, pendiente } = useMemo(() => armarDestinos(lineas, productos), [lineas, productos]);
   const [tipo, setTipo] = useState(orden.tipo_unidad || "");
   const [obs, setObs] = useState("");
@@ -38,7 +47,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
     })();
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planta?.id, destinos.length]);
+  }, [planta?.id, planta?.gps, destinos.length]);
 
   const totU = destinos.reduce((a, d) => a + d.items.reduce((b, it) => b + it.cantidad, 0), 0);
   const totKg = destinos.reduce((a, d) => a + d.items.reduce((b, it) => b + it.kg, 0), 0);
@@ -82,7 +91,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
         <div className="rounded border border-stone-200 bg-white p-3 text-[13px] space-y-0.5">
           <div className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold mb-1">Depósito de carga</div>
           <div className="font-medium">{planta?.nombre || "—"}</div>
-          <div className="text-stone-600">{[planta?.domicilio, planta?.provincia].filter(Boolean).join(", ") || "Sin domicilio"}</div>
+          <div className="text-stone-600">{domicilioPlanta(planta) || "Sin domicilio"}</div>
           {planta?.gps ? <a href={planta.gps} target="_blank" rel="noreferrer" className="text-sky-700 underline break-all">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
           <div>Contacto: {[planta?.contacto_nombre, planta?.contacto_telefono].filter(Boolean).join(" · ") || <span className="text-amber-700">sin cargar</span>}</div>
           <div>Horario de atención: {planta?.horario_atencion || <span className="text-amber-700">sin cargar</span>}</div>

@@ -91,6 +91,15 @@ function StockInner({ profile }) {
     cargarPallets();
   };
 
+  // Planilla de recuento físico (PDF o Excel) con todo el stock de la planta, incluidos los lotes en cero.
+  const planillaRecuento = async (tipo) => {
+    const hayPallets = lotes.some((l) => esPal(l) && Number(l.stock) > 0);
+    const incluirPallets = hayPallets ? await confirmar("Esta planta tiene pallets numerados. ¿Los incluyo en la planilla de recuento?", { aceptar: "Incluir pallets", cancelar: "No incluir" }) : false;
+    const pl = plantas.find((p) => p.id === plantaId) || profile.planta;
+    const { recuentoPdf, recuentoExcel } = await import("@/lib/recuentoStock");
+    await (tipo === "pdf" ? recuentoPdf : recuentoExcel)({ planta: pl, lotes, incluirPallets });
+  };
+
   const cargar = async () => {
     if (!plantaId) return setLotes([]);
     const { data } = await supabase
@@ -330,6 +339,14 @@ function StockInner({ profile }) {
             ) : (
               <button onClick={() => setImportando(true)} className="btn-secundario">Cargar stock desde Excel</button>
             )}
+          </div>
+        )}
+
+        {plantaId && (
+          <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
+            <span className="text-stone-500">Planilla de recuento:</span>
+            <button type="button" onClick={() => planillaRecuento("pdf")} className="btn-secundario">Descargar PDF</button>
+            <button type="button" onClick={() => planillaRecuento("excel")} className="btn-secundario">Descargar Excel</button>
           </div>
         )}
 
