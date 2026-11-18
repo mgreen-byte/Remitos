@@ -64,6 +64,10 @@ export default function NavBar({ profile, children }) {
     </label>
   );
   useEffect(() => { setMenu(false); }, [pathname]);
+  // Menú lateral plegable (escritorio): se recuerda en este navegador.
+  const [plegado, setPlegado] = useState(false);
+  useEffect(() => { try { setPlegado(localStorage.getItem("menuPlegado") === "1"); } catch {} }, []);
+  const alternarMenu = () => setPlegado((v) => { try { localStorage.setItem("menuPlegado", v ? "0" : "1"); } catch {} return !v; });
   useEffect(() => {
     if (!profile) return;
     // COT pendientes: el operador ve los de su planta; admin y consulta, todos.
@@ -138,10 +142,15 @@ export default function NavBar({ profile, children }) {
 
   return (
     <div className="print-reset min-h-screen md:flex bg-stone-100">
-      <aside className="no-print sticky top-0 z-40 md:z-auto md:w-60 md:flex-shrink-0 md:min-h-screen md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col">
-        <div className="px-5 py-4 md:py-6 flex-shrink-0">
-          <img src="/logo-blanco.png" alt="Stine" className="h-8 md:h-10 w-auto" />
-          <div className="hidden md:block text-[12px] text-emerald-300 mt-2">Despacho y Stock</div>
+      <aside className={`no-print sticky top-0 z-40 md:z-auto ${plegado ? "md:w-16" : "md:w-60"} md:transition-[width] md:duration-200 md:flex-shrink-0 md:min-h-screen md:top-0 md:h-screen bg-ink-900 border-b-4 md:border-b-0 border-emerald-600 flex md:flex-col`}>
+        <div className={`py-4 md:py-5 flex-shrink-0 ${plegado ? "md:px-2 px-5" : "px-5"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <img src="/logo-blanco.png" alt="Stine" className={`h-8 md:h-10 w-auto ${plegado ? "md:hidden" : ""}`} />
+            <button onClick={alternarMenu} title={plegado ? "Mostrar el menú" : "Ocultar el menú"} aria-label={plegado ? "Mostrar el menú" : "Ocultar el menú"} className={`hidden md:flex items-center justify-center w-8 h-8 rounded-md text-stone-300 hover:bg-ink-700 hover:text-white ${plegado ? "mx-auto" : ""}`}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{plegado ? <path d="M9 6l6 6-6 6" /> : <path d="M15 6l-6 6 6 6" />}</svg>
+            </button>
+          </div>
+          <div className={`hidden text-[12px] text-emerald-300 mt-2 ${plegado ? "" : "md:block"}`}>Despacho y Stock</div>
         </div>
         <div className="md:hidden flex-1 flex items-center justify-end gap-3 pr-3 min-w-0">
           <span className="text-[14px] font-medium text-white truncate">{titulo}</span>
@@ -153,26 +162,29 @@ export default function NavBar({ profile, children }) {
         <nav className="hidden md:flex md:flex-col gap-0.5 px-2 md:px-3 flex-1 items-center md:items-stretch overflow-y-auto">
           {secciones.map(([g, its]) => (
             <div key={g} className="mb-1.5">
-              <div className="px-3 pt-2 pb-1 text-[10.5px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
+              {plegado ? <div className="mx-2 my-1.5 border-t border-ink-700" /> : <div className="px-3 pt-2 pb-1 text-[10.5px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>}
           {its.map(([href, label, icono]) => {
             const activo = pathname === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-[13.5px] font-medium whitespace-nowrap transition ${
+                title={plegado ? label : undefined}
+                className={`relative flex items-center gap-3 ${plegado ? "justify-center px-0 py-2" : "px-3 py-1.5"} rounded-md text-[13.5px] font-medium whitespace-nowrap transition ${
                   activo ? "bg-emerald-600 text-white shadow-sm" : "text-stone-300 hover:bg-ink-700 hover:text-white"
                 }`}
               >
                 <Icono d={ICONOS[icono]} />
-                {label}
-                {icono === "traslados" && pendientes > 0 && (
+                {plegado ? (
+                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
+                ) : label}
+                {!plegado && icono === "traslados" && pendientes > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
                 )}
-                {icono === "cot" && avisoCot > 0 && (
+                {!plegado && icono === "cot" && avisoCot > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoCot}</span>
                 )}
-                {icono === "talonarios" && avisoTal > 0 && (
+                {!plegado && icono === "talonarios" && avisoTal > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoTal}</span>
                 )}
               </Link>
@@ -181,7 +193,14 @@ export default function NavBar({ profile, children }) {
             </div>
           ))}
         </nav>
-        <div className="hidden md:block px-5 py-4 border-t border-ink-700 text-[13px]">
+        {plegado && (
+          <div className="hidden md:flex justify-center py-3 border-t border-ink-700">
+            <button onClick={logout} title={`Cerrar sesión (${profile?.nombre || ""})`} aria-label="Cerrar sesión" className="w-9 h-9 flex items-center justify-center rounded-md text-emerald-300 hover:bg-ink-700 hover:text-white">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+            </button>
+          </div>
+        )}
+        <div className={`hidden ${plegado ? "" : "md:block"} px-5 py-4 border-t border-ink-700 text-[13px]`}>
           <div className="font-medium text-white truncate">{profile?.nombre}</div>
           <div className="text-stone-400 text-[12px] mb-2">{profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta"}</div>
           <button onClick={logout} className="text-emerald-300 hover:text-white text-[12.5px]">

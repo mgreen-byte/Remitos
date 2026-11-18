@@ -219,7 +219,8 @@ function GenerarInner({ profile }) {
       setSugerido(sn.numero || "");
       return;
     }
-    const { data } = await supabase.from("remitos").select("numero").eq("punto_venta", pv).order("numero", { ascending: false }).limit(1);
+    // El número es por empresa + punto de venta (dos empresas pueden tener el mismo PV)
+    const { data } = await supabase.from("remitos").select("numero").eq("serie", `${planta?.empresa || "?"}|${pv}`).order("numero", { ascending: false }).limit(1);
     const ult = data?.[0]?.numero;
     setSugerido(ult ? String(Number(ult) + 1).padStart(8, "0") : "00000001");
   };
