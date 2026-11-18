@@ -65,7 +65,10 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
     columns.forEach((c) => {
       let v = d[c.key];
       if (c.type === "number") v = v === "" || v === null ? null : Number(String(v).replace(",", "."));
-      else if (c.type === "text") v = c.upper ? up(v).trim() : (v ?? "").toString().trim();
+      else if (c.type === "text") {
+        v = c.upper ? up(v).trim() : (v ?? "").toString().trim();
+        if (c.nullable && v === "") v = null; // campo opcional vacío = sin dato
+      }
       else if (c.type === "select" && c.nullable && v === "") v = null;
       out[c.key] = v;
     });
