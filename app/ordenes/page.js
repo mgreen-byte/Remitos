@@ -978,7 +978,7 @@ function OrdenesInner({ profile }) {
                         </>
                       ) : (
                         <>
-                      {pedidoUnidad === o.id && <PedidoUnidad orden={o} lineas={ls} plantas={plantas} productos={productos} onCerrar={() => setPedidoUnidad(null)} />}
+                      {pedidoUnidad === o.id && <PedidoUnidad orden={o} lineas={lineasDe[o.id] || ls} plantas={plantas} productos={productos} onCerrar={() => setPedidoUnidad(null)} />}
                       {/* Despachar: un botón por cliente y destino con saldo; abre Nuevo remito con todo precargado */}
                       {(esAdmin || (profile.rol === "operador" && miPlanta)) && o.estado === "activa" && (() => {
                         const m = new Map();
