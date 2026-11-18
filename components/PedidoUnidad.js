@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError } from "@/lib/util";
-import { coordsDe, kmTramos, linkRecorrido } from "@/lib/rutas";
+import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
 import { TIPOS_UNIDAD, armarDestinos, textoPedido, descargarPedidoPdf } from "@/lib/pedidoUnidad";
 
 const EMPRESA_NOMBRE = { ms: "MS Technologies", stine: "Stine Seed" };
@@ -93,7 +93,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
           <div className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold mb-1">Depósito de carga</div>
           <div className="font-medium">{planta?.nombre || "—"}</div>
           <div className="text-stone-600">{domicilioPlanta(planta) || "Sin domicilio"}</div>
-          {planta?.gps ? <a href={planta.gps} target="_blank" rel="noreferrer" className="text-sky-700 underline break-all">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
+          {planta?.gps ? <a href={urlMaps(planta.gps)} target="_blank" rel="noreferrer" className="text-sky-700 underline break-all">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
           <div>Contacto: {[planta?.contacto_nombre, planta?.contacto_telefono].filter(Boolean).join(" · ") || <span className="text-amber-700">sin cargar</span>}</div>
           <div>Horario de atención: {planta?.horario_atencion || <span className="text-amber-700">sin cargar</span>}</div>
           {faltaContacto && <div className="text-[12px] text-amber-700 pt-1">Completá contacto y horario en Administración → Plantas.</div>}

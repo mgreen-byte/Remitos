@@ -54,7 +54,8 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
   const vacio = () => {
     const d = { ...nuevoDefault };
     columns.forEach((c) => {
-      if (d[c.key] === undefined) d[c.key] = c.type === "bool" ? true : c.type === "multi" || c.type === "list" ? [] : "";
+      // Una lista obligatoria arranca en su primera opción (ej. Despacha → "Soja y maíz"), para no guardar un valor vacío.
+      if (d[c.key] === undefined) d[c.key] = c.type === "bool" ? true : c.type === "multi" || c.type === "list" ? [] : c.type === "select" && !c.nullable && c.options?.length ? c.options[0].value : "";
     });
     return d;
   };
