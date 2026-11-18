@@ -8,6 +8,9 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, fmtMonto, friendlyError, cotAtrasado } from "@/lib/util";
 
+// Unidades: big bag (soja) y bolsas (maíz).
+const unid = (bb, bolsas) => (bolsas > 0 && bb > 0 ? `${fmtNum(bb)} BB + ${fmtNum(bolsas)} bolsas` : bolsas > 0 ? `${fmtNum(bolsas)} ${bolsas === 1 ? "bolsa" : "bolsas"}` : `${fmtNum(bb)} BB`);
+const esBA = (p) => String(p || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "BUENOS AIRES";
 const esBB = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
 const digitos = (v) => String(v ?? "").replace(/\D/g, "");
 const numStr = (n) => (n === null || n === undefined ? "" : String(Math.round(Number(n) * 100) / 100).replace(".", ","));
@@ -97,8 +100,9 @@ function CotInner({ profile }) {
     if (profile.rol === "operador") qc = qc.eq("planta_id", plantaId);
     const { data: cs } = await qc;
     setCots(cs || []);
-    if (profile.rol !== "operador") {
-      const { data: pl } = await supabase.from("plantas").select("id, nombre").order("nombre");
+    {
+      // Todas las plantas (con provincia) para mostrar por qué un remito pide COT.
+      const { data: pl } = await supabase.from("plantas").select("id, nombre, provincia").order("nombre");
       setPlantas(pl || []);
     }
     setSel(new Set());
@@ -272,6 +276,7 @@ function CotInner({ profile }) {
   const precioUsado = uniq(filasResumen.map((x) => x.c.precio));
   const precioUsadoMaiz = uniq(filasResumen.map((x) => x.c.precioMaiz));
   const hayMaiz = tot.bolsas > 0, haySoja = filasResumen.some((x) => x.c.precio != null || x.c.faltaSoja);
+  const verBB = haySoja || !hayMaiz;
 
   if (sinPlanta)
     return (
@@ -302,7 +307,7 @@ function CotInner({ profile }) {
             {!esAdmin && !soloLectura ? null : (
               <select value={filtroPlanta} onChange={(e) => setFiltroPlanta(e.target.value)} className="ml-auto border border-stone-300 rounded px-2 py-1.5 text-sm">
                 <option value="">Todas las plantas</option>
-                {plantas.map((p) => (
+                {plantas.filter((p) => pend.some((r) => r.planta_id === p.id)).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nombre}
                   </option>
@@ -317,14 +322,19 @@ function CotInner({ profile }) {
             const todos = g.rows.every((r) => sel.has(r.remito_id));
             const kgG = g.rows.reduce((a, r) => a + calc(r).kg, 0);
             const bbG = g.rows.reduce((a, r) => a + calc(r).bb, 0);
+            const bolsasG = g.rows.reduce((a, r) => a + calc(r).bolsas, 0);
+            const provPl = plantas.find((p) => p.id === g.planta_id)?.provincia || "";
             return (
               <div key={g.key} className="panel overflow-hidden">
                 <div className="px-4 py-2.5 bg-stone-50 border-b border-stone-200 flex items-center gap-3 flex-wrap text-[13px]">
                   {!soloLectura && <input type="checkbox" checked={todos} onChange={() => alternarGrupo(g)} className="accent-emerald-700 w-4 h-4" aria-label="Elegir todo el grupo" />}
                   <span className="font-semibold">{g.oc ? `Orden de carga ${g.oc}` : "Sin orden de carga"}</span>
                   {(esAdmin || soloLectura) && <span className="text-stone-500">· {g.planta}</span>}
+                  <span className={`text-[11.5px] rounded px-1.5 py-0.5 ${esBA(provPl) ? "bg-amber-100 text-amber-800" : "bg-stone-100 text-stone-500"}`} title="Provincia cargada en Administración → Plantas">
+                    origen: {provPl || "sin provincia"}
+                  </span>
                   <span className="ml-auto text-stone-500">
-                    {g.rows.length} {g.rows.length === 1 ? "remito" : "remitos"} · {fmtNum(bbG)} BB · {fmtNum(kgG)} kg
+                    {g.rows.length} {g.rows.length === 1 ? "remito" : "remitos"} · {unid(bbG, bolsasG)} · {fmtNum(kgG)} kg
                   </span>
                 </div>
                 <table className="w-full text-[13px]">
@@ -348,9 +358,9 @@ function CotInner({ profile }) {
                           <td className="px-2 py-1.5">
                             {r.tipo === "traslado" ? <span className="text-[11px] font-medium text-sky-700 bg-sky-50 rounded px-1.5 py-0.5 mr-1.5">TRASLADO</span> : null}
                             {r.cliente_nombre}
-                            <span className="text-stone-400"> · {r.cliente_provincia || "—"}</span>
+                            <span className={esBA(r.cliente_provincia) ? "text-amber-700" : "text-stone-400"}> · {r.cliente_provincia || "—"}</span>
                           </td>
-                          <td className="px-2 py-1.5 text-right whitespace-nowrap">{fmtNum(c.bb)} BB</td>
+                          <td className="px-2 py-1.5 text-right whitespace-nowrap">{unid(c.bb, c.bolsas)}</td>
                           <td className="px-2 py-1.5 text-right whitespace-nowrap">{fmtNum(c.kg)} kg</td>
                           <td className="px-4 py-1.5 text-right whitespace-nowrap">{fmtMonto(c.monto)}</td>
                         </tr>
@@ -387,7 +397,7 @@ function CotInner({ profile }) {
                     <th className={th}>CUIT destino</th>
                     <th className={th}>Localidad / domicilio destino</th>
                     <th className={th}>Provincia</th>
-                    <th className={`${th} text-right`}>Big Bag</th>
+                    {verBB && <th className={`${th} text-right`}>Big Bag</th>}
                     {hayMaiz && <th className={`${th} text-right`}>Bolsas maíz</th>}
                     <th className={`${th} text-right`}>Kg</th>
                     <th className={`${th} text-right`}>Monto</th>
@@ -406,11 +416,13 @@ function CotInner({ profile }) {
                         <Copiar valor={r.cliente_domicilio} />
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{r.cliente_provincia || "—"}</td>
+                      {verBB && (
                       <td className="px-2 py-1.5 text-right whitespace-nowrap">
                         {fmtNum(c.bb)}
                         <Copiar valor={c.bb} />
                         {c.otras > 0 && <div className="text-[11px] text-amber-700">+ {fmtNum(c.otras)} u. de otro envase</div>}
                       </td>
+                      )}
                       {hayMaiz && (
                         <td className="px-2 py-1.5 text-right whitespace-nowrap">
                           {fmtNum(c.bolsas)}
@@ -429,7 +441,7 @@ function CotInner({ profile }) {
                   ))}
                   <tr className="border-t-2 border-stone-300 font-semibold">
                     <td className="px-2 py-2" colSpan={4}>TOTAL</td>
-                    <td className="px-2 py-2 text-right">{fmtNum(tot.bb)}</td>
+                    {verBB && <td className="px-2 py-2 text-right">{fmtNum(tot.bb)}</td>}
                     {hayMaiz && <td className="px-2 py-2 text-right">{fmtNum(tot.bolsas)}</td>}
                     <td className="px-2 py-2 text-right">{fmtNum(tot.kg)}</td>
                     <td className="px-2 py-2 text-right">{fmtMonto(tot.monto)}</td>
