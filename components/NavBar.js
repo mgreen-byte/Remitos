@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { RUBROS, useRubro } from "@/lib/rubro";
 
 const ICONOS = {
   inicio: "M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10",
@@ -114,7 +115,24 @@ export default function NavBar({ profile, children }) {
   // Franja con la planta en la que se está trabajando (color por empresa, para no emitir en la planta equivocada).
   const EMP = { ms: ["MS Technologies", "bg-emerald-700"], stine: ["Stine Seed", "bg-sky-700"] }; // azul = Stine Seed, verde = MS Technologies
   const emp = EMP[profile?.planta?.empresa] || null;
-  const franjaPlanta = profile?.planta && profile.rol !== "admin" && (
+  // Selector global Soja / Maíz (se recuerda en este navegador).
+  const [rubro, setRubro] = useRubro();
+  const selRubro = (
+    <div className="ml-auto inline-flex items-center gap-2">
+      <span className="opacity-80 text-[12px] hidden sm:inline">Ver</span>
+      <div className="inline-flex rounded-md overflow-hidden border border-white/30 text-[12.5px]">
+        {RUBROS.map(([v, t]) => (
+          <button key={v || "todo"} type="button" onClick={() => setRubro(v)} className={`px-2.5 py-0.5 font-semibold ${rubro === v ? "bg-white text-stone-900" : "text-white hover:bg-white/15"}`}>{t}</button>
+        ))}
+      </div>
+    </div>
+  );
+  const franjaPlanta = (!profile?.planta || profile.rol === "admin") ? (profile && (
+    <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+      <span className="opacity-80">{rubro ? `Mostrando solo ${rubro === "maiz" ? "maíz" : "soja"}` : "Mostrando soja y maíz"}</span>
+      {selRubro}
+    </div>
+  )) : (
     <div className={`no-print ${emp ? emp[1] : "bg-stone-700"} text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]`}>
       <span className="opacity-80">Trabajando en</span>
       {misPlantas.length > 1 ? (
@@ -127,6 +145,7 @@ export default function NavBar({ profile, children }) {
       <span className="opacity-80">PV {profile.planta.punto_venta}</span>
       {emp && <span className="font-semibold uppercase tracking-wide text-[11.5px] bg-white/20 rounded px-1.5 py-0.5">{emp[0]}</span>}
       {misPlantas.length > 1 && <span className="opacity-80 text-[12px]">· podés cambiar de planta desde acá</span>}
+      {selRubro}
     </div>
   );
 

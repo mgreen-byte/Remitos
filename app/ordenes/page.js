@@ -3,6 +3,7 @@
 import PedidoUnidad from "@/components/PedidoUnidad";
 import { confirmar } from "@/lib/confirmar";
 import { descargarOrdenPdf } from "@/lib/ordenPdf";
+import { useRubro } from "@/lib/rubro";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -113,11 +114,18 @@ function OrdenesInner({ profile }) {
     return o.modalidad !== "traslado" && plantaSel ? ls.filter((l) => l.planta_id === plantaSel) : ls;
   }, [lineasDe, plantaSel]);
   const pendiente = (o, ls) => o.estado === "activa" && ls.some((l) => Number(l.saldo) > 0);
+  // Selector global Soja / Maíz: órdenes de clientes por modalidad; traslados por el material de sus renglones.
+  const [rubro] = useRubro();
+  const ordenesR = useMemo(() => !rubro ? ordenes : ordenes.filter((o) => {
+    if (o.modalidad !== "traslado") return (o.modalidad === "maiz" ? "maiz" : "soja") === rubro;
+    const ls = lineasDe[o.id] || [];
+    return !ls.length || ls.some((l) => productos.find((p) => p.id === l.producto_id)?.categoria === rubro);
+  }), [ordenes, rubro, lineasDe, productos]);
   // Botonera: solo plantas con órdenes pendientes (y cuántas)
   const chips = useMemo(() => {
     const cuenta = (m) => (id) => m[id] || 0;
     const cli = {}, ori = {}, des = {};
-    for (const o of ordenes) {
+    for (const o of ordenesR) {
       const ls = lineasDe[o.id] || [];
       if (o.modalidad === "traslado") {
         if (!pendiente(o, ls)) continue;
@@ -129,11 +137,11 @@ function OrdenesInner({ profile }) {
     }
     const arr = (m) => plantas.filter((p) => m[p.id]).map((p) => ({ id: p.id, nombre: p.nombre, n: m[p.id] }));
     return { cli: arr(cli), ori: arr(ori), des: arr(des), cuenta };
-  }, [ordenes, lineasDe, plantas]);
+  }, [ordenesR, lineasDe, plantas]);
 
   const lista = useMemo(() => {
     const q = norm(buscar);
-    return ordenes.filter((o) => {
+    return ordenesR.filter((o) => {
       if ((o.modalidad === "traslado") !== (vista === "traslados")) return false;
       if (vista === "traslados") {
         if (origenSel && o.planta_origen_id !== origenSel) return false;
@@ -169,7 +177,7 @@ function OrdenesInner({ profile }) {
         }
       }
     });
-  }, [ordenes, lineasDe, lineasVis, filtro, buscar, vista, plantaSel, origenSel, destinoSel, orden]);
+  }, [ordenesR, lineasDe, lineasVis, filtro, buscar, vista, plantaSel, origenSel, destinoSel, orden]);
   const resumen = useMemo(() => {
     let ped = 0, rem = 0;
     for (const o of lista) {
@@ -210,7 +218,7 @@ function OrdenesInner({ profile }) {
         const modOc = parsed.modalidadDetectada === "maiz" ? "maiz" : "soja";
         const { lineas: ls, depositosSinPlanta, sinCatalogo } = armarLineas(parsed, plantas, productos, modOc);
         if (!ls.length) throw new Error("La orden no trae clientes con cantidad para cargar. Revisá que tenga Cliente y Cantidad completos.");
-        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {}, modalidad: modOc });
+        setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", palletsAprox: parsed.palletsAprox ?? null, lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {}, modalidad: modOc });
       } catch (err) {
         setPrev(null);
         setMsg({ tipo: "error", texto: err.message || "No pude leer el archivo." });
@@ -246,6 +254,10 @@ function OrdenesInner({ profile }) {
     if (!error && prev.fechaCarga) {
       const r2 = await supabase.rpc("fijar_fecha_carga_excel", { p_numero: up(prev.numero).trim(), p_fecha: prev.fechaCarga });
       if (r2.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar la fecha de carga: " + friendlyError(r2.error) });
+    }
+    if (!error && prev.palletsAprox != null) {
+      const r4 = await supabase.rpc("fijar_pallets_excel", { p_numero: up(prev.numero).trim(), p_pallets: prev.palletsAprox });
+      if (r4.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar los pallets aprox.: " + friendlyError(r4.error) });
     }
     setGuardando(false);
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });

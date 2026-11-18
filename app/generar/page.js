@@ -1,5 +1,6 @@
 "use client";
 
+import { leerRubro, plantaPasa } from "@/lib/rubro";
 import BuscadorSelect from "@/components/BuscadorSelect";
 import { confirmar } from "@/lib/confirmar";
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
@@ -86,6 +87,12 @@ function GenerarInner({ profile }) {
   const modalidadesPermitidas = [...(profile.rol === "admin" || !profile.modalidades?.length ? ["soja", "maiz", "generico"] : profile.modalidades), "traslado"];
 
   const [modalidad, setModalidad] = useState(modalidadesPermitidas[0]);
+  // Selector global de la franja (Soja / Maíz): define la modalidad por defecto al entrar.
+  useEffect(() => {
+    const r = leerRubro();
+    if (r && modalidadesPermitidas.includes(r) && !new URLSearchParams(window.location.search).get("mod")) setModalidad(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Lo que despacha la planta (Administración → Plantas → Despacha) recorta las modalidades del usuario.
   const despachaOk = (m, pl) => !pl?.despacha || pl.despacha === "ambos" || (m !== "soja" && m !== "maiz") || m === pl.despacha;
   const [plantas, setPlantas] = useState([]);
@@ -286,6 +293,8 @@ function GenerarInner({ profile }) {
   // Solo las semillas llevan precinto (y lote obligatorio); insumos y ensamblajes no.
   const esSemilla = (it) => { const p = productoDe(it.productoId); return !p || (p.grupo || "semilla") === "semilla"; };
   // El maíz en bolsas es semilla (lote obligatorio) pero no lleva precinto.
+  // Despacho de planta: material y lote de un renglón que viene de una orden quedan fijos (solo puede bajar la cantidad).
+  const fijoOrden = (it) => profile.rol === "operador" && !!it.ordenLineaId;
   const esMaiz = (it) => productoDe(it.productoId)?.categoria === "maiz";
   const llevaPrecinto = (it) => esSemilla(it) && !esMaiz(it);
   const precintoTxt = (it) => {
@@ -936,7 +945,7 @@ function GenerarInner({ profile }) {
                 <span className={lab}>Planta</span>
                 {esAdmin ? (
                   <select value={plantaId} onChange={(e) => { setPlantaId(e.target.value); setDestinoId(""); setItems([itemVacio()]); }} className={inp}>
-                    {plantas.map((p) => (
+                    {plantas.filter((p) => plantaPasa(leerRubro(), p) || p.id === plantaId).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} (PV {p.punto_venta})
                       </option>
@@ -1419,7 +1428,7 @@ function GenerarInner({ profile }) {
                         </>
                       ) : (
                         <>
-                          <select value={it.productoId} onChange={(e) => selProducto(it.id, e.target.value)} className={`${inp} col-span-2 md:col-span-1`}>
+                          <select value={it.productoId} onChange={(e) => selProducto(it.id, e.target.value)} disabled={fijoOrden(it)} title={fijoOrden(it) ? "Material de la orden: desde la planta no se cambia" : undefined} className={`${inp} col-span-2 md:col-span-1 ${fijoOrden(it) ? "bg-stone-100" : ""}`}>
                             <option value="">Elegir producto…</option>
                             {[["semilla", "Semillas"], ["insumo", "Insumos"], ["ensamblaje", "Ensamblajes"]].map(([g, titulo]) => {
                               const delGrupo = productosDisponibles.filter((p) => (p.grupo || "semilla") === g);
@@ -1437,7 +1446,7 @@ function GenerarInner({ profile }) {
                               <option value={it.productoId}>{productoDe(it.productoId).nombre} (sin stock)</option>
                             )}
                           </select>
-                          <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={inp} disabled={!it.productoId}>
+                          <select value={it.loteId} onChange={(e) => updItem(it.id, { loteId: e.target.value })} className={`${inp} ${fijoOrden(it) && it.loteId ? "bg-stone-100" : ""}`} disabled={!it.productoId || (fijoOrden(it) && !!it.loteId)} title={fijoOrden(it) ? "Lote de la orden: desde la planta no se cambia" : undefined}>
                             <option value="">{!esSemilla(it) && modalidad !== "traslado" ? "Sin lote (opcional)" : it.productoId && !ls.length ? "Sin lotes con stock" : "Elegir lote…"}</option>
                             {ls.map((x) => (
                               <option key={x.id} value={x.id} disabled={calDe(x) !== "aprobado" && modalidad !== "traslado"}>

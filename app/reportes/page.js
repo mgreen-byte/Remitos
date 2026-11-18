@@ -7,6 +7,7 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, friendlyError } from "@/lib/util";
 import { TIPOS, generarReporte, reporteExcel, reportePdf } from "@/lib/reportes";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 
 export default function ReportesPage() {
   return <AuthGuard roles={["admin"]}>{(profile) => <ReportesInner profile={profile} />}</AuthGuard>;
@@ -34,9 +35,11 @@ function ReportesInner({ profile }) {
   const [cargando, setCargando] = useState(false);
   const [bajando, setBajando] = useState("");
   const [error, setError] = useState("");
+  const [rubro] = useRubro();
+  useEffect(() => { setRep(null); }, [rubro]);
 
   useEffect(() => {
-    supabase.from("plantas").select("id, nombre").eq("activa", true).order("nombre").then(({ data }) => setPlantas(data || []));
+    supabase.from("plantas").select("id, nombre, despacha").eq("activa", true).order("nombre").then(({ data }) => setPlantas(data || []));
   }, []);
   useEffect(() => { setRep(null); setError(""); }, [tipo]);
 
@@ -44,7 +47,7 @@ function ReportesInner({ profile }) {
   const nombrePlanta = plantas.find((p) => p.id === plantaId)?.nombre || "Todas las plantas";
 
   const descripcionFiltros = () => {
-    const p = [`Planta: ${nombrePlanta}`];
+    const p = [`Planta: ${nombrePlanta}`, rubro ? `Rubro: ${rubro === "maiz" ? "Maíz" : "Soja"}` : ""];
     if (usaFechas) p.push(`${tipo === "ordenes" ? "Fecha de orden" : "Fecha de remito"}: ${desde || "inicio"} a ${hasta || "hoy"}`);
     if (tipo === "remitos") p.push(`Tipo: ${tipoRemito === "cliente" ? "despachos a clientes" : tipoRemito === "traslado" ? "traslados entre plantas" : "clientes y traslados"}`, soloConOrden ? "solo con orden de carga" : "");
     if (tipo === "ordenes") p.push(`Órdenes: ${estadoOrden === "activa" ? "activas" : "todas"}`, `Tipo: ${tipoOrden === "cliente" ? "clientes" : tipoOrden === "traslado" ? "traslados" : "clientes y traslados"}`, soloPendientes ? "solo con saldo pendiente" : "");
@@ -57,7 +60,7 @@ function ReportesInner({ profile }) {
   const generar = async () => {
     setCargando(true); setError(""); setRep(null);
     try {
-      const r = await generarReporte(supabase, tipo, { desde, hasta, plantaId, cliente: cliente.trim(), producto: producto.trim(), tipoRemito, soloConOrden, estadoOrden, tipoOrden, soloPendientes, soloConStock });
+      const r = await generarReporte(supabase, tipo, { desde, hasta, plantaId, cliente: cliente.trim(), producto: producto.trim(), tipoRemito, soloConOrden, estadoOrden, tipoOrden, soloPendientes, soloConStock, rubro });
       setRep(r); setFiltrosTxt(descripcionFiltros());
     } catch (e) { setError(friendlyError(e)); }
     setCargando(false);
@@ -101,7 +104,7 @@ function ReportesInner({ profile }) {
               <div className="text-[12px] text-stone-500 mb-1">Planta</div>
               <select value={plantaId} onChange={(e) => setPlantaId(e.target.value)} className={inp}>
                 <option value="">Todas las plantas</option>
-                {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                {plantas.filter((p) => plantaPasa(rubro, p) || p.id === plantaId).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
             {tipo !== "stock" && (

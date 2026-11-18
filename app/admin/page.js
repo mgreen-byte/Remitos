@@ -269,24 +269,28 @@ function Prefijos() {
 }
 
 function Precios({ profile }) {
+  const [cat, setCat] = useState("soja"); // soja: precio por kg · maíz: precio por bolsa
   const [rows, setRows] = useState([]);
   const [precio, setPrecio] = useState("");
   const [desde, setDesde] = useState(hoyISO());
   const [msg, setMsg] = useState("");
   const cargar = async () => {
-    const { data } = await supabase.from("precios").select("*").eq("categoria", "soja").order("vigente_desde", { ascending: false });
+    const { data } = await supabase.from("precios").select("*").eq("categoria", cat).order("vigente_desde", { ascending: false });
     setRows(data || []);
   };
   useEffect(() => {
     cargar();
-  }, []);
+    setMsg("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cat]);
+  const unidad = cat === "maiz" ? "bolsa" : "kg";
   const guardar = async () => {
     const n = Number(String(precio).replace(",", "."));
     if (!(n > 0)) return setMsg("Cargá un precio mayor a cero.");
     if (!desde) return setMsg("Elegí desde qué fecha rige.");
     const { error } = await supabase
       .from("precios")
-      .upsert({ categoria: "soja", precio_kg: n, vigente_desde: desde, creado_por: profile.id, creado_por_nombre: profile.nombre }, { onConflict: "categoria,vigente_desde" });
+      .upsert({ categoria: cat, precio_kg: n, vigente_desde: desde, creado_por: profile.id, creado_por_nombre: profile.nombre }, { onConflict: "categoria,vigente_desde" });
     if (error) return setMsg(friendlyError(error));
     setPrecio("");
     setMsg("Precio guardado.");
@@ -302,14 +306,19 @@ function Precios({ profile }) {
   return (
     <div className="panel p-5 space-y-4 max-w-xl">
       <div>
-        <h2 className="paso-titulo">Precio del kg de soja</h2>
+        <h2 className="paso-titulo">Precios para el COT</h2>
         <p className="text-[13px] text-stone-500 mt-1">
-          Se usa en la pantalla COT para calcular el monto de cada remito (kg de soja × precio). Cada remito toma el precio vigente a su fecha. Por ahora solo soja.
+          Se usan en la pantalla COT para calcular el monto de cada remito: soja = kg × precio por kg; maíz = bolsas × precio por bolsa. Cada remito toma el precio vigente a su fecha.
         </p>
+      </div>
+      <div className="inline-flex rounded-md border border-stone-300 overflow-hidden text-[13px]">
+        {[["soja", "Soja · por kg"], ["maiz", "Maíz · por bolsa"]].map(([v, t]) => (
+          <button key={v} type="button" onClick={() => setCat(v)} className={`px-3 py-1.5 ${cat === v ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>{t}</button>
+        ))}
       </div>
       <div className="flex gap-2 items-end flex-wrap">
         <label className="text-[12px] text-stone-500">
-          Precio por kg ($)
+          Precio por {unidad} ($)
           <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" className="block border border-stone-300 rounded px-2 py-1.5 text-sm w-36" />
         </label>
         <label className="text-[12px] text-stone-500">
@@ -319,12 +328,12 @@ function Precios({ profile }) {
         <button onClick={guardar} className="btn-primario">Guardar precio</button>
       </div>
       {msg && <div className="text-[13px] text-stone-600">{msg}</div>}
-      {vigente && <div className="text-[13px]">Precio vigente hoy: <b>{fmtMonto(vigente.precio_kg)}</b> por kg (desde {fmtFecha(vigente.vigente_desde)})</div>}
+      {vigente && <div className="text-[13px]">Precio vigente hoy: <b>{fmtMonto(vigente.precio_kg)}</b> por {unidad} (desde {fmtFecha(vigente.vigente_desde)})</div>}
       <table className="w-full text-[13px]">
         <thead>
           <tr className="text-left text-[12px] text-stone-500">
             <th className="py-1.5 font-medium">Rige desde</th>
-            <th className="py-1.5 font-medium text-right">Precio por kg</th>
+            <th className="py-1.5 font-medium text-right">Precio por {unidad}</th>
             <th className="py-1.5 font-medium pl-4">Cargó</th>
             <th />
           </tr>

@@ -6,6 +6,7 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, friendlyError } from "@/lib/util";
 import { cargarDespachos, traerTodo, esBigBag } from "@/lib/despachos";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 
 export default function DespachosPage() {
   return <AuthGuard roles={["admin", "logistica", "consulta"]}>{(profile) => <DespachosInner profile={profile} />}</AuthGuard>;
@@ -77,9 +78,10 @@ function DespachosInner({ profile }) {
   const [ordenes, setOrdenes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [rubro] = useRubro(); // selector global: Todo / Soja / Maíz
 
   useEffect(() => {
-    supabase.from("plantas").select("id, nombre").eq("activa", true).order("nombre").then(({ data }) => setPlantas(data || []));
+    supabase.from("plantas").select("id, nombre, despacha").eq("activa", true).order("nombre").then(({ data }) => setPlantas(data || []));
   }, []);
 
   const cargar = useCallback(async () => {
@@ -93,16 +95,19 @@ function DespachosInner({ profile }) {
           return q;
         }),
         traerTodo(() => supabase.from("ordenes_carga").select("id, numero, fecha_carga, estado, modalidad").eq("estado", "activa").neq("modalidad", "traslado").order("id")),
-        traerTodo(() => supabase.from("productos").select("id, presentacion").eq("grupo", "semilla").eq("categoria", "soja").order("id")),
+        traerTodo(() => supabase.from("productos").select("id, presentacion, categoria").eq("grupo", "semilla").in("categoria", ["soja", "maiz"]).order("id")),
       ]);
-      // Por ahora el tablero solo refleja SEMILLA de SOJA en BIG BAG.
-      const ids = new Set(prods.filter((p) => esBigBag(p.presentacion)).map((p) => p.id));
-      setFilas(f.filter((x) => x.semillaSoja)); setLineas(ls.filter((l) => l.producto_id && ids.has(l.producto_id))); setOrdenes(os);
+      // El tablero refleja semilla de soja en big bag y semilla de maíz (bolsas), según el selector de la franja.
+      const okP = (p) => (p.categoria === "soja" ? esBigBag(p.presentacion) : true) && (!rubro || p.categoria === rubro);
+      const ids = new Set(prods.filter(okP).map((p) => p.id));
+      setFilas(f.filter((x) => (x.semillaSoja || x.semillaMaiz) && (!rubro || x.categoria === rubro)));
+      setLineas(ls.filter((l) => l.producto_id && ids.has(l.producto_id)));
+      setOrdenes(os.filter((o) => !rubro || (o.modalidad === "maiz" ? "maiz" : "soja") === rubro));
     } catch (e) {
       setError(friendlyError(e));
     }
     setCargando(false);
-  }, [desde, hasta, plantaId]);
+  }, [desde, hasta, plantaId, rubro]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const d = useMemo(() => {
@@ -166,7 +171,7 @@ function DespachosInner({ profile }) {
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-5 min-w-0">
         <div>
           <h1 className="text-[22px] font-semibold">Despachos</h1>
-          <p className="text-[13px] text-stone-500 mt-1">Solo semilla de soja en big bag. Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
+          <p className="text-[13px] text-stone-500 mt-1">{rubro === "maiz" ? "Solo semilla de maíz (bolsas)." : rubro === "soja" ? "Solo semilla de soja en big bag." : "Semilla de soja en big bag y de maíz en bolsas (elegí Soja o Maíz arriba para separarlas)."} Lo remitido a clientes (remitos no anulados ni rechazados). Los traslados entre plantas se muestran aparte.</p>
         </div>
 
         <div className="space-y-2">
@@ -182,7 +187,7 @@ function DespachosInner({ profile }) {
               <div className="text-[12px] text-stone-500 mb-1">Planta</div>
               <select value={plantaId} onChange={(e) => setPlantaId(e.target.value)} className={inp}>
                 <option value="">Todas las plantas</option>
-                {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                {plantas.filter((p) => plantaPasa(rubro, p) || p.id === plantaId).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
             <button onClick={cargar} disabled={cargando} className="btn-secundario">{cargando ? "Actualizando…" : "Actualizar"}</button>

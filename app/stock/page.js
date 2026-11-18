@@ -11,6 +11,7 @@ import ImportarStock from "@/components/ImportarStock";
 import CalidadLote from "@/components/CalidadLote";
 import { calKey, ESTADOS_CALIDAD } from "@/lib/calidad";
 import { comprimirRangos, traerPallets, agruparPallets } from "@/lib/pallets";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 
@@ -21,6 +22,8 @@ export default function StockPage() {
 function StockInner({ profile }) {
   const esAdmin = profile.rol === "admin" || profile.rol === "consulta" || profile.rol === "logistica"; // elige planta
   const soloLectura = profile.rol === "consulta";
+  // La planta no ajusta stock: las novedades las carga Logística o el administrador.
+  const puedeAjustar = profile.rol === "admin" || profile.rol === "logistica";
   const puedeCargar = profile.rol === "admin"; // solo el admin carga stock
   const puedeSumar = profile.rol === "admin" || profile.rol === "logistica"; // ajustes positivos
   const [plantas, setPlantas] = useState([]);
@@ -39,7 +42,7 @@ function StockInner({ profile }) {
   const [sel, setSel] = useState({}); // lotes tildados para eliminar
   const [calMap, setCalMap] = useState({});
   const [datosMap, setDatosMap] = useState({});
-  const [fCat, setFCat] = useState(""); // filtro rápido: soja / maíz
+  const [fCat, setFCat] = useRubro(); // filtro soja / maíz = selector global de la franja // filtro rápido: soja / maíz
   const [fCal, setFCal] = useState(""); // filtro rápido: estado de calidad
   const [menuLote, setMenuLote] = useState(null); // lote con el menú "Acciones" abierto
   const [calAbierta, setCalAbierta] = useState(null); // lote con el panel de calidad abierto // peso por bolsa y calibre por producto+lote (maíz)
@@ -321,7 +324,7 @@ function StockInner({ profile }) {
           <h1 className="text-lg font-semibold">Stock por lote</h1>
           {esAdmin ? (
             <select value={plantaId} onChange={(e) => setPlantaId(e.target.value)} className={inputCls}>
-              {plantas.map((p) => (
+              {plantas.filter((p) => plantaPasa(fCat, p) || p.id === plantaId).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre}
                 </option>
@@ -342,6 +345,11 @@ function StockInner({ profile }) {
           </div>
         )}
 
+        {profile.rol === "operador" && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-[13.5px] px-4 py-2.5">
+            El stock de la planta no se ajusta desde acá. <b>Cualquier novedad (faltantes, sobrantes, roturas), avisale a Logística</b> para que la cargue.
+          </div>
+        )}
         {plantaId && (
           <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
             <span className="text-stone-500">Planilla de recuento:</span>
@@ -390,7 +398,7 @@ function StockInner({ profile }) {
           </div>
         )}
 
-        {!puedeCargar && !soloLectura && (
+        {!puedeCargar && !soloLectura && puedeAjustar && (
           <div className="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded p-3">
             {puedeSumar ? "El stock nuevo lo carga el administrador o llega por traslados. Acá podés ajustar (sumar o restar) con motivo." : "El stock de tu planta lo carga el administrador o llega por traslados. Acá podés registrar bajas (mermas, roturas) con un ajuste negativo."}
           </div>
@@ -529,7 +537,7 @@ function StockInner({ profile }) {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                          {!soloLectura && !esPal(l) && <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-[13px] text-emerald-700 py-1">Ajustar</button>}
+                          {puedeAjustar && !esPal(l) && <button onClick={() => setAjuste({ loteId: l.id, delta: "", motivo: "" })} className="text-[13px] text-emerald-700 py-1">Ajustar</button>}
                           {profile.rol === "admin" && !esPal(l) && <button onClick={() => setReasig({ loteId: l.id, productoId: "" })} className="text-[13px] text-emerald-700 py-1">Cambiar producto</button>}
                           {profile.rol === "admin" && !esPal(l) && (
                             <label className="text-[13px] text-red-700 py-1 flex items-center gap-1">
@@ -654,7 +662,7 @@ function StockInner({ profile }) {
                             <div className="fixed inset-0 z-10" onClick={() => setMenuLote(null)} />
                             <div style={{ position: "fixed", right: menuLote.right, top: menuLote.top, bottom: menuLote.bottom }} className="z-20 w-56 bg-white border border-stone-200 rounded-md shadow-lg py-1 text-left text-[13px] whitespace-normal">
                               <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); verMovs(l.id); }}>Ver movimientos</button>
-                              {!soloLectura && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setAjuste({ loteId: l.id, delta: "", motivo: "" }); }}>Ajustar stock</button>}
+                              {puedeAjustar && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setAjuste({ loteId: l.id, delta: "", motivo: "" }); }}>Ajustar stock</button>}
                               {puedeCalidad && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setCalAbierta(l.id); }}>Calidad y bolsas dañadas{esMaizL(l) ? " · peso y calibre" : ""}</button>}
                               {profile.rol === "admin" && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-stone-50" onClick={() => { setMenuLote(null); setReasig({ loteId: l.id, productoId: "" }); }}>Cambiar producto</button>}
                               {profile.rol === "admin" && !esPal(l) && <button className="block w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-700" onClick={() => { setMenuLote(null); setSel({ ...sel, [l.id]: !sel[l.id] }); }}>{sel[l.id] ? "Destildar (no eliminar)" : "Tildar para eliminar"}</button>}

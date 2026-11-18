@@ -7,6 +7,7 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, norm, friendlyError, nombreConPresentacion } from "@/lib/util";
 import { ESTADOS_CALIDAD, calidadInfo, calKey, traerDatosLotes } from "@/lib/calidad";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 
 export default function CalidadPage() {
   return <AuthGuard roles={["admin", "logistica"]}>{(profile) => <CalidadInner profile={profile} />}</AuthGuard>;
@@ -21,7 +22,7 @@ function CalidadInner({ profile }) {
   const [q, setQ] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [fPlanta, setFPlanta] = useState("");
-  const [fCat, setFCat] = useState("");
+  const [fCat, setFCat] = useRubro(); // filtro soja / maíz = selector global de la franja
   const [soloStock, setSoloStock] = useState(true);
   const [sel, setSel] = useState({});
   const [nuevo, setNuevo] = useState("");
@@ -30,7 +31,7 @@ function CalidadInner({ profile }) {
 
   const cargar = async () => {
     setCargando(true);
-    const { data: pl } = await supabase.from("plantas").select("id, nombre").eq("activa", true).order("nombre");
+    const { data: pl } = await supabase.from("plantas").select("id, nombre, despacha").eq("activa", true).order("nombre");
     setPlantas(pl || []);
     const nombrePl = Object.fromEntries((pl || []).map((p) => [p.id, p.nombre]));
     const lotes = [];
@@ -115,7 +116,7 @@ function CalidadInner({ profile }) {
           </select>
           <select value={fPlanta} onChange={(e) => setFPlanta(e.target.value)} className={inputCls}>
             <option value="">Todas las plantas</option>
-            {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            {plantas.filter((p) => plantaPasa(fCat, p) || p.id === fPlanta).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
           <select value={fCat} onChange={(e) => setFCat(e.target.value)} className={inputCls}>
             <option value="">Soja, maíz y otros</option>

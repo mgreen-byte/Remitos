@@ -59,6 +59,7 @@ function CotInner({ profile }) {
   const [filtroPlanta, setFiltroPlanta] = useState("");
   const [sel, setSel] = useState(new Set());
   const [precioManual, setPrecioManual] = useState("");
+  const [precioManualMaiz, setPrecioManualMaiz] = useState(""); // maíz: precio por bolsa
   const [codigo, setCodigo] = useState("");
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -86,7 +87,7 @@ function CotInner({ profile }) {
       (data || []).forEach((it) => (mapa[it.remito_id] = [...(mapa[it.remito_id] || []), it]));
     }
     setItems(mapa);
-    const { data: pr } = await supabase.from("precios").select("*").eq("categoria", "soja").order("vigente_desde", { ascending: false });
+    const { data: pr } = await supabase.from("precios").select("*").in("categoria", ["soja", "maiz"]).order("vigente_desde", { ascending: false });
     setPrecios(pr || []);
     let qc = supabase
       .from("cots")
@@ -108,26 +109,35 @@ function CotInner({ profile }) {
     cargar();
   }, [cargar]);
 
+  // Soja: precio por kg. Maíz: precio por bolsa (se guarda en la misma tabla, categoría "maiz").
   const precioPara = useCallback(
-    (fecha) => {
-      const m = Number(String(precioManual).replace(",", "."));
+    (fecha, cat = "soja") => {
+      const m = Number(String(cat === "maiz" ? precioManualMaiz : precioManual).replace(",", "."));
       if (m > 0) return m;
-      const p = precios.find((x) => x.vigente_desde <= fecha);
+      const p = precios.find((x) => x.categoria === cat && x.vigente_desde <= fecha);
       return p ? Number(p.precio_kg) : null;
     },
-    [precios, precioManual]
+    [precios, precioManual, precioManualMaiz]
   );
 
-  // Datos de soja de un remito: Big Bag, otras unidades, kg y monto.
+  // Datos de un remito para el COT: soja (Big Bag, otras unidades, kg × precio por kg)
+  // y maíz (bolsas × precio por bolsa). Kg total = soja + maíz.
   const calc = useCallback(
     (r) => {
-      const soja = (items[r.remito_id] || []).filter((i) => i.producto?.categoria === "soja");
+      const its = items[r.remito_id] || [];
+      const kgDe = (i) => Number(i.kg_total ?? Number(i.cantidad) * Number(i.kg_unidad || 0));
+      const soja = its.filter((i) => i.producto?.categoria === "soja");
+      const maiz = its.filter((i) => i.producto?.categoria === "maiz");
       const bb = soja.filter((i) => esBB(i.producto)).reduce((a, i) => a + Number(i.cantidad), 0);
       const otras = soja.filter((i) => !esBB(i.producto)).reduce((a, i) => a + Number(i.cantidad), 0);
-      const kg = soja.reduce((a, i) => a + Number(i.kg_total ?? Number(i.cantidad) * Number(i.kg_unidad || 0)), 0);
-      const precio = precioPara(r.fecha);
-      const monto = precio != null ? Math.round(kg * precio * 100) / 100 : null;
-      return { bb, otras, kg, precio, monto };
+      const kgSoja = soja.reduce((a, i) => a + kgDe(i), 0);
+      const bolsas = maiz.reduce((a, i) => a + Number(i.cantidad), 0);
+      const kgMaiz = maiz.reduce((a, i) => a + kgDe(i), 0);
+      const precio = soja.length ? precioPara(r.fecha, "soja") : null;
+      const precioMaiz = maiz.length ? precioPara(r.fecha, "maiz") : null;
+      const falta = (soja.length && precio == null) || (maiz.length && precioMaiz == null);
+      const monto = falta ? null : Math.round(((soja.length ? kgSoja * precio : 0) + (maiz.length ? bolsas * precioMaiz : 0)) * 100) / 100;
+      return { bb, otras, kg: kgSoja + kgMaiz, kgSoja, bolsas, precio, precioMaiz, monto, faltaSoja: !!(soja.length && precio == null), faltaMaiz: !!(maiz.length && precioMaiz == null) };
     },
     [items, precioPara]
   );
@@ -154,6 +164,9 @@ function CotInner({ profile }) {
   const tot = useMemo(
     () => ({
       bb: filasResumen.reduce((a, x) => a + x.c.bb, 0),
+      bolsas: filasResumen.reduce((a, x) => a + x.c.bolsas, 0),
+      faltaSoja: filasResumen.some((x) => x.c.faltaSoja),
+      faltaMaiz: filasResumen.some((x) => x.c.faltaMaiz),
       otras: filasResumen.reduce((a, x) => a + x.c.otras, 0),
       kg: filasResumen.reduce((a, x) => a + x.c.kg, 0),
       monto: filasResumen.reduce((a, x) => a + (x.c.monto || 0), 0),
@@ -191,7 +204,7 @@ function CotInner({ profile }) {
     if (mezcla) return setMsg({ tipo: "error", texto: "Un COT solo puede juntar remitos de una misma planta." });
     if (codigo.trim().length < 3) return setMsg({ tipo: "error", texto: "Cargá el código de COT que te dio ARBA." });
     setGuardando(true);
-    const detalle = filasResumen.map(({ r, c }) => ({ remito_id: r.remito_id, remito: `${r.punto_venta}-${r.numero}`, bb: c.bb, kg: c.kg, precio: c.precio, monto: c.monto ?? 0 }));
+    const detalle = filasResumen.map(({ r, c }) => ({ remito_id: r.remito_id, remito: `${r.punto_venta}-${r.numero}`, bb: c.bb, bolsas_maiz: c.bolsas, kg: c.kg, precio: c.precio, precio_bolsa_maiz: c.precioMaiz, monto: c.monto ?? 0 }));
     const precios1 = uniq(filasResumen.map((x) => x.c.precio));
     const { error } = await supabase.rpc("asignar_cot", {
       p_remitos: selRows.map((r) => r.remito_id),
@@ -204,6 +217,7 @@ function CotInner({ profile }) {
     setMsg({ tipo: "ok", texto: `COT ${codigo.trim().toUpperCase()} cargado en ${selRows.length} ${selRows.length === 1 ? "remito" : "remitos"}.` });
     setCodigo("");
     setPrecioManual("");
+    setPrecioManualMaiz("");
     cargar();
   };
 
@@ -233,11 +247,13 @@ function CotInner({ profile }) {
       "Domicilio / localidad destino": r.cliente_domicilio || "",
       Provincia: r.cliente_provincia || "",
       "Big Bag": c.bb,
+      "Bolsas maíz": c.bolsas,
       "Kg": Math.round(c.kg * 1000) / 1000,
-      "Precio por kg": c.precio ?? "",
+      "Precio por kg (soja)": c.precio ?? "",
+      "Precio por bolsa (maíz)": c.precioMaiz ?? "",
       Monto: c.monto ?? "",
     }));
-    filas.push({ Remito: "TOTAL", "Big Bag": tot.bb, Kg: Math.round(tot.kg * 1000) / 1000, Monto: Math.round(tot.monto * 100) / 100 });
+    filas.push({ Remito: "TOTAL", "Big Bag": tot.bb, "Bolsas maíz": tot.bolsas, Kg: Math.round(tot.kg * 1000) / 1000, Monto: Math.round(tot.monto * 100) / 100 });
     filas.push({});
     filas.push({ Remito: "CUIT transporte", Destinatario: transp.cuits.join(" / ") });
     filas.push({ Remito: "Transportista", Destinatario: transp.nombres.join(" / ") });
@@ -246,7 +262,7 @@ function CotInner({ profile }) {
     filas.push({ Remito: "Chofer", Destinatario: transp.choferes.join(" / ") });
     filas.push({ Remito: "DNI / CUIL chofer", Destinatario: transp.dnis.join(" / ") });
     const ws = XLSX.utils.json_to_sheet(filas);
-    ws["!cols"] = [{ wch: 18 }, { wch: 11 }, { wch: 16 }, { wch: 34 }, { wch: 14 }, { wch: 44 }, { wch: 18 }, { wch: 9 }, { wch: 12 }, { wch: 13 }, { wch: 16 }];
+    ws["!cols"] = [{ wch: 18 }, { wch: 11 }, { wch: 16 }, { wch: 34 }, { wch: 14 }, { wch: 44 }, { wch: 18 }, { wch: 9 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 14 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Resumen COT");
     XLSX.writeFile(wb, `resumen_cot_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -254,6 +270,8 @@ function CotInner({ profile }) {
 
   const th = "text-left px-2 py-1.5 font-medium";
   const precioUsado = uniq(filasResumen.map((x) => x.c.precio));
+  const precioUsadoMaiz = uniq(filasResumen.map((x) => x.c.precioMaiz));
+  const hayMaiz = tot.bolsas > 0, haySoja = filasResumen.some((x) => x.c.precio != null || x.c.faltaSoja);
 
   if (sinPlanta)
     return (
@@ -268,7 +286,7 @@ function CotInner({ profile }) {
         <div className="no-print">
           <h1 className="text-[22px] font-semibold">COT</h1>
           <p className="text-[13px] text-stone-500 mt-1">
-            Remitos de soja con destino o planta en la provincia de Buenos Aires que todavía no tienen COT. Tildá los que viajan en el mismo camión, copiá los datos a ARBA y cargá acá el código que te da.
+            Remitos de soja y maíz con destino o planta en la provincia de Buenos Aires que todavía no tienen COT. Tildá los que viajan en el mismo camión, copiá los datos a ARBA y cargá acá el código que te da.
           </p>
         </div>
 
@@ -370,6 +388,7 @@ function CotInner({ profile }) {
                     <th className={th}>Localidad / domicilio destino</th>
                     <th className={th}>Provincia</th>
                     <th className={`${th} text-right`}>Big Bag</th>
+                    {hayMaiz && <th className={`${th} text-right`}>Bolsas maíz</th>}
                     <th className={`${th} text-right`}>Kg</th>
                     <th className={`${th} text-right`}>Monto</th>
                   </tr>
@@ -392,6 +411,12 @@ function CotInner({ profile }) {
                         <Copiar valor={c.bb} />
                         {c.otras > 0 && <div className="text-[11px] text-amber-700">+ {fmtNum(c.otras)} u. de otro envase</div>}
                       </td>
+                      {hayMaiz && (
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                          {fmtNum(c.bolsas)}
+                          {c.bolsas > 0 && <Copiar valor={c.bolsas} />}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-right whitespace-nowrap">
                         {fmtNum(c.kg)}
                         <Copiar valor={Math.round(c.kg * 1000) / 1000} />
@@ -405,6 +430,7 @@ function CotInner({ profile }) {
                   <tr className="border-t-2 border-stone-300 font-semibold">
                     <td className="px-2 py-2" colSpan={4}>TOTAL</td>
                     <td className="px-2 py-2 text-right">{fmtNum(tot.bb)}</td>
+                    {hayMaiz && <td className="px-2 py-2 text-right">{fmtNum(tot.bolsas)}</td>}
                     <td className="px-2 py-2 text-right">{fmtNum(tot.kg)}</td>
                     <td className="px-2 py-2 text-right">{fmtMonto(tot.monto)}</td>
                   </tr>
@@ -435,8 +461,8 @@ function CotInner({ profile }) {
             )}
 
             <div className="no-print border-t border-stone-200 pt-4 flex items-end gap-3 flex-wrap">
-              <label className="text-[12px] text-stone-500">
-                Precio por kg ($) {precioUsado.length === 1 && Number(String(precioManual).replace(",", ".")) <= 0 ? "· vigente" : ""}
+              {(haySoja || !hayMaiz) && <label className="text-[12px] text-stone-500">
+                Soja: precio por kg ($) {precioUsado.length === 1 && Number(String(precioManual).replace(",", ".")) <= 0 ? "· vigente" : ""}
                 <input
                   value={precioManual}
                   onChange={(e) => setPrecioManual(e.target.value)}
@@ -444,7 +470,19 @@ function CotInner({ profile }) {
                   placeholder={precioUsado.length === 1 ? numStr(precioUsado[0]) : "según fecha"}
                   className="block border border-stone-300 rounded px-2 py-1.5 text-sm w-36"
                 />
-              </label>
+              </label>}
+              {hayMaiz && (
+                <label className="text-[12px] text-stone-500">
+                  Maíz: precio por bolsa ($) {precioUsadoMaiz.length === 1 && Number(String(precioManualMaiz).replace(",", ".")) <= 0 ? "· vigente" : ""}
+                  <input
+                    value={precioManualMaiz}
+                    onChange={(e) => setPrecioManualMaiz(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={precioUsadoMaiz.length === 1 ? numStr(precioUsadoMaiz[0]) : "según fecha"}
+                    className="block border border-stone-300 rounded px-2 py-1.5 text-sm w-36"
+                  />
+                </label>
+              )}
               <label className="text-[12px] text-stone-500 flex-1 min-w-[220px] max-w-sm">
                 Código de COT (el que te da ARBA)
                 <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} className="block w-full border border-stone-300 rounded px-2 py-1.5 text-sm" />
@@ -454,7 +492,7 @@ function CotInner({ profile }) {
               </button>
             </div>
             {tot.sinPrecio && (
-              <div className="no-print text-[12.5px] text-red-700">No hay precio de soja vigente para alguna fecha. Cargalo en Administración → Precios o escribilo acá arriba.</div>
+              <div className="no-print text-[12.5px] text-red-700">No hay precio vigente {tot.faltaSoja && tot.faltaMaiz ? "de soja (por kg) ni de maíz (por bolsa)" : tot.faltaMaiz ? "de maíz (por bolsa)" : "de soja (por kg)"} para alguna fecha. Cargalo en Administración → Precios o escribilo acá arriba.</div>
             )}
           </section>
         )}

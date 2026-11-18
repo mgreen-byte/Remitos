@@ -7,6 +7,7 @@ import NavBar from "@/components/NavBar";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { calKey, traerDatosLotes } from "@/lib/calidad";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 import { fmtNum, fmtFecha, norm, cotAtrasado, nombreConPresentacion } from "@/lib/util";
 
 const esBigBag = (p) => /big\s*-?\s*bag|\bbb\b/i.test(`${p?.presentacion || ""} ${p?.nombre || ""}`);
@@ -25,6 +26,12 @@ function InicioInner({ profile }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [soloBB, setSoloBB] = useState(true);
+  const [rubro] = useRubro(); // selector global: Todo / Soja / Maíz
+  const [prodCat, setProdCat] = useState([]); // [nombre normalizado, categoría] para clasificar lo que está en tránsito
+  useEffect(() => { supabase.from("productos").select("nombre, categoria").then(({ data }) => setProdCat((data || []).map((p) => [norm(p.nombre), p.categoria]).sort((a, b) => b[0].length - a[0].length))); }, []);
+  const catTransito = (t) => (prodCat.find(([n]) => n && norm(t.descripcion).startsWith(n)) || [])[1] || "";
+  // "Big Bag" aplica a la soja; el maíz va siempre (se cuenta en bolsas).
+  const pasaBB = (prod) => !soloBB || prod?.categoria === "maiz" || esBigBag(prod);
   const [q, setQ] = useState("");
   const [actualizado, setActualizado] = useState(null);
 
@@ -46,7 +53,7 @@ function InicioInner({ profile }) {
       todos.push(...(data || []));
       if (!data || data.length < 1000) break;
     }
-    const { data: pl } = await supabase.from("plantas").select("id, nombre, punto_venta").eq("activa", true).order("nombre");
+    const { data: pl } = await supabase.from("plantas").select("id, nombre, punto_venta, despacha").eq("activa", true).order("nombre");
     const { data: tr } = await supabase.from("v_stock_en_transito").select("*").order("fecha", { ascending: false });
     setTransito(tr || []);
     const { data: cp } = await supabase.from("v_cot_pendientes").select("remito_id, planta, created_at").limit(5000);
@@ -68,18 +75,18 @@ function InicioInner({ profile }) {
   const filas = useMemo(() => {
     const nq = norm(q);
     return lotes
-      .filter((l) => (soloBB ? esBigBag(l.producto) : true))
+      .filter((l) => pasaBB(l.producto) && (!rubro || l.producto?.categoria === rubro))
       .filter((l) => !nq || norm(`${l.lote} ${l.producto?.nombre} ${l.producto?.presentacion}`).includes(nq))
       .map((l) => { const kgu = Number(datosLotes[calKey(l.producto_id, l.lote)]?.kg) || Number(l.producto?.kg_por_unidad) || 0; return { ...l, kg: kgu ? l.stock * kgu : null }; });
-  }, [lotes, soloBB, q, datosLotes]);
+  }, [lotes, soloBB, q, datosLotes, rubro]);
 
   const porPlanta = useMemo(
     () =>
-      plantas.map((p) => {
+      plantas.filter((p) => plantaPasa(rubro, p)).map((p) => {
         const ls = filas.filter((l) => l.planta_id === p.id).sort((a, b) => (a.producto?.nombre || "").localeCompare(b.producto?.nombre || "") || a.lote.localeCompare(b.lote));
         return { planta: p, lotes: ls, unidades: ls.reduce((a, l) => a + Number(l.stock), 0), kg: ls.reduce((a, l) => a + (l.kg || 0), 0) };
       }),
-    [plantas, filas]
+    [plantas, filas, rubro]
   );
 
   const porProducto = useMemo(() => {
@@ -97,9 +104,10 @@ function InicioInner({ profile }) {
   const enCamino = useMemo(() => {
     const nq = norm(q);
     return transito
-      .filter((t) => (soloBB ? esBigBag({ nombre: t.descripcion }) : true))
+      .filter((t) => (soloBB ? esBigBag({ nombre: t.descripcion }) || catTransito(t) === "maiz" : true))
+      .filter((t) => !rubro || catTransito(t) === rubro)
       .filter((t) => !nq || norm(`${t.lote} ${t.descripcion} ${t.planta_origen} ${t.planta_destino} ${t.numero}`).includes(nq));
-  }, [transito, soloBB, q]);
+  }, [transito, soloBB, q, rubro, prodCat]);
   const transitoU = enCamino.reduce((a, t) => a + Number(t.cantidad || 0), 0);
   const transitoKg = enCamino.reduce((a, t) => a + Number(t.kg_total || 0), 0);
 
@@ -113,6 +121,7 @@ function InicioInner({ profile }) {
     return [...m.values()];
   })();
 
+  const uLbl = rubro === "maiz" ? "bolsas" : soloBB && rubro === "soja" ? "BB" : "u.";
   const totalU = filas.reduce((a, l) => a + Number(l.stock), 0);
   const totalKg = filas.reduce((a, l) => a + (l.kg || 0), 0);
   const plantasConStock = porPlanta.filter((p) => p.lotes.length).length;
@@ -151,7 +160,7 @@ function InicioInner({ profile }) {
 
         <div className="flex items-center gap-3 md:gap-4 flex-wrap">
           <div className="inline-flex rounded-md border border-stone-300 overflow-hidden text-[13px]">
-            <button onClick={() => setSoloBB(true)} className={`px-3 py-1.5 ${soloBB ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>Big Bag</button>
+            <button onClick={() => setSoloBB(true)} className={`px-3 py-1.5 ${soloBB ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>{rubro === "maiz" ? "Semilla" : "Big Bag"}</button>
             <button onClick={() => setSoloBB(false)} className={`px-3 py-1.5 ${!soloBB ? "bg-emerald-700 text-white" : "bg-white text-stone-600"}`}>Todo el stock</button>
           </div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o lote…" className="px-3 py-1.5 text-[13.5px] w-full md:w-64" />
@@ -197,10 +206,10 @@ function InicioInner({ profile }) {
         )}
 
         <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-          <Tile label={soloBB ? "Big Bags en stock" : "Unidades en stock"} valor={fmtNum(totalU)} />
+          <Tile label={rubro === "maiz" ? "Bolsas de maíz en stock" : soloBB && rubro === "soja" ? "Big Bags en stock" : "Unidades en stock"} valor={fmtNum(totalU)} />
           <Tile label="Kg totales" valor={fmtNum(totalKg)} />
           <Tile label="Lotes con stock" valor={fmtNum(filas.length)} />
-          <Tile label="Plantas con stock" valor={`${plantasConStock} de ${plantas.length}`} />
+          <Tile label="Plantas con stock" valor={`${plantasConStock} de ${porPlanta.length}`} />
           {transito.length > 0 && <Tile label="En tránsito (traslados)" valor={fmtNum(transitoU)} sub={`${fmtNum(transitoKg)} kg · sigue siendo de la empresa`} />}
         </div>
 
@@ -222,7 +231,7 @@ function InicioInner({ profile }) {
           <section className="panel overflow-hidden border-t-amber-400">
             <div className="px-4 md:px-5 py-3.5 flex items-center gap-1 md:gap-3 flex-wrap">
               <h2 className="paso-titulo">En tránsito entre plantas</h2>
-              <span className="md:ml-auto text-[13px] text-stone-600"><b>{fmtNum(transitoU)}</b> {soloBB ? "BB" : "u."} · {fmtNum(transitoKg)} kg · aún no confirmado por la planta de destino</span>
+              <span className="md:ml-auto text-[13px] text-stone-600"><b>{fmtNum(transitoU)}</b> {uLbl} · {fmtNum(transitoKg)} kg · aún no confirmado por la planta de destino</span>
             </div>
             <div className="border-t border-stone-100 divide-y divide-stone-100">
               {gruposTransito.map((g) => (
@@ -232,7 +241,7 @@ function InicioInner({ profile }) {
                     <span className="font-semibold">{g.punto_venta}-{g.numero}</span>
                     <span className="text-stone-400">{fmtFecha(g.fecha)}</span>
                     <span className="text-stone-700">{g.planta_origen} → {g.planta_destino}</span>
-                    <span className="md:ml-auto font-semibold whitespace-nowrap">{fmtNum(g.u)} {soloBB ? "BB" : "u."}<span className="text-stone-400 font-normal"> · {fmtNum(g.kg)} kg · {g.items.length} {g.items.length === 1 ? "renglón" : "renglones"}</span></span>
+                    <span className="md:ml-auto font-semibold whitespace-nowrap">{fmtNum(g.u)} {uLbl}<span className="text-stone-400 font-normal"> · {fmtNum(g.kg)} kg · {g.items.length} {g.items.length === 1 ? "renglón" : "renglones"}</span></span>
                   </summary>
                   <div className="px-4 md:px-5 pb-2.5 pl-8 md:pl-10 space-y-1">
                     {g.items.map((t, i) => (
@@ -259,7 +268,7 @@ function InicioInner({ profile }) {
                 <span className="font-semibold text-emerald-900">{planta.nombre}</span>
                 <span className="text-[12px] text-stone-400">PV {planta.punto_venta}</span>
                 <span className="md:ml-auto text-[13px] text-stone-600 w-full md:w-auto">
-                  {ls.length ? (<><b>{fmtNum(unidades)}</b> {soloBB ? "BB" : "u."} · {fmtNum(kg)} kg · {ls.length} lote(s)</>) : <span className="text-stone-400">Sin stock</span>}
+                  {ls.length ? (<><b>{fmtNum(unidades)}</b> {uLbl} · {fmtNum(kg)} kg · {ls.length} lote(s)</>) : <span className="text-stone-400">Sin stock</span>}
                 </span>
               </summary>
               {ls.length > 0 && (

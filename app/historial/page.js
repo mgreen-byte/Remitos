@@ -10,6 +10,7 @@ import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasI
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { CALIBRACION_DEFAULT } from "@/lib/fieldCoords";
+import { useRubro, plantaPasa } from "@/lib/rubro";
 import { fmtNum, fmtFecha, friendlyError, observacionesImpresas, ordenCargaImpresa, cotAtrasado } from "@/lib/util";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
@@ -33,7 +34,12 @@ function HistorialInner({ profile }) {
   const puedeAnular = !soloLectura && profile.rol !== "logistica"; // Logística reimprime pero no anula
   const [plantas, setPlantas] = useState([]);
   const [f, setF] = useState({ texto: "", lote: "", precinto: "", estado: "", desde: "", hasta: "", planta: "" });
-  const [rows, setRows] = useState([]);
+  const [rowsAll, setRows] = useState([]);
+  // Selector global Soja / Maíz: remitos por modalidad; traslados por el material que llevan; genéricos solo en "Todo".
+  const [rubro] = useRubro();
+  const [catProd, setCatProd] = useState({});
+  useEffect(() => { supabase.from("productos").select("id, categoria").then(({ data }) => setCatProd(Object.fromEntries((data || []).map((p) => [p.id, p.categoria])))); }, []);
+  const rows = !rubro ? rowsAll : rowsAll.filter((r) => r.modalidad === "traslado" ? (r.remito_items || []).some((i) => catProd[i.producto_id] === rubro) : r.modalidad === rubro);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(null);
   const [anulando, setAnulando] = useState(null); // {id, motivo}
@@ -318,7 +324,7 @@ function HistorialInner({ profile }) {
           {esAdmin && (
             <select value={f.planta} onChange={(e) => setF({ ...f, planta: e.target.value })} className={inputCls}>
               <option value="">Todas las plantas</option>
-              {plantas.map((p) => (
+              {plantas.filter((p) => plantaPasa(rubro, p) || p.id === f.planta).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre}
                 </option>
