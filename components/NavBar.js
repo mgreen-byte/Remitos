@@ -18,6 +18,7 @@ const ICONOS = {
   calidad: "M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4",
   reportes: "M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3",
   cot: "M6 3h9l4 4v14H6zM9 13l2 2 4-4M9 17h6",
+  conformes: "M4 8h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   transportes: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   choferes: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1",
   admin: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .3-1.4-1.4.3-2-3-1-1 2h-2l-1-2-3 1 .3 2L6.8 7.3 4.8 7l-1 3 2 1v2l-2 1 1 3 2-.3 1.4 1.4-.3 2 3 1 1-2h2l1 2 3-1-.3-2 1.4-1.4 2 .3 1-3-2-1z",
@@ -39,6 +40,7 @@ export default function NavBar({ profile, children }) {
   const [menu, setMenu] = useState(false); // menú desplegable del celular
   const [pendientes, setPendientes] = useState(0);
   const [avisoTal, setAvisoTal] = useState(0);
+  const [avisoConf, setAvisoConf] = useState(0); // remitos sin conforme de salida
   const [avisoCot, setAvisoCot] = useState(0);
   // Usuario con más de una planta habilitada: puede cambiar la planta en la que está trabajando.
   const [misPlantas, setMisPlantas] = useState([]);
@@ -83,6 +85,12 @@ export default function NavBar({ profile, children }) {
       q = q.eq("planta_destino_id", profile.planta.id);
     }
     q.then(({ count }) => setPendientes(count || 0));
+    // Conformes de salida: el operador, los de su planta; el resto, todos los que puede ver.
+    if (profile.rol !== "operador" || profile.planta?.id) {
+      let qf = supabase.from("v_remitos_sin_conforme").select("id", { count: "exact", head: true });
+      if (profile.rol === "operador") qf = qf.eq("planta_id", profile.planta.id);
+      qf.then(({ count, error }) => setAvisoConf(error ? 0 : count || 0));
+    }
     // Talonarios: la planta ve los que faltan confirmar; el admin, las pérdidas reportadas.
     let qt = supabase.from("talonarios").select("id", { count: "exact", head: true }).eq("estado", "activo");
     qt = profile.rol === "admin" ? qt.not("extravio_reportado_at", "is", null) : qt.is("recibido_at", null);
@@ -100,6 +108,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/calidad", "Calidad", "calidad"]] : []),
     ["/traslados", "Traslados", "traslados"],
     ["/talonarios", "Talonarios", "talonarios"],
+    ["/conformes", "Conformes", "conformes"],
     ["/historial", "Historial", "historial"],
     ["/cot", "COT", "cot"],
     // Los maestros de transportes y choferes: admin (edita) (consulta no los ve).
@@ -108,7 +117,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
   // Secciones del menú (solo títulos; los permisos de cada entrada no cambian).
-  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/traslados": "Operación", "/historial": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
+  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
   const ORDEN_GRUPOS = ["Operación", "Stock", "Fiscal", "Análisis", "Configuración"];
   const grupoDe = (href) => GRUPO[href] || "Configuración";
   const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);
@@ -151,7 +160,7 @@ export default function NavBar({ profile, children }) {
 
 
   const titulo = (items.find(([href]) => href === pathname) || [])[1] || "";
-  const hayAvisos = pendientes + avisoCot + avisoTal > 0;
+  const hayAvisos = pendientes + avisoCot + avisoTal + avisoConf > 0;
   const rolTxt = profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta";
 
   const logout = async () => {
@@ -195,13 +204,16 @@ export default function NavBar({ profile, children }) {
               >
                 <Icono d={ICONOS[icono]} />
                 {plegado ? (
-                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
+                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) || (icono === "conformes" && avisoConf > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
                 ) : label}
                 {!plegado && icono === "traslados" && pendientes > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
                 )}
                 {!plegado && icono === "cot" && avisoCot > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoCot}</span>
+                )}
+                {!plegado && icono === "conformes" && avisoConf > 0 && (
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoConf}</span>
                 )}
                 {!plegado && icono === "talonarios" && avisoTal > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoTal}</span>
@@ -242,7 +254,7 @@ export default function NavBar({ profile, children }) {
                   <div key={g}>
                     <div className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
                 {its.map(([href, label, icono]) => {
-                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : 0;
+                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : icono === "conformes" ? avisoConf : 0;
                   return (
                     <Link key={href} href={href} className={`flex items-center gap-3 px-4 py-3.5 rounded-md text-[16px] font-medium ${pathname === href ? "bg-emerald-600 text-white" : "text-stone-200 active:bg-ink-700"}`}>
                       <Icono d={ICONOS[icono]} />
