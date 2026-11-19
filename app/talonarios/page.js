@@ -1,7 +1,7 @@
 "use client";
 
 import { confirmar } from "@/lib/confirmar";
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
@@ -12,6 +12,19 @@ import TalonariosAuto from "@/components/TalonariosAuto";
 const inputCls = "border border-stone-300 rounded px-2 py-1.5 text-sm";
 const n8 = (n) => String(n).padStart(8, "0");
 const MOTIVOS = { danado: "Dañado", extraviado: "Extraviado", otro: "Anulado en papel / otro", manual: "Emitido a mano (sin sistema)" };
+
+// Avisos cortos de un talonario (chips de la tabla del admin)
+function alertasDe(t) {
+  const a = [];
+  const dias = Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000);
+  if (t.estado === "cerrado") return a;
+  if (t.vencido) a.push(["CAI vencido", "bg-red-100 text-red-700"]);
+  else if (dias <= 15) a.push([`vence en ${dias} d`, "bg-amber-100 text-amber-800"]);
+  if (t.extravio_reportado_at && t.estado === "activo") a.push(["pérdida reportada", "bg-red-100 text-red-700"]);
+  if (t.huecos > 0) a.push([`${t.huecos} sin justificar`, "bg-amber-100 text-amber-800"]);
+  if (!t.recibido_at) a.push(["recepción pendiente", "bg-sky-100 text-sky-800"]);
+  return a;
+}
 
 export default function TalonariosPage() {
   return <AuthGuard>{(profile) => <Inner profile={profile} />}</AuthGuard>;
@@ -116,142 +129,50 @@ function Inner({ profile }) {
   };
 
   const visibles = rows.filter((t) => (!filtro || t.planta_id === filtro) && (verTodos || t.estado === "activo"));
+  const [exp, setExp] = useState(null); // fila desplegada (vista admin)
+  const [busca, setBusca] = useState("");
+  const [soloAlertas, setSoloAlertas] = useState(false);
+  const conAlerta = (t) => alertasDe(t).length > 0;
+  // Vista admin: agrupada por planta, en tabla
+  const grupos = (() => {
+    const q = busca.trim().toUpperCase();
+    const m = new Map();
+    for (const t of visibles) {
+      if (soloAlertas && !conAlerta(t)) continue;
+      if (q && ![t.planta, t.punto_venta, t.cai, n8(t.desde), n8(t.hasta)].some((x) => String(x || "").toUpperCase().includes(q))) continue;
+      if (!m.has(t.planta_id)) m.set(t.planta_id, { id: t.planta_id, planta: t.planta, pv: t.punto_venta, ts: [] });
+      m.get(t.planta_id).ts.push(t);
+    }
+    return [...m.values()].sort((a, b) => a.planta.localeCompare(b.planta));
+  })();
+  const activos = rows.filter((t) => t.estado === "activo");
+  const resumen = {
+    activos: activos.length,
+    plantas: new Set(activos.map((t) => t.planta_id)).size,
+    pocos: (() => { const m = {}; for (const t of activos) m[t.planta_id] = (m[t.planta_id] || 0) + Number(t.disponibles || 0); return Object.values(m).filter((n) => n <= 5).length; })(),
+    vencen: activos.filter((t) => t.vencido || Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000) <= 15).length,
+    huecos: activos.filter((t) => t.huecos > 0).length,
+    recepcion: rows.filter((t) => !t.recibido_at && t.estado !== "cerrado").length,
+    extravio: activos.filter((t) => t.extravio_reportado_at).length,
+  };
 
-  return (
-    <NavBar profile={profile}>
-      <div className="max-w-4xl mx-auto px-6 py-8 space-y-5">
-        <header className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-[22px] font-semibold text-stone-900">Talonarios</h1>
-            <p className="text-stone-500 text-[13.5px]">Control de los formularios preimpresos: rango, CAI y números sin usar. Se usan primero los talonarios más antiguos.</p>
-          </div>
-          {esAdmin && (
-            <div className="flex gap-2">
-              <button onClick={exportar} className="btn-secundario">Exportar Excel</button>
-              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", primero: "", cai: "", venc: "", imp_nombre: "", imp_domicilio: "", imp_cuit: "", imp_hab: "", imp_fecha: "" })} className="btn-primario">Nuevo talonario</button>
-            </div>
-          )}
-        </header>
-
-        {esAdmin && (
-          <div className={`panel p-4 flex items-center justify-between gap-4 flex-wrap ${control ? "border-emerald-200" : "border-amber-300 bg-amber-50/60"}`}>
-            <div className="text-[13px]">
-              <b>{control ? "Control activado" : "Control apagado"}</b>
-              <div className="text-stone-500">
-                {control
-                  ? "Los remitos solo se emiten con un número dentro de un talonario activo, con CAI vigente y respetando el orden."
-                  : "Todavía no se exige talonario al emitir. Cargá los talonarios de todas las plantas y después activá el control."}
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                if (!control && !(await confirmar("Al activarlo, las plantas sin talonario activo no podrán emitir remitos. ¿Cargaste los talonarios de todas?"))) return;
-                run(() => supabase.rpc("set_control_talonarios", { p_activo: !control }), control ? "Control apagado." : "Control activado.");
-              }}
-              className={control ? "btn-secundario" : "btn-primario"}
-            >
-              {control ? "Apagar" : "Activar control"}
-            </button>
-          </div>
-        )}
-
-        {msg.texto && <div className={`text-sm rounded p-3 border ${msg.tipo === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-700"}`}>{msg.texto}</div>}
-
-        <TalonariosAuto esAdmin={esAdmin} plantas={plantas} />
-
-        {nuevo && (
-          <form onSubmit={crear} className="panel p-5 space-y-3">
-            <div className="font-semibold text-stone-800 text-[14px]">Nuevo talonario</div>
-            <div className="grid gap-3 sm:grid-cols-5">
-              <select required value={nuevo.planta} onChange={(e) => setNuevo({ ...nuevo, planta: e.target.value })} className={`${inputCls} sm:col-span-2`}>
-                {plantas.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre} (PV {p.punto_venta})</option>
-                ))}
-              </select>
-              <input required value={nuevo.desde} onChange={(e) => setNuevo({ ...nuevo, desde: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Desde" inputMode="numeric" className={inputCls} />
-              <input required value={nuevo.hasta} onChange={(e) => setNuevo({ ...nuevo, hasta: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Hasta" inputMode="numeric" className={inputCls} />
-              <input value={nuevo.primero} onChange={(e) => setNuevo({ ...nuevo, primero: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Primero a usar (opcional)" inputMode="numeric" className={`${inputCls} sm:col-span-2`} />
-              <input required value={nuevo.cai} onChange={(e) => setNuevo({ ...nuevo, cai: e.target.value.toUpperCase() })} placeholder="CAI" className={inputCls} />
-              <div className="sm:col-span-2">
-                <label className="campo-etiqueta">Vencimiento del CAI</label>
-                <input required type="date" value={nuevo.venc} onChange={(e) => setNuevo({ ...nuevo, venc: e.target.value })} className={`${inputCls} w-full`} />
-              </div>
-            </div>
-            <div className="border-t border-stone-100 pt-3">
-              <div className="text-[12.5px] font-medium text-stone-600 mb-2">Imprenta (para el remito digital en PDF; opcional)</div>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <input value={nuevo.imp_nombre} onChange={(e) => setNuevo({ ...nuevo, imp_nombre: e.target.value })} placeholder="Nombre de la imprenta" className={`${inputCls} sm:col-span-2`} />
-                <input value={nuevo.imp_domicilio} onChange={(e) => setNuevo({ ...nuevo, imp_domicilio: e.target.value })} placeholder="Domicilio, localidad" className={`${inputCls} sm:col-span-2`} />
-                <input value={nuevo.imp_cuit} onChange={(e) => setNuevo({ ...nuevo, imp_cuit: e.target.value })} placeholder="CUIT (30-71886435-2)" className={inputCls} />
-                <input value={nuevo.imp_hab} onChange={(e) => setNuevo({ ...nuevo, imp_hab: e.target.value })} placeholder="Habilitación municipal N°" className={inputCls} />
-                <div className="sm:col-span-2">
-                  <label className="campo-etiqueta">Fecha de impresión</label>
-                  <input type="date" value={nuevo.imp_fecha} onChange={(e) => setNuevo({ ...nuevo, imp_fecha: e.target.value })} className={`${inputCls} w-full`} />
-                </div>
-              </div>
-            </div>
-            <div className="text-xs text-stone-400">Si la planta ya venía usando este talonario en papel, poné en “Primero a usar” el primer remito que va a emitir desde el sistema. Los anteriores se toman como usados antes de empezar.</div>
-            <div className="flex gap-2">
-              <button className="btn-primario">Cargar</button>
-              <button type="button" onClick={() => setNuevo(null)} className="text-sm text-stone-500">Cancelar</button>
-            </div>
-          </form>
-        )}
-
-        <div className="flex items-center gap-3 flex-wrap text-[13px]">
-          {veTodo && (
-            <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={inputCls}>
-              <option value="">Todas las plantas</option>
-              {plantas.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </select>
-          )}
-          <label className="flex items-center gap-2 text-stone-600">
-            <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} /> Ver también agotados y dados de baja
-          </label>
-        </div>
-
-        {loading && <div className="text-sm text-stone-400">Cargando…</div>}
-        {!loading && visibles.length === 0 && <div className="panel p-6 text-sm text-stone-400">No hay talonarios para mostrar.</div>}
-
-        {visibles.map((t) => {
-          const primero = t.primero ?? t.desde; // si falta migration_9, se toma el "desde"
-          const total = t.hasta - primero + 1;
-          const previos = primero - t.desde;
-          const pct = Math.round(((t.usados + t.justificados) / total) * 100);
-          const dias = Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000);
-          const activo = t.estado === "activo";
-          const abierto = panel?.id === t.id;
-          return (
-            <section key={t.id} className={`panel p-5 space-y-3 ${!activo ? "opacity-75" : ""}`}>
-              <div className="flex justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="font-semibold text-stone-900">
-                    <span className="font-mono">{t.punto_venta}</span> · {n8(t.desde)} a {n8(t.hasta)} <span className="text-stone-400 font-normal">· {t.planta}</span>
-                  </div>
-                  <div className="text-[12.5px] text-stone-500">
-                    CAI <span className="font-mono">{t.cai}</span> · vence {fmtFecha(t.cai_vencimiento)}
-                    {t.vencido ? <b className="text-red-600"> · VENCIDO</b> : dias <= 15 ? <b className="text-amber-700"> · vence en {dias} día(s)</b> : null}
-                  </div>
-                </div>
-                <div className="flex gap-1.5 self-start">
-                  {t.estado === "activo" && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">activo</span>}
-                  {t.estado === "agotado" && <span className="text-xs px-2 py-0.5 rounded bg-stone-200 text-stone-700">agotado</span>}
-                  {t.estado === "cerrado" && <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">dado de baja</span>}
-                </div>
-              </div>
-
-              <div>
-                <div className="h-2 rounded bg-stone-100 overflow-hidden">
-                  <div className="h-full bg-emerald-600" style={{ width: `${pct}%` }} />
-                </div>
-                <div className="text-[12.5px] text-stone-500 mt-1">
-                  {previos > 0 && <>Previos al sistema {fmtNum(previos)} (hasta el {n8(primero - 1)}) · </>}Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
-                  {t.disponibles <= 5 && activo && <b className="text-amber-700"> · pedí el próximo talonario</b>}
-                </div>
-              </div>
-
+  // Datos calculados de un talonario
+  const datos = (t) => {
+    const primero = t.primero ?? t.desde; // si falta migration_9, se toma el "desde"
+    const total = t.hasta - primero + 1;
+    return {
+      primero, total, previos: primero - t.desde,
+      pct: Math.round(((t.usados + t.justificados) / total) * 100),
+      dias: Math.ceil((new Date(t.cai_vencimiento + "T00:00:00") - new Date()) / 86400000),
+      activo: t.estado === "activo",
+      abierto: panel?.id === t.id,
+    };
+  };
+  // Avisos, paneles y botones de un talonario (tarjeta de la planta y fila desplegada del admin)
+  const detalle = (t) => {
+    const { primero, abierto, activo } = datos(t);
+    return (
+      <>
               {t.huecos > 0 && (
                 <div className="text-[13px] bg-amber-50 border border-amber-200 text-amber-800 rounded p-2 flex items-center justify-between gap-2 flex-wrap">
                   <span>{t.huecos} número(s) quedaron sin usar antes del último emitido. Se pueden usar después o justificar.</span>
@@ -384,10 +305,250 @@ function Inner({ profile }) {
                   <button onClick={() => setPanel({ id: t.id, modo: "baja", texto: t.extravio_detalle || "" })} className="border border-red-300 text-red-700 text-sm px-3 py-1.5 rounded">Dar de baja…</button>
                 )}
               </div>
-            </section>
-          );
-        })}
+      </>
+    );
+  };
+
+
+  return (
+    <NavBar profile={profile}>
+      <div className={`${veTodo ? "max-w-[1500px]" : "max-w-4xl"} mx-auto px-4 md:px-6 py-6 md:py-8 space-y-5`}>
+        <header className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-[22px] font-semibold text-stone-900">Talonarios</h1>
+            <p className="text-stone-500 text-[13.5px]">Control de los formularios preimpresos: rango, CAI y números sin usar. Se usan primero los talonarios más antiguos.</p>
+          </div>
+          {esAdmin && (
+            <div className="flex gap-2">
+              <button onClick={exportar} className="btn-secundario">Exportar Excel</button>
+              <button onClick={() => setNuevo({ planta: filtro || plantas[0]?.id || "", desde: "", hasta: "", primero: "", cai: "", venc: "", imp_nombre: "", imp_domicilio: "", imp_cuit: "", imp_hab: "", imp_fecha: "" })} className="btn-primario">Nuevo talonario</button>
+            </div>
+          )}
+        </header>
+
+        {esAdmin && (
+          <div className={`panel p-4 flex items-center justify-between gap-4 flex-wrap ${control ? "border-emerald-200" : "border-amber-300 bg-amber-50/60"}`}>
+            <div className="text-[13px]">
+              <b>{control ? "Control activado" : "Control apagado"}</b>
+              <div className="text-stone-500">
+                {control
+                  ? "Los remitos solo se emiten con un número dentro de un talonario activo, con CAI vigente y respetando el orden."
+                  : "Todavía no se exige talonario al emitir. Cargá los talonarios de todas las plantas y después activá el control."}
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                if (!control && !(await confirmar("Al activarlo, las plantas sin talonario activo no podrán emitir remitos. ¿Cargaste los talonarios de todas?"))) return;
+                run(() => supabase.rpc("set_control_talonarios", { p_activo: !control }), control ? "Control apagado." : "Control activado.");
+              }}
+              className={control ? "btn-secundario" : "btn-primario"}
+            >
+              {control ? "Apagar" : "Activar control"}
+            </button>
+          </div>
+        )}
+
+        {msg.texto && <div className={`text-sm rounded p-3 border ${msg.tipo === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-700"}`}>{msg.texto}</div>}
+
+        <TalonariosAuto esAdmin={esAdmin} plantas={plantas} />
+
+        {nuevo && (
+          <form onSubmit={crear} className="panel p-5 space-y-3">
+            <div className="font-semibold text-stone-800 text-[14px]">Nuevo talonario</div>
+            <div className="grid gap-3 sm:grid-cols-5">
+              <select required value={nuevo.planta} onChange={(e) => setNuevo({ ...nuevo, planta: e.target.value })} className={`${inputCls} sm:col-span-2`}>
+                {plantas.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre} (PV {p.punto_venta})</option>
+                ))}
+              </select>
+              <input required value={nuevo.desde} onChange={(e) => setNuevo({ ...nuevo, desde: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Desde" inputMode="numeric" className={inputCls} />
+              <input required value={nuevo.hasta} onChange={(e) => setNuevo({ ...nuevo, hasta: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Hasta" inputMode="numeric" className={inputCls} />
+              <input value={nuevo.primero} onChange={(e) => setNuevo({ ...nuevo, primero: e.target.value.replace(/\D/g, "").slice(0, 8) })} placeholder="Primero a usar (opcional)" inputMode="numeric" className={`${inputCls} sm:col-span-2`} />
+              <input required value={nuevo.cai} onChange={(e) => setNuevo({ ...nuevo, cai: e.target.value.toUpperCase() })} placeholder="CAI" className={inputCls} />
+              <div className="sm:col-span-2">
+                <label className="campo-etiqueta">Vencimiento del CAI</label>
+                <input required type="date" value={nuevo.venc} onChange={(e) => setNuevo({ ...nuevo, venc: e.target.value })} className={`${inputCls} w-full`} />
+              </div>
+            </div>
+            <div className="border-t border-stone-100 pt-3">
+              <div className="text-[12.5px] font-medium text-stone-600 mb-2">Imprenta (para el remito digital en PDF; opcional)</div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <input value={nuevo.imp_nombre} onChange={(e) => setNuevo({ ...nuevo, imp_nombre: e.target.value })} placeholder="Nombre de la imprenta" className={`${inputCls} sm:col-span-2`} />
+                <input value={nuevo.imp_domicilio} onChange={(e) => setNuevo({ ...nuevo, imp_domicilio: e.target.value })} placeholder="Domicilio, localidad" className={`${inputCls} sm:col-span-2`} />
+                <input value={nuevo.imp_cuit} onChange={(e) => setNuevo({ ...nuevo, imp_cuit: e.target.value })} placeholder="CUIT (30-71886435-2)" className={inputCls} />
+                <input value={nuevo.imp_hab} onChange={(e) => setNuevo({ ...nuevo, imp_hab: e.target.value })} placeholder="Habilitación municipal N°" className={inputCls} />
+                <div className="sm:col-span-2">
+                  <label className="campo-etiqueta">Fecha de impresión</label>
+                  <input type="date" value={nuevo.imp_fecha} onChange={(e) => setNuevo({ ...nuevo, imp_fecha: e.target.value })} className={`${inputCls} w-full`} />
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-stone-400">Si la planta ya venía usando este talonario en papel, poné en “Primero a usar” el primer remito que va a emitir desde el sistema. Los anteriores se toman como usados antes de empezar.</div>
+            <div className="flex gap-2">
+              <button className="btn-primario">Cargar</button>
+              <button type="button" onClick={() => setNuevo(null)} className="text-sm text-stone-500">Cancelar</button>
+            </div>
+          </form>
+        )}
+
+        {veTodo && !loading && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {[
+              ["Talonarios activos", resumen.activos, `${resumen.plantas} plantas`, "", null],
+              ["Plantas con ≤ 5 números", resumen.pocos, "pedir el próximo", resumen.pocos ? "text-amber-700" : "", null],
+              ["CAI vencido o por vencer", resumen.vencen, "15 días o menos", resumen.vencen ? "text-red-700" : "", null],
+              ["Con números sin justificar", resumen.huecos, "talonarios", resumen.huecos ? "text-amber-700" : "", null],
+              ["Recepción pendiente", resumen.recepcion, "sin confirmar por la planta", resumen.recepcion ? "text-sky-700" : "", null],
+              ["Pérdida reportada", resumen.extravio, "a dar de baja", resumen.extravio ? "text-red-700" : "", null],
+            ].map(([t, n, sub, cls]) => (
+              <div key={t} className="panel px-3 py-2.5">
+                <div className="text-[11.5px] text-stone-500 leading-tight">{t}</div>
+                <div className={`text-[22px] font-semibold leading-tight ${cls || "text-stone-900"}`}>{fmtNum(n)}</div>
+                <div className="text-[11px] text-stone-400">{sub}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap text-[13px]">
+          {veTodo && <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar planta, PV, CAI o número…" className={`${inputCls} w-full sm:w-72`} />}
+          {veTodo && (
+            <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={inputCls}>
+              <option value="">Todas las plantas</option>
+              {plantas.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          )}
+          <label className="flex items-center gap-2 text-stone-600">
+            <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} /> Ver también agotados y dados de baja
+          </label>
+          {veTodo && (
+            <label className="flex items-center gap-2 text-stone-600">
+              <input type="checkbox" checked={soloAlertas} onChange={(e) => setSoloAlertas(e.target.checked)} /> Solo con avisos
+            </label>
+          )}
+        </div>
+
+        {loading && <div className="text-sm text-stone-400">Cargando…</div>}
+        {!loading && (veTodo ? grupos.length === 0 : visibles.length === 0) && <div className="panel p-6 text-sm text-stone-400">No hay talonarios para mostrar.</div>}
+
+        {veTodo ? (
+          <TablaTalonarios grupos={grupos} exp={exp} setExp={(id) => { setExp(id); if (panel && panel.id !== id) setPanel(null); }} detalle={detalle} />
+        ) : (
+          visibles.map((t) => {
+            const { primero, total, previos, pct, dias, activo, abierto } = datos(t);
+            return (
+            <section key={t.id} className={`panel p-5 space-y-3 ${!activo ? "opacity-75" : ""}`}>
+                <div className="flex justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="font-semibold text-stone-900">
+                      <span className="font-mono">{t.punto_venta}</span> · {n8(t.desde)} a {n8(t.hasta)} <span className="text-stone-400 font-normal">· {t.planta}</span>
+                    </div>
+                    <div className="text-[12.5px] text-stone-500">
+                      CAI <span className="font-mono">{t.cai}</span> · vence {fmtFecha(t.cai_vencimiento)}
+                      {t.vencido ? <b className="text-red-600"> · VENCIDO</b> : dias <= 15 ? <b className="text-amber-700"> · vence en {dias} día(s)</b> : null}
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 self-start">
+                    {t.estado === "activo" && <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">activo</span>}
+                    {t.estado === "agotado" && <span className="text-xs px-2 py-0.5 rounded bg-stone-200 text-stone-700">agotado</span>}
+                    {t.estado === "cerrado" && <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">dado de baja</span>}
+                  </div>
+                </div>
+  
+                <div>
+                  <div className="h-2 rounded bg-stone-100 overflow-hidden">
+                    <div className="h-full bg-emerald-600" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="text-[12.5px] text-stone-500 mt-1">
+                    {previos > 0 && <>Previos al sistema {fmtNum(previos)} (hasta el {n8(primero - 1)}) · </>}Usados {fmtNum(t.usados)} · justificados {fmtNum(t.justificados)} · <b className="text-stone-800">quedan {fmtNum(t.disponibles)}</b> de {fmtNum(total)}
+                    {t.disponibles <= 5 && activo && <b className="text-amber-700"> · pedí el próximo talonario</b>}
+                  </div>
+                </div>
+  
+  {detalle(t)}
+              </section>
+            );
+          })
+        )}
       </div>
     </NavBar>
+  );
+}
+
+// Vista del admin: una fila por talonario, agrupada por planta. Clic en la fila para ver avisos y acciones.
+function TablaTalonarios({ grupos, exp, setExp, detalle }) {
+  const th = "px-3 py-2 text-left text-[11.5px] font-semibold uppercase tracking-wide text-stone-500";
+  return (
+    <div className="panel overflow-x-auto p-0">
+      <table className="w-full text-[13px] min-w-[980px]">
+        <thead className="bg-stone-50 border-b border-stone-200">
+          <tr>
+            <th className={th}>PV</th>
+            <th className={th}>Rango</th>
+            <th className={th}>CAI · vence</th>
+            <th className={`${th} w-[220px]`}>Uso</th>
+            <th className={`${th} text-right`}>Quedan</th>
+            <th className={th}>Estado / avisos</th>
+            <th className={th}></th>
+          </tr>
+        </thead>
+        {grupos.map((g) => {
+          const quedan = g.ts.filter((t) => t.estado === "activo").reduce((a, t) => a + Number(t.disponibles || 0), 0);
+          return (
+            <tbody key={g.id} className="border-b border-stone-200">
+              <tr className="bg-stone-100/70">
+                <td colSpan={7} className="px-3 py-1.5">
+                  <span className="font-semibold text-stone-800">{g.planta}</span>
+                  <span className="text-stone-500"> · PV {g.pv} · {g.ts.length} talonario{g.ts.length === 1 ? "" : "s"} · </span>
+                  <span className={quedan <= 5 ? "font-semibold text-amber-700" : "text-stone-600"}>quedan {fmtNum(quedan)} números{quedan <= 5 ? " · pedí el próximo" : ""}</span>
+                </td>
+              </tr>
+              {g.ts.map((t) => {
+                const primero = t.primero ?? t.desde;
+                const total = t.hasta - primero + 1;
+                const pct = Math.round(((t.usados + t.justificados) / total) * 100);
+                const abierta = exp === t.id;
+                const al = alertasDe(t);
+                return (
+                  <Fragment key={t.id}>
+                    <tr onClick={() => setExp(abierta ? null : t.id)} className={`cursor-pointer border-t border-stone-100 hover:bg-emerald-50/40 ${abierta ? "bg-emerald-50/50" : ""} ${t.estado !== "activo" ? "text-stone-400" : ""}`}>
+                      <td className="px-3 py-2 font-mono">{t.punto_venta}</td>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap">{n8(t.desde)} – {n8(t.hasta)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap"><span className="font-mono">{t.cai}</span> <span className="text-stone-500">· {fmtFecha(t.cai_vencimiento)}</span></td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 rounded bg-stone-200 overflow-hidden"><div className="h-full bg-emerald-600" style={{ width: `${pct}%` }} /></div>
+                          <span className="text-[11.5px] text-stone-500 w-9 text-right">{pct}%</span>
+                        </div>
+                        <div className="text-[11px] text-stone-400">usados {fmtNum(t.usados)}{t.justificados ? ` · justif. ${fmtNum(t.justificados)}` : ""}</div>
+                      </td>
+                      <td className={`px-3 py-2 text-right font-semibold ${t.estado === "activo" && t.disponibles <= 5 ? "text-amber-700" : ""}`}>{fmtNum(t.disponibles)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {t.estado === "activo" && <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">activo</span>}
+                          {t.estado === "agotado" && <span className="text-[11px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-700">agotado</span>}
+                          {t.estado === "cerrado" && <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">dado de baja</span>}
+                          {al.map(([x, cls]) => <span key={x} className={`text-[11px] px-1.5 py-0.5 rounded ${cls}`}>{x}</span>)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-stone-400 text-[12px] whitespace-nowrap">{abierta ? "▲" : "Acciones ▼"}</td>
+                    </tr>
+                    {abierta && (
+                      <tr className="bg-emerald-50/30">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="space-y-3 max-w-5xl">{detalle(t)}</div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          );
+        })}
+      </table>
+    </div>
   );
 }
