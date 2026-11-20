@@ -322,18 +322,31 @@ function StockInner({ profile }) {
       <div className="max-w-[1400px] mx-auto p-6 space-y-5">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-lg font-semibold">Stock por lote</h1>
-          {esAdmin ? (
-            <select value={plantaId} onChange={(e) => setPlantaId(e.target.value)} className={inputCls}>
-              {plantas.filter((p) => plantaPasa(fCat, p) || p.id === plantaId).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="text-sm text-stone-500">{profile.planta?.nombre}</span>
-          )}
+          {!esAdmin && <span className="text-sm text-stone-500">{profile.planta?.nombre}</span>}
         </div>
+        {esAdmin && (
+          // Plantas como botones (azul = Stine, verde = MS Technologies)
+          <div className="flex flex-wrap gap-1.5">
+            {plantas.filter((p) => plantaPasa(fCat, p) || p.id === plantaId).map((p) => {
+              const sel = p.id === plantaId;
+              const c = p.empresa === "ms"
+                ? ["bg-emerald-700 border-emerald-700 text-white", "bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50"]
+                : p.empresa === "stine"
+                  ? ["bg-sky-700 border-sky-700 text-white", "bg-white border-sky-300 text-sky-800 hover:bg-sky-50"]
+                  : ["bg-stone-700 border-stone-700 text-white", "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"];
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPlantaId(p.id)}
+                  className={`px-3 py-1.5 rounded-md border text-[13px] font-medium transition ${sel ? c[0] : c[1]}`}
+                >
+                  {p.nombre}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {puedeCargar && (
           <div>
