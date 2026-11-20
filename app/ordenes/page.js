@@ -5,6 +5,7 @@ import { confirmar } from "@/lib/confirmar";
 import { descargarOrdenPdf } from "@/lib/ordenPdf";
 import { useRubro } from "@/lib/rubro";
 import ConformesOrden from "@/components/ConformesOrden";
+import TransporteOrden from "@/components/TransporteOrden";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -82,7 +83,7 @@ function OrdenesInner({ profile }) {
   const cargar = useCallback(async () => {
     setCargando(true);
     const [o, l, p, pl] = await Promise.all([
-      supabase.from("ordenes_carga").select("*").order("created_at", { ascending: false }).limit(300),
+      supabase.from("ordenes_carga").select("*, transportista:transportistas(nombre, cuit), chofer:choferes(nombre, dni)").order("created_at", { ascending: false }).limit(300),
       supabase.from("v_ordenes_lineas_saldo").select("*").order("cliente").limit(5000),
       supabase.from("productos").select("*").eq("activo", true).order("nombre"),
       supabase.from("plantas").select("*").eq("activa", true).order("nombre"),
@@ -884,6 +885,11 @@ function OrdenesInner({ profile }) {
                     <span className="font-semibold text-[15px]">{o.numero}</span>
                     <span className={`text-[11px] font-medium border rounded px-1.5 py-0.5 ${est.cls}`}>{est.txt}</span>
                     {badgeCarga(o, ls)}
+                    {(o.chasis || o.chofer?.nombre) && o.estado === "activa" && (
+                      <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-stone-50 text-stone-700 border-stone-300" title={[o.transportista?.nombre, o.chofer?.nombre].filter(Boolean).join(" · ")}>
+                        🚚 {o.chasis || o.chofer?.nombre}
+                      </span>
+                    )}
                     {faltaConf[o.id] > 0 && o.estado !== "anulada" && (
                       <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-amber-50 text-amber-800 border-amber-300" title={`${faltaConf[o.id]} remito(s) de esta orden sin conforme de salida`}>
                         📎 falta conforme de salida
@@ -910,6 +916,7 @@ function OrdenesInner({ profile }) {
                       {o.estado === "cerrada" && (
                         <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
                       )}
+                      {o.estado !== "anulada" && <TransporteOrden orden={o} puede={["admin", "logistica", "operador"].includes(profile.rol)} onCambio={cargar} />}
                       {o.estado !== "anulada" && <ConformesOrden ordenId={o.id} lineaIds={ls.map((l) => l.id)} plantas={plantas} profile={profile} onCambio={cargarFaltaConf} />}
                       {o.estado === "anulada" && (
                         <div className="text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded p-2">Anulada por {o.anulada_por_nombre} el {new Date(o.anulada_at).toLocaleString("es-AR")}. Motivo: {o.motivo_anulacion}</div>

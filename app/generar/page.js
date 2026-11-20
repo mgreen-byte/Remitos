@@ -475,7 +475,7 @@ function GenerarInner({ profile }) {
     const m = new Map();
     for (const l of ocDb) {
       const k = `${l.orden_id}||${norm(l.cliente)}||${norm(l.domicilio)}||${norm(l.entregar_en)}`; // un remito por cliente Y por destino de entrega
-      if (!m.has(k)) m.set(k, { clave: k, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, gps: l.gps, items: [], total: 0 });
+      if (!m.has(k)) m.set(k, { clave: k, ordenId: l.orden_id, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, gps: l.gps, items: [], total: 0 });
       const g = m.get(k);
       g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
       g.total += Number(l.saldo);
@@ -505,6 +505,7 @@ function GenerarInner({ profile }) {
       .then(({ data }) => setSalidaOrden(((data && data[0] && data[0].orden_salida) || 0) + 1));
     aplicarGrupo({ ...g, cliente: empresaTraslado ? empresaTraslado.nombre : "", cuit: empresaTraslado ? String(empresaTraslado.cuit || "").replace(/\D/g, "") : "" }, g.ordenNumero);
     elegirDestino(g.destinoId);
+    traerCamionOrden(clave);
   };
 
   const elegirOcDb = (clave) => {
@@ -513,6 +514,27 @@ function GenerarInner({ profile }) {
     if (!g) return;
     setClienteSel("");
     aplicarGrupo(g, g.ordenNumero);
+    traerCamionOrden(g.ordenId);
+  };
+
+  // Camión asignado a la orden (transportista, chofer, patentes): se precarga en el remito.
+  const ordenCamion = useRef(null); // { id, transportista_id, chofer_id, chasis, acoplado }
+  const traerCamionOrden = async (ordenId) => {
+    ordenCamion.current = ordenId ? { id: ordenId } : null;
+    if (!ordenId) return;
+    const { data: o } = await supabase.from("ordenes_carga").select("id, transportista_id, chofer_id, chasis, acoplado").eq("id", ordenId).maybeSingle();
+    if (!o) return;
+    ordenCamion.current = o;
+    if (!o.transportista_id && !o.chofer_id && !o.chasis) return;
+    const t = transportistas.find((x) => x.id === o.transportista_id);
+    const c = choferes.find((x) => x.id === o.chofer_id);
+    setRemito((r) => ({
+      ...r,
+      ...(t ? { transportistaId: t.id, transportista: up(t.nombre), transpCuit: fmtCuit(t.cuit), transpDomicilio: up(t.domicilio) } : {}),
+      ...(c ? { choferId: c.id, chofer: up(c.nombre), choferDni: fmtCuit(c.dni) } : {}),
+      chasis: o.chasis ? patente(o.chasis) : c ? patente(c.chasis) : r.chasis,
+      acoplado: o.acoplado ? patente(o.acoplado) : c ? patente(c.acoplado) : r.acoplado,
+    }));
   };
 
   // Llegada desde Órdenes de carga → botón "Despachar": /generar?oc=<clave>&mod=soja|maiz&planta=<id>
@@ -835,6 +857,15 @@ function GenerarInner({ profile }) {
       const { error: errP } = await supabase.rpc("actualizar_patentes_chofer", { p_chofer: remito.choferId, p_chasis: remito.chasis || null, p_acoplado: remito.acoplado || null });
       if (errP) setError("El remito quedó registrado, pero no se pudieron actualizar las patentes del chofer. Corregilas desde Choferes.");
       else setChoferes((cs) => cs.map((c) => (c.id === remito.choferId ? { ...c, chasis: remito.chasis || null, acoplado: remito.acoplado || null } : c)));
+    }
+    // El camión con que se remitió queda como el camión de la orden (para el remanente).
+    const oc = ordenCamion.current;
+    if (deOrden && oc?.id && (remito.transportistaId || remito.choferId || remito.chasis)) {
+      const cambio = (oc.transportista_id || "") !== (remito.transportistaId || "") || (oc.chofer_id || "") !== (remito.choferId || "") || patente(oc.chasis || "") !== (remito.chasis || "") || patente(oc.acoplado || "") !== (remito.acoplado || "");
+      if (cambio) {
+        const { error: errT } = await supabase.rpc("fijar_transporte_orden", { p_orden: oc.id, p_transportista: remito.transportistaId || null, p_chofer: remito.choferId || null, p_chasis: remito.chasis || null, p_acoplado: remito.acoplado || null });
+        if (!errT) ordenCamion.current = { ...oc, transportista_id: remito.transportistaId || null, chofer_id: remito.choferId || null, chasis: remito.chasis || null, acoplado: remito.acoplado || null };
+      }
     }
     if (destPorGuardar && guardarDest) {
       const { data: did } = await supabase.rpc("guardar_destinatario", { p_nombre: remito.destinatario, p_cuit: remito.cuit, p_domicilio: remito.domicilio, p_iva: remito.iva });
