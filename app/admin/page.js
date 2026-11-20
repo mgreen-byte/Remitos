@@ -64,6 +64,7 @@ function AdminInner({ profile }) {
               { key: "contacto_nombre", label: "Contacto del depósito", type: "text", placeholder: "Nombre" },
               { key: "contacto_telefono", label: "Teléfono de contacto", type: "text", placeholder: "Ej.: 3462 123456" },
               { key: "horario_atencion", label: "Horario de atención", type: "text", placeholder: "Ej.: Lunes a viernes de 8 a 17" },
+              { key: "correos_aviso", label: "Correos para avisos de órdenes", type: "text", placeholder: "deposito@... , encargado@... (separados por coma)" },
               { key: "domicilio", label: "Domicilio (para traslados)", type: "text", upper: true },
               { key: "domicilio_fiscal", label: "Dirección fiscal (encabezado del remito PDF)", type: "text", placeholder: "Calle y N° | (CP) Localidad | Provincia" },
               { key: "gps", label: "Ubicación (link de Maps, QR de traslados)", type: "text", nullable: true, placeholder: "https://maps.app.goo.gl/… (opcional)" },
@@ -152,6 +153,19 @@ function AdminInner({ profile }) {
 }
 
 function Config() {
+  const [ccAviso, setCcAviso] = useState("");
+  const [msgCc, setMsgCc] = useState("");
+  useEffect(() => {
+    supabase.from("configuracion").select("valor").eq("clave", "aviso_ordenes").maybeSingle().then(({ data }) => setCcAviso(data?.valor?.cc || ""));
+  }, []);
+  const guardarCc = async () => {
+    const lista = ccAviso.split(/[;,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    const mal = lista.find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    if (mal) return setMsgCc(`“${mal}” no parece un correo.`);
+    const { error } = await supabase.from("configuracion").upsert({ clave: "aviso_ordenes", valor: { cc: lista.join(", ") } });
+    setMsgCc(error ? error.message : "Guardado.");
+    if (!error) setCcAviso(lista.join(", "));
+  };
   const [iva, setIva] = useState(IVA_DEFAULT.join("\n"));
   const [empresas, setEmpresas] = useState(EMPRESAS_DEFAULT);
   const [msg, setMsg] = useState("");
@@ -181,6 +195,15 @@ function Config() {
   };
   return (
     <div className="space-y-4">
+    <div className="panel p-4 space-y-2 max-w-md">
+      <h2 className="paso-titulo">Avisos de órdenes por correo</h2>
+      <p className="text-[13px] text-stone-500">Copia fija (CC) de cada aviso de orden de carga a los depósitos. Los correos de cada depósito se cargan en Plantas.</p>
+      <input value={ccAviso} onChange={(e) => setCcAviso(e.target.value)} placeholder="logistica@... (varios, separados por coma)" className="w-full border border-stone-300 rounded px-3 py-2 text-sm" />
+      <div className="flex items-center gap-3">
+        <button onClick={guardarCc} className="btn-primario">Guardar</button>
+        {msgCc && <span className="text-[13px] text-stone-600">{msgCc}</span>}
+      </div>
+    </div>
     <div className="panel p-4 space-y-2 max-w-md">
       <div className="text-xs font-semibold text-stone-500 uppercase">Condiciones de IVA (una por línea)</div>
       <textarea value={iva} onChange={(e) => setIva(e.target.value)} rows={6} className="w-full border border-stone-300 rounded px-2 py-1.5 text-sm uppercase" />

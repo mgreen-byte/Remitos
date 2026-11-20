@@ -6,6 +6,8 @@ import { descargarOrdenPdf } from "@/lib/ordenPdf";
 import { useRubro } from "@/lib/rubro";
 import ConformesOrden from "@/components/ConformesOrden";
 import TransporteOrden from "@/components/TransporteOrden";
+import AvisoOrden from "@/components/AvisoOrden";
+import { firmaAviso } from "@/lib/avisoOrden";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -96,7 +98,42 @@ function OrdenesInner({ profile }) {
     setProductos(p.data || []);
     setPlantas(pl.data || []);
     cargarFaltaConf();
+    cargarAvisos();
   }, []);
+  // Último aviso por correo de cada orden y planta (para el chip "sin avisar / cambió")
+  const [avisos, setAvisos] = useState({});
+  const cargarAvisos = async () => {
+    const { data, error } = await supabase.from("orden_avisos").select("orden_id, planta_id, firma, created_at").order("created_at", { ascending: false }).limit(3000);
+    if (error) return;
+    const m = {};
+    for (const a of data || []) { const k = `${a.orden_id}|${a.planta_id}`; if (!m[k]) m[k] = a; }
+    setAvisos(m);
+  };
+  const estadoAviso = (o, ls) => {
+    if (o.estado !== "activa") return null;
+    const ids = o.modalidad === "traslado" ? [o.planta_origen_id, o.planta_destino_id].filter(Boolean) : [...new Set(ls.map((l) => l.planta_id).filter(Boolean))];
+    let r = null;
+    for (const pid of ids) {
+      const a = avisos[`${o.id}|${pid}`];
+      const f = firmaAviso(o, o.modalidad === "traslado" ? ls : ls.filter((l) => l.planta_id === pid));
+      if (!a) r = r || "sin";
+      else if (a.firma !== f) r = "cambio";
+    }
+    return r;
+  };
+  // Link desde el correo: /ordenes?oc=OC-MI-600 busca la orden y la abre
+  const ocLink = useRef(null);
+  useEffect(() => {
+    const oc = new URLSearchParams(window.location.search).get("oc");
+    if (oc) { ocLink.current = oc; setBuscar(oc); setFiltro("todas"); }
+  }, []);
+  useEffect(() => {
+    if (!ocLink.current || !ordenes.length) return;
+    const o = ordenes.find((x) => x.numero === ocLink.current);
+    ocLink.current = null;
+    if (o) { if (o.modalidad === "traslado") setVista("traslados"); abrir(o.id); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordenes]);
   // Remitos sin conforme de salida, por orden (para el aviso y para no cerrar).
   const [faltaConf, setFaltaConf] = useState({});
   const cargarFaltaConf = async () => {
@@ -885,6 +922,8 @@ function OrdenesInner({ profile }) {
                     <span className="font-semibold text-[15px]">{o.numero}</span>
                     <span className={`text-[11px] font-medium border rounded px-1.5 py-0.5 ${est.cls}`}>{est.txt}</span>
                     {badgeCarga(o, ls)}
+                    {poderAdmin && estadoAviso(o, ls) === "sin" && <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-amber-50 text-amber-800 border-amber-300">✉ sin avisar</span>}
+                    {poderAdmin && estadoAviso(o, ls) === "cambio" && <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-red-50 text-red-700 border-red-300">✉ cambió, reavisar</span>}
                     {(o.chasis || o.chofer?.nombre) && o.estado === "activa" && (
                       <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-stone-50 text-stone-700 border-stone-300" title={[o.transportista?.nombre, o.chofer?.nombre].filter(Boolean).join(" · ")}>
                         🚚 {o.chasis || o.chofer?.nombre}
@@ -915,6 +954,16 @@ function OrdenesInner({ profile }) {
                       )}
                       {o.estado === "cerrada" && (
                         <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
+                      )}
+                      {poderAdmin && o.estado !== "anulada" && (
+                        <AvisoOrden
+                          orden={o}
+                          lineas={ls}
+                          plantas={plantas}
+                          profile={profile}
+                          onCambio={cargarAvisos}
+                          descargarPdf={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt, empresa: plantas.find((p) => p.id === (o.modalidad === "traslado" ? o.planta_origen_id : ls[0]?.planta_id))?.empresa || "" })}
+                        />
                       )}
                       {o.estado !== "anulada" && <TransporteOrden orden={o} puede={["admin", "logistica", "operador"].includes(profile.rol)} onCambio={cargar} />}
                       {o.estado !== "anulada" && <ConformesOrden ordenId={o.id} lineaIds={ls.map((l) => l.id)} plantas={plantas} profile={profile} onCambio={cargarFaltaConf} />}
