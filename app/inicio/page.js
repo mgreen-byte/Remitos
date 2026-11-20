@@ -22,7 +22,7 @@ function InicioInner({ profile }) {
   const [pendExport, setPendExport] = useState(0);
   const [sinConf, setSinConf] = useState(0); // remitos sin conforme de salida
   useEffect(() => {
-    supabase.from("v_remitos_sin_conforme").select("id", { count: "exact", head: true }).then(({ count, error: e }) => !e && setSinConf(count || 0));
+    supabase.from("v_conformes_pendientes").select("clave", { count: "exact", head: true }).then(({ count, error: e }) => !e && setSinConf(count || 0));
   }, []);
   const [plantas, setPlantas] = useState([]);
   const [transito, setTransito] = useState([]);
@@ -184,7 +184,7 @@ function InicioInner({ profile }) {
             pre > 0 && { href: puedeCal ? "/calidad" : "/stock", n: pre, t: pre === 1 ? "lote en pre inspección con stock" : "lotes en pre inspección con stock", cls: "bg-amber-50 border-amber-200 text-amber-900" },
             noAp > 0 && { href: puedeCal ? "/calidad" : "/stock", n: noAp, t: noAp === 1 ? "lote no aprobado con stock" : "lotes no aprobados con stock", cls: "bg-red-50 border-red-200 text-red-800" },
             dan > 0 && { href: "/stock", n: fmtNum(dan), t: "unidades dañadas en stock", cls: "bg-orange-50 border-orange-200 text-orange-900" },
-            sinConf > 0 && { href: "/conformes", n: sinConf, t: sinConf === 1 ? "remito sin conforme de salida adjunto" : "remitos sin conforme de salida adjunto", cls: "bg-amber-50 border-amber-200 text-amber-900" },
+            sinConf > 0 && { href: "/conformes", n: sinConf, t: sinConf === 1 ? "conforme de salida pendiente (orden o remito)" : "conformes de salida pendientes (órdenes o remitos)", cls: "bg-amber-50 border-amber-200 text-amber-900" },
             pendExport > 0 && { href: "/reportes", n: pendExport, t: pendExport === 1 ? "renglón pendiente de exportar al sistema contable" : "renglones pendientes de exportar al sistema contable", cls: "bg-sky-50 border-sky-200 text-sky-900" },
           ].filter(Boolean);
           if (!tarjetas.length) return null;

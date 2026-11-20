@@ -87,7 +87,7 @@ export default function NavBar({ profile, children }) {
     q.then(({ count }) => setPendientes(count || 0));
     // Conformes de salida: el operador, los de su planta; el resto, todos los que puede ver.
     if (profile.rol !== "operador" || profile.planta?.id) {
-      let qf = supabase.from("v_remitos_sin_conforme").select("id", { count: "exact", head: true });
+      let qf = supabase.from("v_conformes_pendientes").select("clave", { count: "exact", head: true });
       if (profile.rol === "operador") qf = qf.eq("planta_id", profile.planta.id);
       qf.then(({ count, error }) => setAvisoConf(error ? 0 : count || 0));
     }

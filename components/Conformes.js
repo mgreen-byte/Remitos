@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import { subirConforme, abrirConforme, borrarConforme, puedeBorrar, puedeSubir } from "@/lib/conformes";
 import { confirmar } from "@/lib/confirmar";
 
-export default function ConformesRemito({ remito, archivos = [], profile, onCambio, compacto = false }) {
+// destino = { tipo: "orden", orden_id, planta_id } o { tipo: "remito", id, planta_id, estado }
+export default function ConformesRemito({ destino, archivos = [], profile, onCambio, compacto = false }) {
   const foto = useRef(null);
   const arch = useRef(null);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
-  const sube = puedeSubir(remito, profile);
+  const sube = puedeSubir(destino, profile);
 
   const elegir = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -18,7 +19,7 @@ export default function ConformesRemito({ remito, archivos = [], profile, onCamb
     setError("");
     setSubiendo(true);
     for (const f of files) {
-      const r = await subirConforme(remito.id, f);
+      const r = await subirConforme(destino, f);
       if (r.error) {
         setError(r.error);
         break;
@@ -32,7 +33,7 @@ export default function ConformesRemito({ remito, archivos = [], profile, onCamb
     if (r.error) setError(r.error);
   };
   const borrar = async (c) => {
-    if (!(await confirmar("¿Borrar este archivo del remito conforme?"))) return;
+    if (!(await confirmar("¿Borrar este archivo del conforme?"))) return;
     const r = await borrarConforme(c);
     if (r.error) setError(r.error);
     onCambio && onCambio();

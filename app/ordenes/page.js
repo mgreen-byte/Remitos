@@ -885,8 +885,8 @@ function OrdenesInner({ profile }) {
                     <span className={`text-[11px] font-medium border rounded px-1.5 py-0.5 ${est.cls}`}>{est.txt}</span>
                     {badgeCarga(o, ls)}
                     {faltaConf[o.id] > 0 && o.estado !== "anulada" && (
-                      <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-amber-50 text-amber-800 border-amber-300" title="Remitos de esta orden sin conforme de salida adjunto">
-                        📎 falta{faltaConf[o.id] === 1 ? "" : "n"} {faltaConf[o.id]} conforme{faltaConf[o.id] === 1 ? "" : "s"}
+                      <span className="text-[11px] font-medium border rounded px-1.5 py-0.5 bg-amber-50 text-amber-800 border-amber-300" title={`${faltaConf[o.id]} remito(s) de esta orden sin conforme de salida`}>
+                        📎 falta conforme de salida
                       </span>
                     )}
                     <span className="text-[12.5px] text-stone-500">creada {fmtFecha(o.fecha)} · {o.origen === "manual" ? "creada a mano" : "desde Excel"}{o.creado_por_nombre ? ` · ${o.creado_por_nombre}` : ""}</span>
@@ -910,7 +910,7 @@ function OrdenesInner({ profile }) {
                       {o.estado === "cerrada" && (
                         <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
                       )}
-                      {o.estado !== "anulada" && <ConformesOrden ordenId={o.id} lineaIds={ls.map((l) => l.id)} profile={profile} onCambio={cargarFaltaConf} />}
+                      {o.estado !== "anulada" && <ConformesOrden ordenId={o.id} lineaIds={ls.map((l) => l.id)} plantas={plantas} profile={profile} onCambio={cargarFaltaConf} />}
                       {o.estado === "anulada" && (
                         <div className="text-[12.5px] text-red-700 bg-red-50 border border-red-200 rounded p-2">Anulada por {o.anulada_por_nombre} el {new Date(o.anulada_at).toLocaleString("es-AR")}. Motivo: {o.motivo_anulacion}</div>
                       )}
