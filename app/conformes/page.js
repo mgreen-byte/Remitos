@@ -161,7 +161,7 @@ function ConformesInner({ profile }) {
                 {x.clientes && <div className="text-[13.5px] text-stone-800 mt-0.5">{x.clientes}</div>}
                 {x.tipo === "orden" && pendiente && x.remitos_txt && (
                   <div className="text-[12.5px] text-amber-800 mt-0.5">
-                    Falta el conforme de {x.n_remitos === 1 ? "el remito" : `${x.n_remitos} remitos`}: <span className="font-mono">{x.remitos_txt}</span>
+                    Falta el conforme {x.n_remitos === 1 ? "del remito" : `de ${x.n_remitos} remitos`}: <span className="font-mono">{x.remitos_txt}</span>
                   </div>
                 )}
                 {x.na ? (
