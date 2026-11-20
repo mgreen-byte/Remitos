@@ -15,7 +15,7 @@ import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasI
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto, matchPlanta } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
-import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, fmtDocChofer, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, fmtDocChofer, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa, esConsignacion, LEYENDA_CONSIGNACION } from "@/lib/util";
 import { calKey, calidadInfo } from "@/lib/calidad";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
@@ -305,7 +305,10 @@ function GenerarInner({ profile }) {
     if (!it.precPref || !d) return "";
     return `${it.precPref} ${d}${h && h !== d ? ` AL ${h}` : ""}`;
   };
-  const descripcionDe = (it) => {
+  // Renglón de la orden en consignación: la aclaración va en la descripción de ESE producto (no se puede borrar).
+  const conConsig = (it, d) => (it.consig && d && !d.includes(LEYENDA_CONSIGNACION) ? `${d} – ${LEYENDA_CONSIGNACION}` : d);
+  const descripcionDe = (it) => conConsig(it, descripcionBase(it));
+  const descripcionBase = (it) => {
     if (it.libre || esGen) return up(it.descripcion);
     const p = productoDe(it.productoId);
     const l = loteDe(it.loteId);
@@ -423,6 +426,7 @@ function GenerarInner({ profile }) {
           descripcion: up([nombreConPresentacion(oc.producto, oc.presentacion), oc.extra].filter(Boolean).join(" · ")),
           kgUnidad: oc.cantidad && oc.kilos ? String(Math.round((oc.kilos / oc.cantidad) * 1000) / 1000) : "",
           ordenLineaId: oc.lineaId || "",
+          consig: !!oc.consig || esConsignacion(oc.ov),
           saldo: oc.lineaId ? oc.cantidad : null,
           hint: `Sin coincidencia en el catálogo: ${hint}${oc.lineaId ? ` · saldo de la orden: ${fmtNum(oc.cantidad)}` : ""}`,
         };
@@ -437,6 +441,7 @@ function GenerarInner({ profile }) {
         cantidad: String(oc.cantidad || ""),
         extra: oc.extra || "",
         ordenLineaId: oc.lineaId || "",
+        consig: !!oc.consig || esConsignacion(oc.ov),
         saldo: oc.lineaId ? oc.cantidad : null,
         hint: oc.lineaId ? `${hint} · saldo de la orden: ${fmtNum(oc.cantidad)}` : hint,
       };
@@ -477,7 +482,7 @@ function GenerarInner({ profile }) {
       const k = `${l.orden_id}||${norm(l.cliente)}||${norm(l.domicilio)}||${norm(l.entregar_en)}`; // un remito por cliente Y por destino de entrega
       if (!m.has(k)) m.set(k, { clave: k, ordenId: l.orden_id, ordenNumero: l.orden_numero, cliente: l.cliente, cuit: l.cuit, contacto: l.contacto, telefono: l.telefono, domicilio: l.domicilio, provincia: l.provincia, entregarEn: l.entregar_en, gps: l.gps, items: [], total: 0 });
       const g = m.get(k);
-      g.items.push({ lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
+      g.items.push({ consig: esConsignacion(l.ov), lineaId: l.id, productoId: l.producto_id, producto: l.producto_texto, presentacion: l.presentacion || "", loteOc: l.lote_texto, cantidad: Number(l.saldo), kilos: l.kilos && l.cantidad ? (Number(l.kilos) / Number(l.cantidad)) * Number(l.saldo) : null, extra: "" });
       g.total += Number(l.saldo);
     }
     return [...m.values()];
@@ -1513,6 +1518,7 @@ function GenerarInner({ profile }) {
                             {Number(l.danado) > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">{fmtNum(l.danado)} dañadas</span>}
                           </span>
                         )}
+                        {it.consig && <span className="mr-2 text-[11px] font-semibold rounded bg-violet-100 text-violet-800 px-1.5 py-0.5">CONSIGNACIÓN · sale aclarado en el remito</span>}
                         {it.hint && <span className="text-amber-700 mr-2">{it.hint}</span>}
                         {it.cant > 0 && l && it.cant > Number(l.stock) - Number(l.danado || 0) && <span className="text-red-600 mr-2">Supera lo disponible del lote ({fmtNum(Number(l.stock) - Number(l.danado || 0))}).</span>}
                         {it.desc && <span>Se imprime: {it.desc}</span>}
@@ -1548,7 +1554,7 @@ function GenerarInner({ profile }) {
                           <button
                             type="button"
                             title="Para precintos no consecutivos: crea otro renglón del mismo lote (y de la misma orden)"
-                            onClick={() => setItems((a) => { const i = a.findIndex((x) => x.id === it.id); const copia = { ...itemVacio(), productoId: it.productoId, loteId: it.loteId, ordenLineaId: it.ordenLineaId, saldo: it.saldo, hint: it.hint }; return [...a.slice(0, i + 1), copia, ...a.slice(i + 1)]; })}
+                            onClick={() => setItems((a) => { const i = a.findIndex((x) => x.id === it.id); const copia = { ...itemVacio(), productoId: it.productoId, loteId: it.loteId, ordenLineaId: it.ordenLineaId, consig: it.consig, saldo: it.saldo, hint: it.hint }; return [...a.slice(0, i + 1), copia, ...a.slice(i + 1)]; })}
                             className="text-emerald-700 hover:underline"
                           >
                             Dividir renglón

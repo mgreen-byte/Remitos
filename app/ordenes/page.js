@@ -14,7 +14,7 @@ import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtNum, fmtFecha, friendlyError, PROVINCIAS, norm, up } from "@/lib/util";
+import { fmtNum, fmtFecha, friendlyError, PROVINCIAS, norm, up, esConsignacion } from "@/lib/util";
 import { parseOrdenDeCarga } from "@/lib/parseOrdenDeCarga";
 import { normalizarGps } from "@/lib/qr";
 import { armarLineas, lineasParaGuardar } from "@/lib/ordenesCarga";
@@ -792,7 +792,7 @@ function OrdenesInner({ profile }) {
                       <td className="p-2">{l.cliente}</td>
                       <td className="p-2">{l.producto_texto}</td>
                       <td className="p-2 font-mono">{l.lote_texto || "—"}</td>
-                      <td className="p-2">{l.ov || "—"}</td>
+                      <td className="p-2">{l.ov || "—"}{esConsignacion(l.ov) && <span className="block mt-0.5 w-fit text-[10.5px] font-semibold rounded bg-violet-100 text-violet-800 px-1.5 py-0.5">CONSIGNACIÓN</span>}</td>
                       <td className="p-2 text-right">{fmtNum(l.cantidad)}</td>
                       <td className="p-2">{l.producto_id ? <span className="text-emerald-700">✓</span> : <span className="text-amber-700">sin coincidencia</span>}</td>
                     </tr>
@@ -1111,7 +1111,7 @@ function OrdenesInner({ profile }) {
                             </div>
                             <div className="text-[13px] text-stone-700">
                               {l.producto_texto}{!l.producto_id && <span className="ml-1 text-[11px] text-amber-700">(sin catálogo)</span>}
-                              <span className="font-mono text-stone-500"> · {l.lote_texto || "sin lote"}</span>{l.ov ? <span className="text-stone-500"> · O/V {l.ov}</span> : null}
+                              <span className="font-mono text-stone-500"> · {l.lote_texto || "sin lote"}</span>{l.ov ? <span className="text-stone-500"> · O/V {l.ov}</span> : null}{esConsignacion(l.ov) && <span className="ml-1 text-[10.5px] font-semibold rounded bg-violet-100 text-violet-800 px-1.5 py-0.5">CONSIGNACIÓN</span>}
                             </div>
                             <div className="text-[12.5px] text-stone-500">{l.planta_nombre} · Pedido {fmtNum(l.cantidad)} · Remitido {fmtNum(l.remitido)}{(remitosDe[l.id] || []).length ? ` · ${(remitosDe[l.id] || []).join(", ")}` : ""}</div>
                             {o.estado !== "anulada" && puedeEditar(l, o) && (
@@ -1144,7 +1144,7 @@ function OrdenesInner({ profile }) {
                                   </td>
                                   <td className="p-2">{l.producto_texto}{!l.producto_id && <span className="ml-1 text-[11px] text-amber-700">(sin catálogo)</span>}</td>
                                   <td className="p-2 font-mono">{l.lote_texto || "—"}</td>
-                                  <td className="p-2">{l.ov || "—"}</td>
+                                  <td className="p-2">{l.ov || "—"}{esConsignacion(l.ov) && <span className="block mt-0.5 w-fit text-[10.5px] font-semibold rounded bg-violet-100 text-violet-800 px-1.5 py-0.5">CONSIGNACIÓN</span>}</td>
                                   <td className="p-2 text-right">{fmtNum(l.cantidad)}</td>
                                   <td className="p-2 text-right">{fmtNum(l.remitido)}</td>
                                   <td className={`p-2 text-right font-semibold ${Number(l.saldo) <= 0 ? "text-emerald-700" : ""}`}>{fmtNum(Math.max(0, l.saldo))}</td>
