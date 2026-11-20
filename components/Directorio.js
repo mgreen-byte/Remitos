@@ -3,11 +3,12 @@
 import { confirmar } from "@/lib/confirmar";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { friendlyError, up, norm, fmtCuit } from "@/lib/util";
+import { friendlyError, up, norm, fmtCuit, fmtDocChofer, esDni } from "@/lib/util";
 import ImportarExcel from "@/components/ImportarExcel";
 
 // Directorio compartido (transportes, choferes). Todos los usuarios ven, agregan y editan;
-// solo el admin borra. columns: [{key, label, upper, digits, format, span, placeholder, required}]
+// solo el admin borra. columns: [{key, label, upper, digits, format, span, placeholder, required, dniAlternativo}]
+// dniAlternativo: CUIL de 11 dígitos o, como último recurso ("Solo tengo el DNI"), DNI de 7 u 8 dígitos.
 export default function Directorio({ table, titulo, singular, ayuda, columns, profile, vacioTexto, claveUnica }) {
   const esAdmin = profile?.rol === "admin";
   const soloLectura = profile?.rol === "consulta";
@@ -18,6 +19,10 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [importando, setImportando] = useState(false);
+  const [soloConDni, setSoloConDni] = useState(false);
+  const colDni = columns.find((c) => c.dniAlternativo);
+  const conDni = colDni ? rows.filter((r) => esDni(r[colDni.key])).length : 0;
+  const maxDig = (c) => (c.dniAlternativo && form?.soloDni ? 8 : c.digits);
 
   const cargar = async () => {
     // Supabase devuelve como máximo 1000 filas por consulta: se piden de a tandas.
@@ -41,9 +46,10 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
 
   const visibles = useMemo(() => {
     const n = norm(q);
-    if (!n) return rows;
-    return rows.filter((r) => columns.some((c) => norm(r[c.key]).includes(n) || String(r[c.key] ?? "").replace(/\D/g, "").includes(n.replace(/\D/g, "") || "§")));
-  }, [rows, q, columns]);
+    const base = soloConDni && colDni ? rows.filter((r) => esDni(r[colDni.key])) : rows;
+    if (!n) return base;
+    return base.filter((r) => columns.some((c) => norm(r[c.key]).includes(n) || String(r[c.key] ?? "").replace(/\D/g, "").includes(n.replace(/\D/g, "") || "§")));
+  }, [rows, q, columns, soloConDni, colDni]);
 
   const vacio = () => Object.fromEntries(columns.map((c) => [c.key, ""]));
 
@@ -56,18 +62,32 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
       if (c.upper) v = up(v);
       if (c.compact) v = v.replace(/[\s.\-]/g, "");
       if (c.digits) v = v.replace(/\D/g, "");
-      if (c.required && !v) return setError(`Completá: ${c.label}.`);
-      if (c.digits && c.exact && v && v.length !== c.digits) return setError(`${c.label}: tienen que ser ${c.digits} dígitos, sin guiones.`);
+      if (c.required && !v) return setError(`Completá: ${c.dniAlternativo && form.soloDni ? "DNI" : c.label}.`);
+      if (c.dniAlternativo && form.soloDni) {
+        if (!/^\d{7,8}$/.test(v)) return setError("DNI: tienen que ser 7 u 8 dígitos, sin puntos.");
+        payload[c.key] = v;
+        continue;
+      }
+      if (c.digits && c.exact && v && v.length !== c.digits) return setError(`${c.label}: tienen que ser ${c.digits} dígitos, sin guiones.${c.dniAlternativo ? " Si no tienen el CUIL, marcá “Solo tengo el DNI”." : ""}`);
       if (c.digits && c.exact && c.required && v.length !== c.digits) return setError(`${c.label}: tienen que ser ${c.digits} dígitos, sin guiones.`);
       payload[c.key] = v === "" ? null : v;
     }
     // CUIL / CUIT repetido: se compara solo por dígitos y se dice a quién está asignado.
     if (claveUnica && payload[claveUnica]) {
       const dig = String(payload[claveUnica]).replace(/\D/g, "");
-      const otro = rows.find((r) => r.id !== form.id && String(r[claveUnica] ?? "").replace(/\D/g, "") === dig);
+      // Mismo número, o misma persona: un DNI contenido en un CUIL (y al revés)
+      const dniDe = (x) => { const d = String(x ?? "").replace(/\D/g, ""); return d.length === 11 ? d.slice(2, 10) : d.length >= 7 && d.length <= 8 ? d.padStart(8, "0") : null; };
+      const otro = rows.find((r) => {
+        if (r.id === form.id) return false;
+        const d = String(r[claveUnica] ?? "").replace(/\D/g, "");
+        return d === dig || (colDni && d.length !== dig.length && dniDe(d) && dniDe(d) === dniDe(dig));
+      });
       if (otro) {
         const col = columns.find((c) => c.key === claveUnica);
-        return setError(`${col?.label || "El dato"} ${fmtCuit(dig)} ya está cargado a nombre de ${otro.nombre}${otro.chasis ? ` (chasis ${otro.chasis})` : ""}. No se puede cargar de nuevo: buscalo en la lista y editalo si hace falta.`);
+        const doc = colDni ? fmtDocChofer(otro[claveUnica]) : `${col?.label || "El dato"} ${fmtCuit(dig)}`;
+        return setError(colDni
+          ? `Esa persona ya está cargada (${doc}) a nombre de ${otro.nombre}${otro.chasis ? `, chasis ${otro.chasis}` : ""}. Buscala en la lista y editala si hace falta.`
+          : `${doc} ya está cargado a nombre de ${otro.nombre}${otro.chasis ? ` (chasis ${otro.chasis})` : ""}. No se puede cargar de nuevo: buscalo en la lista y editalo si hace falta.`);
       }
     }
     const req = form.id ? supabase.from(table).update(payload).eq("id", form.id) : supabase.from(table).insert(payload);
@@ -93,19 +113,35 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
         let v = e.target.value;
         if (c.upper) v = up(v);
         if (c.compact) v = v.replace(/[\s.\-]/g, "");
-        if (c.digits) v = v.replace(/\D/g, "").slice(0, c.digits);
+        if (c.digits) v = v.replace(/\D/g, "").slice(0, maxDig(c));
         setForm((f) => ({ ...f, data: { ...f.data, [c.key]: v } }));
       }}
       onKeyDown={(e) => { if (e.key === "Enter") guardar(); if (e.key === "Escape") { setForm(null); setError(""); } }}
-      placeholder={c.placeholder}
+      placeholder={c.dniAlternativo && form.soloDni ? "DNI, 7 u 8 dígitos" : c.placeholder}
       inputMode={c.digits ? "numeric" : undefined}
       className={`w-full px-2.5 py-1.5 text-[13.5px] ${extra}`}
     />
   );
+  // Casilla "Solo tengo el DNI" (último recurso, cuando no tienen el CUIL)
+  const casillaDni = (c) =>
+    c.dniAlternativo && (
+      <label className="mt-1 flex items-center gap-1.5 text-[12px] text-stone-500 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={!!form.soloDni}
+          onChange={(e) => {
+            const si = e.target.checked;
+            setForm((f) => ({ ...f, soloDni: si, data: { ...f.data, [c.key]: String(f.data[c.key] ?? "").replace(/\D/g, "").slice(0, si ? 8 : c.digits) } }));
+          }}
+        />
+        Solo tengo el DNI
+      </label>
+    );
 
   const mostrar = (c, r) => {
     const v = r[c.key];
     if (v === null || v === undefined || v === "") return <span className="text-stone-300">—</span>;
+    if (c.dniAlternativo && esDni(v)) return <span>{fmtDocChofer(v)} <span className="ml-1 text-[11px] rounded bg-amber-100 text-amber-800 px-1.5 py-0.5">sin CUIL</span></span>;
     return c.format === "cuit" ? fmtCuit(v) : v;
   };
 
@@ -164,13 +200,15 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
                     let v = e.target.value;
                     if (c.upper) v = up(v);
                     if (c.compact) v = v.replace(/[\s.\-]/g, "");
-                    if (c.digits) v = v.replace(/\D/g, "").slice(0, c.digits);
+                    if (c.digits) v = v.replace(/\D/g, "").slice(0, maxDig(c));
                     setForm((f) => ({ ...f, data: { ...f.data, [c.key]: v } }));
                   }}
-                  placeholder={c.placeholder}
+                  placeholder={c.dniAlternativo && form.soloDni ? "DNI, 7 u 8 dígitos" : c.placeholder}
                   inputMode={c.digits ? "numeric" : undefined}
                   className="w-full px-3 py-2 text-[14px]"
                 />
+                {casillaDni(c)}
+                {c.dniAlternativo && form.soloDni && <div className="mt-1 text-[11.5px] text-amber-700">Usalo solo si no hay forma de conseguir el CUIL. En el remito sale “DNI”.</div>}
               </div>
             ))}
           </div>
@@ -187,7 +225,12 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
       <section className="panel">
         <div className="p-4 flex items-center justify-between gap-3 flex-wrap border-b border-stone-200">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, CUIT/CUIL o patente…" className="px-3 py-2 text-[14px] w-full sm:w-80" />
-          <span className="text-[12.5px] text-stone-400">
+          {colDni && (conDni > 0 || soloConDni) && (
+            <button onClick={() => setSoloConDni((x) => !x)} className={`text-[12.5px] px-3 py-1.5 rounded-md border ${soloConDni ? "bg-amber-600 border-amber-600 text-white" : "bg-white border-amber-300 text-amber-800 hover:bg-amber-50"}`}>
+              Con DNI, sin CUIL ({conDni})
+            </button>
+          )}
+          <span className="text-[12.5px] text-stone-400 sm:ml-auto">
             {visibles.length} {visibles.length === 1 ? "registro" : "registros"}
           </span>
         </div>
@@ -218,7 +261,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
               {visibles.map((r) => form?.id === r.id ? (
                 <tr key={r.id} className="border-t border-stone-100 bg-amber-50/70">
                   {columns.map((c, i) => (
-                    <td key={c.key} className="px-2 py-2 align-top">{campo(c, i === 0 ? "font-medium" : "")}</td>
+                    <td key={c.key} className="px-2 py-2 align-top">{campo(c, i === 0 ? "font-medium" : "")}{casillaDni(c)}</td>
                   ))}
                   <td className="px-4 py-2 text-[12.5px] text-stone-400 align-top">{r.creado_por_nombre || "—"}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap align-top">
@@ -237,7 +280,7 @@ export default function Directorio({ table, titulo, singular, ayuda, columns, pr
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {!soloLectura && (
-                      <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
+                      <button onClick={() => { setError(""); setAviso(""); setForm({ id: r.id, soloDni: !!colDni && esDni(r[colDni.key]), data: { ...vacio(), ...Object.fromEntries(columns.map((c) => [c.key, r[c.key] ?? ""])) } }); }} className="text-emerald-700 hover:underline text-[13px] mr-3">
                         Editar
                       </button>
                     )}

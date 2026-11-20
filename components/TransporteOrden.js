@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import BuscadorSelect from "@/components/BuscadorSelect";
-import { friendlyError } from "@/lib/util";
+import { friendlyError, fmtDocChofer } from "@/lib/util";
 
 let cache = null; // transportistas y choferes (una sola vez por visita)
 export const listasTransporte = () => {
@@ -61,7 +61,7 @@ export default function TransporteOrden({ orden, puede, onCambio }) {
           {hay ? (
             <div className="flex flex-wrap gap-x-5 gap-y-1">
               <span><span className="text-stone-500">Transporte:</span> <b>{orden.transportista?.nombre || "—"}</b></span>
-              <span><span className="text-stone-500">Chofer:</span> <b>{orden.chofer?.nombre || "—"}</b>{orden.chofer?.dni ? <span className="text-stone-500"> · CUIL {orden.chofer.dni}</span> : null}</span>
+              <span><span className="text-stone-500">Chofer:</span> <b>{orden.chofer?.nombre || "—"}</b>{orden.chofer?.dni ? <span className="text-stone-500"> · {fmtDocChofer(orden.chofer.dni)}</span> : null}</span>
               <span><span className="text-stone-500">Chasis / Acoplado:</span> <b className="font-mono">{orden.chasis || "—"} / {orden.acoplado || "—"}</b></span>
             </div>
           ) : (

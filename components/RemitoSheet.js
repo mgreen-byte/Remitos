@@ -4,7 +4,7 @@ import Field from "@/components/Field";
 import GuiaFormulario from "@/components/GuiaFormulario";
 import { FIELD_COORDS, FUENTE_REMITO } from "@/lib/fieldCoords";
 import { QR_COORDS, QR_LEYENDA, normalizarGps, qrPath } from "@/lib/qr";
-import { fmtNum } from "@/lib/util";
+import { fmtNum, docChoferRemito } from "@/lib/util";
 
 // CUIT / CUIL / DNI se imprimen solo con números, sin guiones ni puntos.
 const soloDigitos = (v) => String(v ?? "").replace(/\D/g, "");
@@ -52,7 +52,7 @@ export default function RemitoSheet({ d, calibracion, visible = true, guia = fal
       {F("chasis", d.chasis)}
       {F("acoplado", d.acoplado)}
       {F("chofer", d.chofer)}
-      {F("choferDni", soloDigitos(d.choferDni))}
+      {F("choferDni", docChoferRemito(d.choferDni))}
       {conUnidad && rotulo("UNIDAD", FIELD_COORDS.colDescLeft, unW, "left")}
       {conKg && rotulo("KGS", FIELD_COORDS.colDescLeft + FIELD_COORDS.colDescWidth - FIELD_COORDS.colKgWidth, FIELD_COORDS.colKgWidth, "right")}
       {items.map((it, idx) => {

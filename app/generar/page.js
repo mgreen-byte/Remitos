@@ -15,7 +15,7 @@ import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasI
 import { supabase } from "@/lib/supabaseClient";
 import { parseOrdenDeCarga, matchProducto, matchPlanta } from "@/lib/parseOrdenDeCarga";
 import { IVA_DEFAULT, CALIBRACION_DEFAULT, MODALIDADES, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA, uid } from "@/lib/fieldCoords";
-import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
+import { nombreConPresentacion, norm, up, fmtNum, fmtFecha, hoyISO, friendlyError, fmtCuit, fmtDocChofer, PROVINCIAS, esBuenosAires, observacionesImpresas, ordenCargaImpresa } from "@/lib/util";
 import { calKey, calidadInfo } from "@/lib/calidad";
 
 const patente = (v) => up(v).replace(/[\s.\-]/g, "");
@@ -615,13 +615,16 @@ function GenerarInner({ profile }) {
     setErrorChofer("");
     if (!nuevoChofer?.nombre?.trim()) return setErrorChofer("Completá el nombre.");
     const dni = (nuevoChofer.dni || "").replace(/\D/g, "");
-    if (dni.length !== 11) return setErrorChofer("El CUIL tiene que tener 11 dígitos numéricos.");
-    // CUIL ya cargado (con o sin guiones): no se crea otro, se usa el existente y se avisa a quién pertenece.
-    const yaEsta = choferes.find((c) => String(c.dni || "").replace(/\D/g, "") === dni);
+    if (nuevoChofer.soloDni) {
+      if (dni.length < 7 || dni.length > 8) return setErrorChofer("El DNI tiene que tener 7 u 8 dígitos, sin puntos.");
+    } else if (dni.length !== 11) return setErrorChofer("El CUIL tiene que tener 11 dígitos numéricos. Si no lo tienen, marcá “Solo tengo el DNI”.");
+    // Ya cargado (mismo número, o el DNI contenido en un CUIL): no se crea otro, se usa el existente y se avisa.
+    const dniDe = (x) => { const d = String(x ?? "").replace(/\D/g, ""); return d.length === 11 ? d.slice(2, 10) : d.length >= 7 && d.length <= 8 ? d.padStart(8, "0") : null; };
+    const yaEsta = choferes.find((c) => { const d = String(c.dni || "").replace(/\D/g, ""); return d === dni || (d.length !== dni.length && dniDe(d) && dniDe(d) === dniDe(dni)); });
     if (yaEsta) {
       setNuevoChofer(null);
       applyChofer(yaEsta.id);
-      return setErrorChofer(`El CUIL ${fmtCuit(dni)} ya está cargado a nombre de ${yaEsta.nombre}: lo seleccioné de la lista. Si el nombre no es correcto, avisale al administrador.`);
+      return setErrorChofer(`Esa persona ya está cargada (${fmtDocChofer(yaEsta.dni)}) a nombre de ${yaEsta.nombre}: la seleccioné de la lista. Si el nombre no es correcto, avisale al administrador.`);
     }
     const { data, error } = await supabase
       .from("choferes")
@@ -1289,11 +1292,15 @@ function GenerarInner({ profile }) {
                     <input value={nuevoChofer.nombre} onChange={(e) => setNuevoChofer((n) => ({ ...n, nombre: e.target.value }))} placeholder="Nombre y apellido" className={`${inp} uppercase`} />
                     <input
                       value={nuevoChofer.dni}
-                      onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
-                      placeholder="CUIL (11 dígitos)"
+                      onChange={(e) => setNuevoChofer((n) => ({ ...n, dni: e.target.value.replace(/\D/g, "").slice(0, n.soloDni ? 8 : 11) }))}
+                      placeholder={nuevoChofer.soloDni ? "DNI (7 u 8 dígitos)" : "CUIL (11 dígitos)"}
                       inputMode="numeric"
                       className={inp}
                     />
+                    <label className="flex items-center gap-1.5 text-[12px] text-stone-600 cursor-pointer">
+                      <input type="checkbox" checked={!!nuevoChofer.soloDni} onChange={(e) => setNuevoChofer((n) => ({ ...n, soloDni: e.target.checked, dni: String(n.dni || "").slice(0, e.target.checked ? 8 : 11) }))} />
+                      Solo tengo el DNI (último recurso)
+                    </label>
                     <div className="grid grid-cols-2 gap-2">
                       <input value={nuevoChofer.chasis} onChange={(e) => setNuevoChofer((n) => ({ ...n, chasis: e.target.value }))} placeholder="Patente chasis" className={`${inp} uppercase`} />
                       <input value={nuevoChofer.acoplado} onChange={(e) => setNuevoChofer((n) => ({ ...n, acoplado: e.target.value }))} placeholder="Patente acoplado" className={`${inp} uppercase`} />
