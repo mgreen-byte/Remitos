@@ -7,7 +7,7 @@ import { useRubro } from "@/lib/rubro";
 import ConformesOrden from "@/components/ConformesOrden";
 import TransporteOrden from "@/components/TransporteOrden";
 import AvisoOrden from "@/components/AvisoOrden";
-import { firmaAviso } from "@/lib/avisoOrden";
+import { mismoAviso } from "@/lib/avisoOrden";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -115,9 +115,8 @@ function OrdenesInner({ profile }) {
     let r = null;
     for (const pid of ids) {
       const a = avisos[`${o.id}|${pid}`];
-      const f = firmaAviso(o, o.modalidad === "traslado" ? ls : ls.filter((l) => l.planta_id === pid));
       if (!a) r = r || "sin";
-      else if (a.firma !== f) r = "cambio";
+      else if (!mismoAviso(a.firma, o, o.modalidad === "traslado" ? ls : ls.filter((l) => l.planta_id === pid))) r = "cambio";
     }
     return r;
   };
@@ -303,6 +302,10 @@ function OrdenesInner({ profile }) {
     if (!error && prev.fechaCarga) {
       const r2 = await supabase.rpc("fijar_fecha_carga_excel", { p_numero: up(prev.numero).trim(), p_fecha: prev.fechaCarga });
       if (r2.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar la fecha de carga: " + friendlyError(r2.error) });
+    }
+    if (!error && String(prev.obs || "").trim()) {
+      const r5 = await supabase.rpc("fijar_observaciones_orden", { p_orden: null, p_numero: up(prev.numero).trim(), p_texto: prev.obs });
+      if (r5.error) setMsg({ tipo: "error", texto: "La orden se guardó, pero no pude guardar las observaciones: " + friendlyError(r5.error) });
     }
     if (!error && prev.palletsAprox != null) {
       const r4 = await supabase.rpc("fijar_pallets_excel", { p_numero: up(prev.numero).trim(), p_pallets: prev.palletsAprox });
@@ -749,6 +752,10 @@ function OrdenesInner({ profile }) {
                 <label className={lab}>Fecha prevista de carga</label>
                 <input type="date" value={prev.fechaCarga || ""} onChange={(e) => setPrev({ ...prev, fechaCarga: e.target.value })} className={inp} />
               </div>
+              <div className="basis-full">
+                <label className={lab}>Observaciones para el depósito (van en el correo de aviso; no salen en el remito)</label>
+                <textarea value={prev.obs || ""} onChange={(e) => setPrev({ ...prev, obs: e.target.value })} rows={2} placeholder="Ej.: retira el cliente con camión propio, chofer Juan Pérez · llamar antes de cargar" className={`${inp} w-full max-w-3xl`} />
+              </div>
               <div className="text-[13px] text-stone-600">
                 Archivo: <b>{prev.archivo}</b> · {efectivas.length} línea(s) · se cargan <b>{aCargar.length}</b>
                 {!poderAdmin && efectivas.some(deOtraPlanta) && ` · ${efectivas.filter(deOtraPlanta).length} de otras plantas se ignoran`}
@@ -954,6 +961,9 @@ function OrdenesInner({ profile }) {
                       )}
                       {o.estado === "cerrada" && (
                         <div className="text-[12.5px] text-stone-700 bg-stone-100 border border-stone-300 rounded p-2">Cerrada por {o.cerrada_por_nombre} el {o.cerrada_at ? new Date(o.cerrada_at).toLocaleString("es-AR") : ""}.{o.motivo_cierre ? ` Motivo: ${o.motivo_cierre}.` : ""} No cuenta como comprometido ni se ofrece al remitir.</div>
+                      )}
+                      {(o.observaciones_deposito || (poderAdmin && o.estado === "activa")) && (
+                        <ObsDeposito orden={o} puede={poderAdmin && o.estado === "activa"} onCambio={cargar} />
                       )}
                       {poderAdmin && o.estado !== "anulada" && (
                         <AvisoOrden
@@ -1322,5 +1332,37 @@ function OrdenesInner({ profile }) {
         )}
       </div>
     </NavBar>
+  );
+}
+
+// Observaciones para el depósito (las ve la planta en la orden y van en el correo de aviso; no en el remito)
+function ObsDeposito({ orden, puede, onCambio }) {
+  const [edit, setEdit] = useState(null);
+  const [err, setErr] = useState("");
+  const guardar = async () => {
+    const { error } = await supabase.rpc("fijar_observaciones_orden", { p_orden: orden.id, p_numero: null, p_texto: edit });
+    if (error) return setErr(friendlyError(error));
+    setEdit(null);
+    onCambio && onCambio();
+  };
+  return (
+    <div className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-sky-900">📝 Observaciones para el depósito</span>
+        {puede && edit === null && <button onClick={() => { setErr(""); setEdit(orden.observaciones_deposito || ""); }} className="ml-auto text-[12px] px-2 py-0.5 rounded border border-sky-300 bg-white text-sky-800">{orden.observaciones_deposito ? "Editar" : "Agregar"}</button>}
+      </div>
+      {edit === null ? (
+        <div className="mt-1 whitespace-pre-wrap text-stone-800">{orden.observaciones_deposito || <span className="text-stone-400">Sin observaciones.</span>}</div>
+      ) : (
+        <div className="mt-1.5 space-y-1.5">
+          <textarea value={edit} onChange={(e) => setEdit(e.target.value)} rows={2} className="w-full border border-stone-300 rounded px-2 py-1.5 text-[13px]" placeholder="Ej.: retira el cliente con camión propio" />
+          {err && <div className="text-[12px] text-red-700">{err}</div>}
+          <div className="flex gap-2">
+            <button onClick={guardar} className="btn-primario text-[12.5px]">Guardar</button>
+            <button onClick={() => setEdit(null)} className="text-[12.5px] text-stone-500">Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

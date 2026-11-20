@@ -2,7 +2,7 @@
 // Dentro de la orden: aviso por correo a cada depósito (Outlook), con estado "sin avisar / cambió / avisado".
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { armarAviso, urlOutlookApp, urlOutlookWeb, MAILTO_MAX } from "@/lib/avisoOrden";
+import { armarAviso, mismoAviso, urlOutlookApp, urlOutlookWeb, MAILTO_MAX } from "@/lib/avisoOrden";
 import { friendlyError } from "@/lib/util";
 
 let ccCache = null;
@@ -33,7 +33,7 @@ export default function AvisoOrden({ orden, lineas, plantas, profile, onCambio, 
     const ls = esT ? lineas : lineas.filter((l) => l.planta_id === pid);
     const ultimo = avisos.find((a) => a.planta_id === pid) || null;
     const m = armarAviso({ orden, lineas: ls, planta, cc, url, usuario: profile.nombre, anterior: ultimo });
-    const estado = !ultimo ? "sin" : ultimo.firma === m.firma ? "ok" : "cambio";
+    const estado = !ultimo ? "sin" : mismoAviso(ultimo.firma, orden, ls) ? "ok" : "cambio";
     return { planta, m, ultimo, estado };
   };
 
