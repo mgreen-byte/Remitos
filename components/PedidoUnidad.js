@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError } from "@/lib/util";
-import { coordsDe, kmTramos, kmRecta, linkRecorrido, urlMaps } from "@/lib/rutas";
-import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta } from "@/lib/pedidoUnidad";
+import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
+import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta, ordenarRecorrido, faltaCargar } from "@/lib/pedidoUnidad";
 
 const EMPRESA_NOMBRE = { ms: "MS Technologies", stine: "Stine Seed" };
 const fmt = (n) => Number(n || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -42,52 +42,55 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsDep, Object.keys(frescas).length, paradas.length]);
 
-  // Orden de los depósitos: automático (el más lejano a la primera descarga primero) o el que elija el usuario.
-  const [ordenManual, setOrdenManual] = useState(null);
-  const ordenAuto = useMemo(() => {
-    const ids = base.depositos.map((d) => d.planta_id);
-    const destino = cd?.par.find(Boolean);
-    if (!cd || !destino) return ids;
-    return [...ids].sort((a, b) => (cd.dep[b] ? kmRecta(cd.dep[b], destino) : -1) - (cd.dep[a] ? kmRecta(cd.dep[a], destino) : -1));
-  }, [cd, idsDep]);
-  const ordenDep = ordenManual || ordenAuto;
-  const depositos = ordenDep.map((id) => ({ ...base.depositos.find((d) => d.planta_id === id), planta: plantaDe(id) }));
+  // Recorrido: cargas y descargas intercaladas. Automático (respeta el orden de descarga de la orden y
+  // carga cada depósito antes de la primera descarga que lo necesita, con la menor distancia) o a mano (↑↓).
+  const [manual, setManual] = useState(null);
+  const auto = useMemo(() => ordenarRecorrido(base.depositos, paradas, cd), [cd, idsDep, paradas]);
+  const claves = manual || auto;
+  const depDe = (id) => ({ ...base.depositos.find((d) => d.planta_id === id), planta: plantaDe(id) });
+  const faltas = faltaCargar(claves, paradas);
   const mover = (i, delta) => {
-    const o = [...ordenDep];
+    const o = [...claves];
     const j = i + delta;
     if (j < 0 || j >= o.length) return;
     [o[i], o[j]] = [o[j], o[i]];
-    setOrdenManual(o);
+    setManual(o);
   };
+  const ptDe = (k) => (k[0] === "d" ? cd?.dep?.[k.slice(2)] : cd?.par?.[Number(k.slice(2))]);
 
-  // Km: depósitos (en orden) → paradas (en orden de descarga). Puntos sin ubicación no entran.
-  const [km, setKm] = useState({ dep: [], par: [], total: null, estimado: false, faltan: 0, cargando: true });
+  // Km de cada tramo del recorrido. Puntos sin ubicación no entran.
+  const [km, setKm] = useState({ tramo: [], total: null, estimado: false, faltan: 0, cargando: true });
   const [recorrido, setRecorrido] = useState("");
-  const firmaRuta = ordenDep.join(",") + "|" + (cd ? "ok" : "");
+  const firmaRuta = claves.join(",") + "|" + (cd ? "ok" : "");
   useEffect(() => {
     if (!cd) return;
     let vivo = true;
     (async () => {
       const pts = []; const ref = [];
-      ordenDep.forEach((id, i) => { if (cd.dep[id]) { pts.push(cd.dep[id]); ref.push(["dep", i]); } });
-      cd.par.forEach((c, i) => { if (c) { pts.push(c); ref.push(["par", i]); } });
-      const faltan = ordenDep.filter((id) => !cd.dep[id]).length + cd.par.filter((c) => !c).length;
-      if (pts.length < 2) { if (vivo) { setKm({ dep: [], par: [], total: null, estimado: false, faltan, cargando: false }); setRecorrido(""); } return; }
+      claves.forEach((k, i) => { const c = ptDe(k); if (c) { pts.push(c); ref.push(i); } });
+      const faltan = claves.length - pts.length;
+      if (pts.length < 2) { if (vivo) { setKm({ tramo: [], total: null, estimado: false, faltan, cargando: false }); setRecorrido(""); } return; }
       const r = await kmTramos(pts);
       if (!vivo) return;
-      const dep = ordenDep.map(() => null), par = cd.par.map(() => null);
-      ref.forEach(([t, i], k) => { if (k > 0) (t === "dep" ? dep : par)[i] = r.tramos[k - 1]; });
-      setKm({ dep, par, total: r.tramos.reduce((a, b) => a + b, 0), estimado: r.estimado, faltan, cargando: false });
+      const tramo = claves.map(() => null);
+      ref.forEach((i, k) => { if (k > 0) tramo[i] = r.tramos[k - 1]; });
+      setKm({ tramo, total: r.tramos.reduce((a, b) => a + b, 0), estimado: r.estimado, faltan, cargando: false });
       setRecorrido(linkRecorrido(pts));
     })();
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firmaRuta]);
 
+  // Para qué clientes es cada carga (se muestra si hay más de un depósito)
+  const paraDe = (id) => [...new Set(paradas.flatMap((pa) => pa.clientes.filter((c) => c.items.some((it) => it.planta_id === id)).map((c) => c.cliente)))];
+  const pasos = claves.map((k, i) => (k[0] === "d"
+    ? { tipo: "carga", clave: k, dep: depDe(k.slice(2)), km: km.tramo[i], para: paraDe(k.slice(2)) }
+    : { tipo: "descarga", clave: k, pa: paradas[Number(k.slice(2))], km: km.tramo[i] }));
+  const depositos = base.depositos.map((d) => depDe(d.planta_id));
   const totU = paradas.reduce((a, p) => a + p.unidades, 0);
   const totKg = paradas.reduce((a, p) => a + p.kg, 0);
-  const empresa = plantaDe(ordenDep[0])?.empresa;
-  const datos = { orden, depositos, paradas, km, recorrido, tipoUnidad: tipo, obs, totU, totKg, empresa, empresaNombre: EMPRESA_NOMBRE[empresa] };
+  const empresa = plantaDe(claves.find((k) => k[0] === "d")?.slice(2))?.empresa;
+  const datos = { orden, depositos, paradas, pasos, km, recorrido, tipoUnidad: tipo, obs, totU, totKg, empresa, empresaNombre: EMPRESA_NOMBRE[empresa] };
 
   const guardarTipo = async (v) => {
     setTipo(v);
@@ -135,74 +138,75 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
 
       <div>
         <div className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold mb-1">
-          {depositos.length > 1 ? "Depósitos de carga, en este orden" : "Depósito de carga"}
-          {depositos.length > 1 && <span className="normal-case font-normal"> · {ordenManual ? "orden elegido a mano" : "orden automático: el más lejano a la descarga primero"}</span>}
-          {ordenManual && <button onClick={() => setOrdenManual(null)} className="ml-2 normal-case font-normal text-sky-700 underline">volver al automático</button>}
+          Recorrido, en este orden
+          <span className="normal-case font-normal"> · {manual ? "orden elegido a mano" : depositos.length > 1 ? "automático: cada depósito se carga antes de la primera descarga que lo necesita, por el camino más corto" : "automático"}</span>
+          {manual && <button onClick={() => setManual(null)} className="ml-2 normal-case font-normal text-sky-700 underline">volver al automático</button>}
         </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {depositos.map((d, i) => {
-            const pl = d.planta || {};
-            return (
-              <div key={d.planta_id} className="rounded border border-stone-200 bg-white p-3 text-[13px] space-y-0.5">
-                <div className="flex items-start gap-2">
-                  <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-700 text-white text-[11px] font-semibold">{i + 1}</span>
-                  <div className="font-medium flex-1">{pl.nombre || d.nombre}</div>
-                  {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(km.dep[i])}</span>}
-                  {depositos.length > 1 && (
-                    <span className="flex gap-1">
-                      <button disabled={i === 0} onClick={() => mover(i, -1)} title="Cargar antes" className="px-1.5 rounded border border-stone-300 disabled:opacity-30">↑</button>
-                      <button disabled={i === depositos.length - 1} onClick={() => mover(i, 1)} title="Cargar después" className="px-1.5 rounded border border-stone-300 disabled:opacity-30">↓</button>
-                    </span>
-                  )}
+        <div className="space-y-2">
+          {pasos.map((x, i) => {
+            const flechas = (
+              <span className="flex gap-1">
+                <button disabled={i === 0} onClick={() => mover(i, -1)} title="Antes" className="px-1.5 rounded border border-stone-300 bg-white disabled:opacity-30">↑</button>
+                <button disabled={i === pasos.length - 1} onClick={() => mover(i, 1)} title="Después" className="px-1.5 rounded border border-stone-300 bg-white disabled:opacity-30">↓</button>
+              </span>
+            );
+            if (x.tipo === "carga") {
+              const pl = x.dep.planta || {};
+              return (
+                <div key={x.clave} className="rounded border border-sky-200 bg-sky-50/60 p-3 text-[13px] space-y-0.5">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-700 text-white text-[11px] font-semibold">{i + 1}</span>
+                    <div className="font-medium flex-1"><span className="text-sky-800">CARGA</span> · {pl.nombre || x.dep.nombre}</div>
+                    {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(x.km)}</span>}
+                    {pasos.length > 2 && flechas}
+                  </div>
+                  <div className="text-stone-600">{domPlanta(pl) || "Sin domicilio"}</div>
+                  {pl.gps ? <a href={urlMaps(pl.gps)} target="_blank" rel="noreferrer" className="text-sky-700 underline">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
+                  <div>Contacto: {[pl.contacto_nombre, pl.contacto_telefono].filter(Boolean).join(" · ") || <span className="text-amber-700">sin cargar</span>} · Horario: {pl.horario_atencion || <span className="text-amber-700">sin cargar</span>}</div>
+                  <div className="font-medium">Se carga: {fmt(x.dep.unidades)} u. · {fmt(x.dep.kg)} kg{depositos.length > 1 && x.para.length ? <span className="font-normal text-stone-500"> · para {x.para.join(", ")}</span> : null}</div>
                 </div>
-                <div className="text-stone-600">{domPlanta(pl) || "Sin domicilio"}</div>
-                {pl.gps ? <a href={urlMaps(pl.gps)} target="_blank" rel="noreferrer" className="text-sky-700 underline">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
-                <div>Contacto: {[pl.contacto_nombre, pl.contacto_telefono].filter(Boolean).join(" · ") || <span className="text-amber-700">sin cargar</span>} · Horario: {pl.horario_atencion || <span className="text-amber-700">sin cargar</span>}</div>
-                <div className="font-medium">Se carga: {fmt(d.unidades)} u. · {fmt(d.kg)} kg</div>
+              );
+            }
+            const pa = x.pa;
+            const falta = faltas[x.clave];
+            return (
+              <div key={x.clave} className={`rounded border bg-white text-[13px] ${falta ? "border-red-300" : "border-stone-200"}`}>
+                <div className="p-3 flex items-start gap-2">
+                  <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold">{i + 1}</span>
+                  <div className="flex-1">
+                    <div className="font-medium"><span className="text-emerald-800">DESCARGA</span> · {[pa.localidad, pa.provincia].filter(Boolean).join(", ") || pa.domicilio}</div>
+                    <div className="text-stone-500 text-[12px]">{pa.domicilio}</div>
+                    {pa.contactos.length ? <div className="text-[12px]">Contacto: {pa.contactos.join(" / ")}</div> : <div className="text-[12px] text-amber-700">sin contacto</div>}
+                    {!pa.gps && <div className="text-[12px] text-red-700">sin ubicación</div>}
+                    {falta && <div className="text-[12px] text-red-700 font-medium">Antes hay que cargar en {falta.map((id) => depDe(id).planta?.nombre || "otro depósito").join(" y ")}.</div>}
+                  </div>
+                  {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(x.km)}</span>}
+                  {pasos.length > 2 && flechas}
+                </div>
+                <div className="overflow-x-auto border-t border-stone-100">
+                  <table className="w-full text-[12.5px]">
+                    <thead className="bg-stone-50 text-[11.5px] text-stone-500">
+                      <tr><th className="p-1.5 pl-3 text-left">Cliente</th><th className="p-1.5 text-left">Material / Variedad · lote</th><th className="p-1.5 text-left">O/V</th>{depositos.length > 1 && <th className="p-1.5 text-left">Cargado en</th>}<th className="p-1.5 text-right">Cant.</th><th className="p-1.5 pr-3 text-right">Kg</th></tr>
+                    </thead>
+                    <tbody>
+                      {pa.clientes.flatMap((c) => c.items.map((it, k) => (
+                        <tr key={c.cliente + k} className="border-t border-stone-100">
+                          <td className="p-1.5 pl-3 font-medium">{k === 0 ? c.cliente : ""}</td>
+                          <td className="p-1.5">{it.producto}{it.lote ? <span className="text-stone-500"> · {it.lote}</span> : ""}</td>
+                          <td className="p-1.5">{it.ov}</td>
+                          {depositos.length > 1 && <td className="p-1.5">{it.cargaEn}</td>}
+                          <td className="p-1.5 text-right">{fmt(it.cantidad)}</td>
+                          <td className="p-1.5 pr-3 text-right">{it.kg ? fmt(it.kg) : "—"}</td>
+                        </tr>
+                      )))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             );
           })}
         </div>
-      </div>
-
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold mb-1">Descargas, en este orden</div>
-        <div className="space-y-2">
-          {paradas.map((pa, i) => (
-            <div key={i} className="rounded border border-stone-200 bg-white text-[13px]">
-              <div className="p-3 flex items-start gap-2">
-                <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold">{i + 1}</span>
-                <div className="flex-1">
-                  <div className="font-medium">{[pa.localidad, pa.provincia].filter(Boolean).join(", ") || pa.domicilio}</div>
-                  <div className="text-stone-500 text-[12px]">{pa.domicilio}</div>
-                  {pa.contactos.length ? <div className="text-[12px]">Contacto: {pa.contactos.join(" / ")}</div> : <div className="text-[12px] text-amber-700">sin contacto</div>}
-                  {!pa.gps && <div className="text-[12px] text-red-700">sin ubicación</div>}
-                </div>
-                <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(km.par[i])}</span>
-              </div>
-              <div className="overflow-x-auto border-t border-stone-100">
-                <table className="w-full text-[12.5px]">
-                  <thead className="bg-stone-50 text-[11.5px] text-stone-500">
-                    <tr><th className="p-1.5 pl-3 text-left">Cliente</th><th className="p-1.5 text-left">Material / Variedad · lote</th><th className="p-1.5 text-left">O/V</th>{depositos.length > 1 && <th className="p-1.5 text-left">Carga en</th>}<th className="p-1.5 text-right">Cant.</th><th className="p-1.5 pr-3 text-right">Kg</th></tr>
-                  </thead>
-                  <tbody>
-                    {pa.clientes.flatMap((c) => c.items.map((it, k) => (
-                      <tr key={c.cliente + k} className="border-t border-stone-100">
-                        <td className="p-1.5 pl-3 font-medium">{k === 0 ? c.cliente : ""}</td>
-                        <td className="p-1.5">{it.producto}{it.lote ? <span className="text-stone-500"> · {it.lote}</span> : ""}</td>
-                        <td className="p-1.5">{it.ov}</td>
-                        {depositos.length > 1 && <td className="p-1.5">{it.cargaEn}</td>}
-                        <td className="p-1.5 text-right">{fmt(it.cantidad)}</td>
-                        <td className="p-1.5 pr-3 text-right">{it.kg ? fmt(it.kg) : "—"}</td>
-                      </tr>
-                    )))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="text-[12px] text-stone-500 mt-1">La descarga 1 corresponde al último renglón de la orden. Los clientes con la misma ubicación de Maps se agrupan en una sola descarga.</div>
+        <div className="text-[12px] text-stone-500 mt-1">Las descargas siguen el orden de la orden de carga (la primera es el último renglón). Los clientes con la misma ubicación de Maps se agrupan en una sola descarga.</div>
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
