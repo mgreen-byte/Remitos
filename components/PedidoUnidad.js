@@ -87,6 +87,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
     ? { tipo: "carga", clave: k, dep: depDe(k.slice(2)), km: km.tramo[i], para: paraDe(k.slice(2)) }
     : { tipo: "descarga", clave: k, pa: paradas[Number(k.slice(2))], km: km.tramo[i] }));
   const depositos = base.depositos.map((d) => depDe(d.planta_id));
+  const nCarga = Object.fromEntries(pasos.map((x, i) => [x.tipo === "carga" ? x.dep.planta_id : "", i + 1]).filter((x) => x[0]));
   const totU = paradas.reduce((a, p) => a + p.unidades, 0);
   const totKg = paradas.reduce((a, p) => a + p.kg, 0);
   const empresa = plantaDe(claves.find((k) => k[0] === "d")?.slice(2))?.empresa;
@@ -194,7 +195,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
                           <td className="p-1.5 pl-3 font-medium">{k === 0 ? c.cliente : ""}</td>
                           <td className="p-1.5">{it.producto}{it.lote ? <span className="text-stone-500"> · {it.lote}</span> : ""}</td>
                           <td className="p-1.5">{it.ov}</td>
-                          {depositos.length > 1 && <td className="p-1.5">{it.cargaEn}</td>}
+                          {depositos.length > 1 && <td className="p-1.5 text-sky-800 whitespace-nowrap">{nCarga[it.planta_id] ? `${nCarga[it.planta_id]}. ` : ""}{it.cargaEn}</td>}
                           <td className="p-1.5 text-right">{fmt(it.cantidad)}</td>
                           <td className="p-1.5 pr-3 text-right">{it.kg ? fmt(it.kg) : "—"}</td>
                         </tr>
