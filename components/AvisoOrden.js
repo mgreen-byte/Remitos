@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { armarAviso, mismoAviso, urlOutlookApp, urlOutlookWeb, MAILTO_MAX } from "@/lib/avisoOrden";
-import { friendlyError } from "@/lib/util";
+import { friendlyError, urlBase } from "@/lib/util";
 
 let ccCache = null;
 export const ccAvisos = () => {
@@ -26,7 +26,7 @@ export default function AvisoOrden({ orden, lineas, plantas, profile, onCambio, 
   const esT = orden.modalidad === "traslado";
   const ids = esT ? [orden.planta_origen_id, orden.planta_destino_id].filter(Boolean) : [...new Set(lineas.map((l) => l.planta_id).filter(Boolean))];
   if (!ids.length) return null;
-  const url = typeof window !== "undefined" ? `${window.location.origin}/ordenes?oc=${encodeURIComponent(orden.numero)}` : "";
+  const url = typeof window !== "undefined" ? `${urlBase()}/ordenes?oc=${encodeURIComponent(orden.numero)}` : "";
 
   const datos = (pid) => {
     const planta = plantas.find((p) => p.id === pid) || { id: pid, nombre: "Planta" };

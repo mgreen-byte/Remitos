@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { friendlyError } from "@/lib/util";
+import { friendlyError, urlBase } from "@/lib/util";
 import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
 import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta, ordenarRecorrido, faltaCargar, resumenCarga } from "@/lib/pedidoUnidad";
 
@@ -87,7 +87,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
     setCorto("");
     if (!recorrido) return;
     let vivo = true;
-    supabase.rpc("crear_link_corto", { p_url: recorrido }).then(({ data, error }) => { if (vivo && !error && data) setCorto(`${window.location.origin}/r/${data}`); });
+    supabase.rpc("crear_link_corto", { p_url: recorrido }).then(({ data, error }) => { if (vivo && !error && data) setCorto(`${urlBase()}/r/${data}`); });
     return () => { vivo = false; };
   }, [recorrido]);
 
