@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError } from "@/lib/util";
 import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
-import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta, ordenarRecorrido, faltaCargar } from "@/lib/pedidoUnidad";
+import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta, ordenarRecorrido, faltaCargar, resumenCarga } from "@/lib/pedidoUnidad";
 
 const EMPRESA_NOMBRE = { ms: "MS Technologies", stine: "Stine Seed" };
 const fmt = (n) => Number(n || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -81,6 +81,16 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firmaRuta]);
 
+  // Link corto del recorrido (https://<plataforma>/r/CODIGO): queda mejor en el PDF y en WhatsApp
+  const [corto, setCorto] = useState("");
+  useEffect(() => {
+    setCorto("");
+    if (!recorrido) return;
+    let vivo = true;
+    supabase.rpc("crear_link_corto", { p_url: recorrido }).then(({ data, error }) => { if (vivo && !error && data) setCorto(`${window.location.origin}/r/${data}`); });
+    return () => { vivo = false; };
+  }, [recorrido]);
+
   // Para qué clientes es cada carga (se muestra si hay más de un depósito)
   const paraDe = (id) => [...new Set(paradas.flatMap((pa) => pa.clientes.filter((c) => c.items.some((it) => it.planta_id === id)).map((c) => c.cliente)))];
   const pasos = claves.map((k, i) => (k[0] === "d"
@@ -91,7 +101,8 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
   const totU = paradas.reduce((a, p) => a + p.unidades, 0);
   const totKg = paradas.reduce((a, p) => a + p.kg, 0);
   const empresa = plantaDe(claves.find((k) => k[0] === "d")?.slice(2))?.empresa;
-  const datos = { orden, depositos, paradas, pasos, km, recorrido, tipoUnidad: tipo, obs, totU, totKg, empresa, empresaNombre: EMPRESA_NOMBRE[empresa] };
+  const resumen = resumenCarga(pasos);
+  const datos = { orden, depositos, paradas, pasos, km, recorrido: corto || recorrido, tipoUnidad: tipo, obs, totU, totKg, empresa, empresaNombre: EMPRESA_NOMBRE[empresa] };
 
   const guardarTipo = async (v) => {
     setTipo(v);
@@ -132,7 +143,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
         <div>Fecha de carga: <b>{orden.fecha_carga ? String(orden.fecha_carga).slice(0, 10).split("-").reverse().join("/") : "—"}</b></div>
         <div>Carga: <b>{fmt(totU)} u. · {fmt(totKg)} kg</b>{!pendiente && <span className="text-stone-500"> (ya remitida: se muestra lo pedido)</span>}</div>
         <div>Kms: {km.cargando ? <span className="text-stone-500">calculando…</span> : km.total != null ? <b>{fmt(km.total)} km{km.estimado ? " (estimado)" : ""}</b> : "—"}</div>
-        {recorrido && <a href={recorrido} target="_blank" rel="noreferrer" className="text-sky-700 underline">Ver recorrido en Google Maps</a>}
+        {recorrido && <a href={corto || recorrido} target="_blank" rel="noreferrer" className="text-sky-700 underline">Ver recorrido en Google Maps{corto ? ` · ${corto.replace(/^https?:\/\//, "")}` : ""}</a>}
         {km.estimado && <div className="basis-full text-[12px] text-amber-700">No respondió el servicio de rutas: es una estimación en línea recta + 30%.</div>}
         {km.faltan > 0 && !km.cargando && <div className="basis-full text-[12px] text-amber-700">{km.faltan} punto(s) sin ubicación de Maps: no entran en el cálculo.</div>}
       </div>
@@ -208,6 +219,34 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
           })}
         </div>
         <div className="text-[12px] text-stone-500 mt-1">Las descargas siguen el orden de la orden de carga (la primera es el último renglón). Los clientes con la misma ubicación de Maps se agrupan en una sola descarga.</div>
+      </div>
+
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-stone-500 font-semibold mb-1">Resumen de carga por depósito</div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {resumen.map((r) => (
+            <div key={r.dep.planta_id} className="rounded border border-sky-200 bg-white text-[13px]">
+              <div className="px-3 py-2 flex items-center gap-2 border-b border-sky-100 bg-sky-50/60">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-700 text-white text-[11px] font-semibold">{r.n}</span>
+                <span className="font-medium flex-1">{r.dep.planta?.nombre || r.dep.nombre}</span>
+                <span className="text-[12px] font-semibold text-stone-600">{fmt(r.unidades)} u. · {fmt(r.kg)} kg</span>
+              </div>
+              <table className="w-full text-[12.5px]">
+                <thead className="text-[11.5px] text-stone-500"><tr><th className="p-1.5 pl-3 text-left">Material / Variedad</th><th className="p-1.5 text-left">Lote</th><th className="p-1.5 text-right">Cant.</th><th className="p-1.5 pr-3 text-right">Kg</th></tr></thead>
+                <tbody>
+                  {r.filas.map((f) => (
+                    <tr key={f.producto + f.lote} className="border-t border-stone-100">
+                      <td className="p-1.5 pl-3 font-medium">{f.producto}</td>
+                      <td className="p-1.5 font-mono text-[12px]">{f.lote || "—"}</td>
+                      <td className="p-1.5 text-right">{fmt(f.cantidad)}</td>
+                      <td className="p-1.5 pr-3 text-right">{f.kg ? fmt(f.kg) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
