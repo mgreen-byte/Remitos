@@ -10,7 +10,7 @@ import AvisoOrden from "@/components/AvisoOrden";
 import AsignacionPedido from "@/components/AsignacionPedido";
 import { PEDIDOS_DESDE } from "@/lib/pedidosPortal";
 import { mismoAviso } from "@/lib/avisoOrden";
-import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
+import { traerTodo, cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import AuthGuard from "@/components/AuthGuard";
@@ -18,6 +18,7 @@ import NavBar from "@/components/NavBar";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtNum, fmtFecha, friendlyError, PROVINCIAS, norm, up, esConsignacion } from "@/lib/util";
 import { parseOrdenDeCarga } from "@/lib/parseOrdenDeCarga";
+import { esTraslado, armarTraslado } from "@/lib/trasladoExcel";
 import { normalizarGps } from "@/lib/qr";
 import { armarLineas, lineasParaGuardar } from "@/lib/ordenesCarga";
 
@@ -83,6 +84,9 @@ function OrdenesInner({ profile }) {
   const [lineaT, setLineaT] = useState(null); // {ordenId, lineaId|null, producto_id, lote_texto, cantidad, prioridad}
   const [lotesOrigen, setLotesOrigen] = useState([]);
   const fileRef = useRef(null);
+  const fileRefT = useRef(null);
+  const [prevT, setPrevT] = useState(null); // traslado leído de Excel
+  const [stockT, setStockT] = useState(null); // lotes de la planta de origen del traslado (vista previa)
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -266,6 +270,17 @@ function OrdenesInner({ profile }) {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
         const parsed = parseOrdenDeCarga(rows);
         const modOc = parsed.modalidadDetectada === "maiz" ? "maiz" : "soja";
+        if (esTraslado(parsed)) {
+          if (!poderAdmin) throw new Error("Es una orden de traslado: la cargan Administración o Logística.");
+          const t = armarTraslado(parsed, plantas, productos, modOc);
+          if (!t.lineas.length) throw new Error("La orden no trae renglones con cantidad para cargar.");
+          setPrev(null);
+          setPrevT({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", palletsAprox: parsed.palletsAprox ?? null, obs: "", origen: t.origenId, destino: t.destinoId, depositos: t.depositos, destinoTexto: t.destinoTexto, lineas: t.lineas, sinCatalogo: t.sinCatalogo });
+          setVista("traslados");
+          if (fileRef.current) fileRef.current.value = "";
+          if (fileRefT.current) fileRefT.current.value = "";
+          return;
+        }
         const { lineas: ls, depositosSinPlanta, sinCatalogo } = armarLineas(parsed, plantas, productos, modOc);
         if (!ls.length) throw new Error("La orden no trae clientes con cantidad para cargar. Revisá que tenga Cliente y Cantidad completos.");
         setPrev({ archivo: file.name, numero: parsed.ordenCarga || "", fechaCarga: parsed.fechaCarga || "", palletsAprox: parsed.palletsAprox ?? null, lineas: ls, depositosSinPlanta, sinCatalogo, mapa: {}, modalidad: modOc });
@@ -318,6 +333,40 @@ function OrdenesInner({ profile }) {
     setResultado(data);
     setPrev(null);
     if (fileRef.current) fileRef.current.value = "";
+    cargar();
+  };
+
+  // ---------- traslado desde Excel ----------
+  useEffect(() => {
+    setStockT(null);
+    if (!prevT?.origen) return;
+    let vivo = true;
+    traerTodo(() => supabase.from("lotes").select("producto_id, lote, stock").eq("planta_id", prevT.origen).order("id")).then((rows) => {
+      if (!vivo) return;
+      const m = {};
+      for (const l of rows) m[`${l.producto_id}|${up(String(l.lote || "")).trim()}`] = Number(l.stock || 0);
+      setStockT(m);
+    });
+    return () => { vivo = false; };
+  }, [prevT?.origen]);
+  const stockDe = (l) => (stockT ? stockT[`${l.producto_id}|${up(String(l.lote_texto || "")).trim()}`] : undefined);
+  const guardarTrasladoExcel = async () => {
+    setMsg(null);
+    setGuardando(true);
+    const num = up(prevT.numero).trim();
+    const { data, error } = await supabase.rpc("cargar_traslado_excel", {
+      p_numero: num, p_origen: prevT.origen, p_destino: prevT.destino,
+      p_lineas: prevT.lineas.map(({ producto_id, lote_texto, cantidad, kilos }) => ({ producto_id, lote_texto, cantidad, kilos })),
+      p_fecha_carga: prevT.fechaCarga || null, p_pallets: prevT.palletsAprox,
+    });
+    if (!error && String(prevT.obs || "").trim()) {
+      const r5 = await supabase.rpc("fijar_observaciones_orden", { p_orden: data?.orden_id || null, p_numero: num, p_texto: prevT.obs });
+      if (r5.error) setMsg({ tipo: "error", texto: "El traslado se guardó, pero no pude guardar las observaciones: " + friendlyError(r5.error) });
+    }
+    setGuardando(false);
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    setResultado(data);
+    setPrevT(null);
     cargar();
   };
 
@@ -629,7 +678,13 @@ function OrdenesInner({ profile }) {
         {vista === "traslados" && poderAdmin && (
           <div className="panel p-4 space-y-3">
             {!nuevoT ? (
-              <button onClick={() => setNuevoT({ origen: "", destino: "" })} className={btn2}>+ Nueva orden de traslado</button>
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <span className={lab}>Cargar traslado desde Excel (.xlsx, .xlsb)</span>
+                  <input ref={fileRefT} type="file" accept=".xlsx,.xls,.xlsb,.xlsm" onChange={handleFile} className="text-[13px] text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-[13px] file:text-stone-700 hover:file:bg-stone-200" />
+                </div>
+                <button onClick={() => setNuevoT({ origen: "", destino: "" })} className={btn2}>+ Nueva orden de traslado a mano</button>
+              </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-4 items-end">
                 <div>
@@ -656,7 +711,7 @@ function OrdenesInner({ profile }) {
                 </div>
               </div>
             )}
-            <div className="text-[12px] text-stone-500">Una orden va de una planta a otra. El número sale solo: OC-(prefijo de la planta de origen)-001, correlativo por planta. Cada renglón es un lote, con su prioridad (1 = más urgente), que se puede cambiar en cualquier momento.</div>
+            <div className="text-[12px] text-stone-500">Desde Excel: el mismo formato que la orden de clientes (número TRAS…); se guarda con el número del Excel, sale del DEPÓSITO y va a la planta que elijas como destino. Si lo volvés a subir, actualiza la orden. A mano: una orden va de una planta a otra y el número sale solo: OC-(prefijo de la planta de origen)-001, correlativo por planta. Cada renglón es un lote, con su prioridad (1 = más urgente), que se puede cambiar en cualquier momento.</div>
           </div>
         )}
 
@@ -740,6 +795,79 @@ function OrdenesInner({ profile }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {prevT && vista === "traslados" && (
+          <div className="panel p-4 space-y-3">
+            <div className="text-[14px] font-semibold text-stone-800">Orden de traslado desde Excel · {prevT.archivo}</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
+              <div>
+                <label className={lab}>Número de la orden</label>
+                <input value={prevT.numero} onChange={(e) => setPrevT({ ...prevT, numero: up(e.target.value) })} placeholder="TRAS26-MOR-000" className={inp} />
+              </div>
+              <div>
+                <label className={lab}>Planta de origen (sale el stock){prevT.depositos.length ? ` · Excel: ${prevT.depositos.join(", ")}` : ""}</label>
+                <select value={prevT.origen} onChange={(e) => setPrevT({ ...prevT, origen: e.target.value, destino: prevT.destino === e.target.value ? "" : prevT.destino })} className={`${inp} ${!prevT.origen ? "border-amber-400" : ""}`}>
+                  <option value="">Elegir…</option>
+                  {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lab}>Planta de destino (recibe){prevT.destinoTexto ? ` · Excel: ${prevT.destinoTexto}` : ""}</label>
+                <select value={prevT.destino} onChange={(e) => setPrevT({ ...prevT, destino: e.target.value })} className={`${inp} ${!prevT.destino ? "border-amber-400" : ""}`}>
+                  <option value="">Elegir…</option>
+                  {plantas.filter((p) => p.id !== prevT.origen).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lab}>Fecha prevista de carga</label>
+                <input type="date" value={prevT.fechaCarga || ""} onChange={(e) => setPrevT({ ...prevT, fechaCarga: e.target.value })} className={inp} />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <label className={lab}>Observaciones para el depósito (van en el correo de aviso; no salen en el remito)</label>
+                <textarea value={prevT.obs || ""} onChange={(e) => setPrevT({ ...prevT, obs: e.target.value })} rows={2} className={`${inp} max-w-3xl`} />
+              </div>
+            </div>
+            {prevT.depositos.length > 1 && <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[13px] text-amber-900">El Excel trae más de un depósito ({prevT.depositos.join(", ")}): un traslado sale de una sola planta. Elegí el origen o separá el Excel.</div>}
+            {!prevT.destino && <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[13px] text-amber-900">No reconozco la planta de destino{prevT.destinoTexto ? ` (“${prevT.destinoTexto}”)` : ""}. Elegila; si todavía no existe, creala en Administración → Plantas.</div>}
+            {prevT.sinCatalogo.length > 0 && <div className="rounded border border-red-200 bg-red-50 p-2 text-[13px] text-red-800">No están en el catálogo (ni como alias): {prevT.sinCatalogo.join(", ")}. Agregalos en Administración → Productos y volvé a subir el Excel.</div>}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-stone-500 border-b border-stone-200">
+                    <th className="p-2">#</th><th className="p-2">Producto</th><th className="p-2">Lote</th><th className="p-2 text-right">Cant.</th><th className="p-2 text-right">Kg</th><th className="p-2">En el origen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prevT.lineas.map((l, i) => {
+                    const st = stockDe(l);
+                    return (
+                      <tr key={i} className="border-b border-stone-100">
+                        <td className="p-2 text-stone-400">{i + 1}</td>
+                        <td className="p-2">{l.producto_texto}{!l.producto_id && <span className="ml-1 text-red-700 text-[12px]">sin catálogo</span>}</td>
+                        <td className="p-2 font-mono">{l.lote_texto || "—"}</td>
+                        <td className="p-2 text-right">{fmtNum(l.cantidad)}</td>
+                        <td className="p-2 text-right">{l.kilos ? fmtNum(Math.round(l.kilos)) : "—"}</td>
+                        <td className="p-2">
+                          {!prevT.origen || !l.producto_id || stockT === null ? <span className="text-stone-400">—</span>
+                            : st === undefined ? <span className="text-red-700">el lote no está en esta planta</span>
+                            : st < Number(l.cantidad) ? <span className="text-amber-700">stock {fmtNum(st)} (no alcanza)</span>
+                            : <span className="text-emerald-700">✓ stock {fmtNum(st)}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {stockT !== null && prevT.lineas.some((l) => l.producto_id && stockDe(l) === undefined) && <div className="rounded border border-red-200 bg-red-50 p-2 text-[13px] text-red-800">Hay lotes que no están en el stock de la planta de origen: revisá el origen, cargá esos lotes en Stock o corregí el Excel. Si el stock no alcanza, se guarda igual (avisa en amarillo).</div>}
+            <div className="text-[12.5px] text-stone-600">{prevT.lineas.length} lote(s) · {fmtNum(prevT.lineas.reduce((a, l) => a + Number(l.cantidad || 0), 0))} u.{prevT.palletsAprox != null ? ` · ${fmtNum(prevT.palletsAprox)} pallets aprox.` : ""}</div>
+            <div className="flex gap-2">
+              <button onClick={guardarTrasladoExcel} disabled={guardando || !prevT.numero.trim() || !prevT.origen || !prevT.destino || prevT.sinCatalogo.length > 0 || (stockT !== null && prevT.lineas.some((l) => stockDe(l) === undefined))} className={btn}>{guardando ? "Guardando…" : "Guardar orden de traslado"}</button>
+              <button onClick={() => setPrevT(null)} className={btn2}>Cancelar</button>
+            </div>
+            <div className="text-[12px] text-stone-500">Si la orden ya existe, se actualiza: cambian las cantidades, se agregan los lotes nuevos y se quitan los que ya no están (los que tienen remitos quedan con lo remitido).</div>
           </div>
         )}
 
