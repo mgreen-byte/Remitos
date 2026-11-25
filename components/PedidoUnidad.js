@@ -11,7 +11,7 @@ const fmt = (n) => Number(n || 0).toLocaleString("es-AR", { maximumFractionDigit
 
 // Pedido de unidad al transporte (solo administrador): depósitos de carga (uno o varios),
 // paradas de descarga (clientes agrupados por ubicación), km de todo el recorrido.
-export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerrar }) {
+export default function PedidoUnidad({ orden, lineas, plantas, productos = [], onCerrar, soloLectura = false }) {
   const base = useMemo(() => armarPedido(lineas, productos), [lineas, productos]);
   const { paradas, pendiente } = base;
   const [tipo, setTipo] = useState(orden.tipo_unidad || "");
@@ -120,10 +120,13 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
   return (
     <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/50 p-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="text-[15px] font-semibold text-stone-800">Pedido de unidad · {orden.numero}</div>
-        <button onClick={onCerrar} className="ml-auto text-[13px] text-stone-500 underline">Cerrar</button>
+        <div className="text-[15px] font-semibold text-stone-800">{soloLectura ? "Recorrido y carga" : "Pedido de unidad"} · {orden.numero}</div>
+        {onCerrar && <button onClick={onCerrar} className="ml-auto text-[13px] text-stone-500 underline">Cerrar</button>}
       </div>
 
+      {soloLectura ? (
+        <div className="text-[13px]">Tipo de unidad: <b>{tipo || "a definir"}</b>{orden.observaciones_deposito ? <span className="block mt-1 text-stone-700">Observaciones: {orden.observaciones_deposito}</span> : null}</div>
+      ) : (
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <label className={lab}>Tipo de unidad</label>
@@ -138,6 +141,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
           <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ej.: llevar lona, cargar a primera hora…" className={inp} />
         </div>
       </div>
+      )}
 
       <div className="rounded border border-stone-200 bg-white p-3 text-[13px] flex flex-wrap gap-x-6 gap-y-1">
         <div>Fecha de carga: <b>{orden.fecha_carga ? String(orden.fecha_carga).slice(0, 10).split("-").reverse().join("/") : "—"}</b></div>
@@ -170,7 +174,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
                     <span className="mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-700 text-white text-[11px] font-semibold">{i + 1}</span>
                     <div className="font-medium flex-1"><span className="text-sky-800">CARGA</span> · {pl.nombre || x.dep.nombre}</div>
                     {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(x.km)}</span>}
-                    {pasos.length > 2 && flechas}
+                    {pasos.length > 2 && !soloLectura && flechas}
                   </div>
                   <div className="text-stone-600">{domPlanta(pl) || "Sin domicilio"}</div>
                   {pl.gps ? <a href={urlMaps(pl.gps)} target="_blank" rel="noreferrer" className="text-sky-700 underline">Ubicación en Maps</a> : <div className="text-red-700">Sin ubicación de Maps (Administración → Plantas)</div>}
@@ -193,7 +197,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos, onCerr
                     {falta && <div className="text-[12px] text-red-700 font-medium">Antes hay que cargar en {falta.map((id) => depDe(id).planta?.nombre || "otro depósito").join(" y ")}.</div>}
                   </div>
                   {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(x.km)}</span>}
-                  {pasos.length > 2 && flechas}
+                  {pasos.length > 2 && !soloLectura && flechas}
                 </div>
                 <div className="overflow-x-auto border-t border-stone-100">
                   <table className="w-full text-[12.5px]">

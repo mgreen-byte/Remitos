@@ -34,8 +34,13 @@ export default function AuthGuard({ children, adminOnly, roles }) {
         setState({ loading: false, profile: null, notice: "Tu usuario está desactivado. Consultá con el administrador." });
         return;
       }
+      // Usuarios de transporte: solo "Mis pedidos"
+      if (profile.rol === "transportista" && !(roles && roles.includes("transportista"))) {
+        router.replace("/mis-pedidos");
+        return;
+      }
       if ((adminOnly && profile.rol !== "admin") || (roles && !roles.includes(profile.rol))) {
-        router.replace(profile.rol === "consulta" || profile.rol === "logistica" ? "/inicio" : "/generar");
+        router.replace(profile.rol === "transportista" ? "/mis-pedidos" : profile.rol === "consulta" || profile.rol === "logistica" ? "/inicio" : "/generar");
         return;
       }
       setState({ loading: false, profile, notice: "" });

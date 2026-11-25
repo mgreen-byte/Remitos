@@ -19,6 +19,7 @@ const ICONOS = {
   reportes: "M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3",
   cot: "M6 3h9l4 4v14H6zM9 13l2 2 4-4M9 17h6",
   conformes: "M4 8h3l2-3h6l2 3h3v12H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  pedidos: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   transportes: "M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   choferes: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1",
   admin: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .3-1.4-1.4.3-2-3-1-1 2h-2l-1-2-3 1 .3 2L6.8 7.3 4.8 7l-1 3 2 1v2l-2 1 1 3 2-.3 1.4 1.4-.3 2 3 1 1-2h2l1 2 3-1-.3-2 1.4-1.4 2 .3 1-3-2-1z",
@@ -42,6 +43,7 @@ export default function NavBar({ profile, children }) {
   const [avisoTal, setAvisoTal] = useState(0);
   const [avisoConf, setAvisoConf] = useState(0); // remitos sin conforme de salida
   const [avisoOc, setAvisoOc] = useState(0); // órdenes de carga activas con saldo pendiente
+  const [avisoPu, setAvisoPu] = useState(0); // pedidos de unidad: órdenes sin asignar o rechazadas
   const [avisoCot, setAvisoCot] = useState(0);
   // Usuario con más de una planta habilitada: puede cambiar la planta en la que está trabajando.
   const [misPlantas, setMisPlantas] = useState([]);
@@ -74,6 +76,18 @@ export default function NavBar({ profile, children }) {
   const alternarMenu = () => setPlegado((v) => { try { localStorage.setItem("menuPlegado", v ? "0" : "1"); } catch {} return !v; });
   useEffect(() => {
     if (!profile) return;
+    if (profile.rol === "transportista") return; // el portal de transportistas no consulta nada más
+    // Pedidos de unidad: órdenes activas (a clientes) sin transporte asignado, o rechazadas
+    if (profile.rol === "admin" || profile.rol === "logistica") {
+      Promise.all([
+        supabase.from("ordenes_carga").select("id").eq("estado", "activa").neq("modalidad", "traslado").limit(3000),
+        supabase.from("pedidos_unidad").select("orden_id, estado").limit(5000),
+      ]).then(([o, p]) => {
+        if (o.error || p.error) return;
+        const est = Object.fromEntries((p.data || []).map((x) => [x.orden_id, x.estado]));
+        setAvisoPu((o.data || []).filter((x) => !est[x.id] || est[x.id] === "rechazado").length);
+      });
+    }
     // COT pendientes: el operador ve los de su planta; admin y consulta, todos.
     if (profile.rol !== "operador" || profile.planta?.id) {
       let qc = supabase.from("v_cot_pendientes").select("remito_id", { count: "exact", head: true });
@@ -106,10 +120,11 @@ export default function NavBar({ profile, children }) {
   }, [profile, pathname]);
 
   const rol = profile?.rol;
-  const items = [
+  const items = rol === "transportista" ? [["/mis-pedidos", "Mis pedidos", "pedidos"]] : [
     ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/inicio", "Inicio", "inicio"]] : []),
     ...(rol !== "consulta" && rol !== "logistica" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/ordenes", "Órdenes de carga", "ordenes"],
+    ...(rol === "admin" || rol === "logistica" ? [["/pedidos", "Pedidos de unidad", "pedidos"]] : []),
     ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/despachos", "Despachos", "despachos"]] : []),
     ["/stock", "Stock", "stock"],
     ...(rol === "admin" || rol === "logistica" ? [["/calidad", "Calidad", "calidad"]] : []),
@@ -124,7 +139,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
   // Secciones del menú (solo títulos; los permisos de cada entrada no cambian).
-  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
+  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/pedidos": "Operación", "/mis-pedidos": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
   const ORDEN_GRUPOS = ["Operación", "Stock", "Fiscal", "Análisis", "Configuración"];
   const grupoDe = (href) => GRUPO[href] || "Configuración";
   const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);
@@ -143,7 +158,9 @@ export default function NavBar({ profile, children }) {
       </div>
     </div>
   );
-  const franjaPlanta = (!profile?.planta || profile.rol === "admin") ? (profile && (
+  const franjaPlanta = profile?.rol === "transportista" ? (
+    <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 text-[13px]">Portal de transporte · {profile.nombre}</div>
+  ) : (!profile?.planta || profile.rol === "admin") ? (profile && (
     <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
       <span className="opacity-80">{rubro ? `Mostrando solo ${rubro === "maiz" ? "maíz" : "soja"}` : "Mostrando soja y maíz"}</span>
       {selRubro}
@@ -167,7 +184,7 @@ export default function NavBar({ profile, children }) {
 
 
   const titulo = (items.find(([href]) => href === pathname) || [])[1] || "";
-  const hayAvisos = pendientes + avisoCot + avisoTal + avisoConf + avisoOc > 0;
+  const hayAvisos = pendientes + avisoCot + avisoTal + avisoConf + avisoOc + avisoPu > 0;
   const rolTxt = profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta";
 
   const logout = async () => {
@@ -211,13 +228,16 @@ export default function NavBar({ profile, children }) {
               >
                 <Icono d={ICONOS[icono]} />
                 {plegado ? (
-                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) || (icono === "conformes" && avisoConf > 0) || (icono === "ordenes" && avisoOc > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
+                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) || (icono === "conformes" && avisoConf > 0) || (icono === "ordenes" && avisoOc > 0) || (icono === "pedidos" && avisoPu > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
                 ) : label}
                 {!plegado && icono === "traslados" && pendientes > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
                 )}
                 {!plegado && icono === "cot" && avisoCot > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoCot}</span>
+                )}
+                {!plegado && icono === "pedidos" && avisoPu > 0 && (
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center" title="Órdenes sin transporte asignado o rechazadas">{avisoPu}</span>
                 )}
                 {!plegado && icono === "ordenes" && avisoOc > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center" title="Órdenes activas con saldo pendiente de remitir">{avisoOc}</span>
@@ -264,7 +284,7 @@ export default function NavBar({ profile, children }) {
                   <div key={g}>
                     <div className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
                 {its.map(([href, label, icono]) => {
-                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : icono === "conformes" ? avisoConf : icono === "ordenes" ? avisoOc : 0;
+                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : icono === "conformes" ? avisoConf : icono === "ordenes" ? avisoOc : icono === "pedidos" ? avisoPu : 0;
                   return (
                     <Link key={href} href={href} className={`flex items-center gap-3 px-4 py-3.5 rounded-md text-[16px] font-medium ${pathname === href ? "bg-emerald-600 text-white" : "text-stone-200 active:bg-ink-700"}`}>
                       <Icono d={ICONOS[icono]} />
