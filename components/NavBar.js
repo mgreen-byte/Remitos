@@ -81,7 +81,7 @@ export default function NavBar({ profile, children }) {
     // Pedidos de unidad: órdenes activas (a clientes) sin transporte asignado, o rechazadas
     if (profile.rol === "admin" || profile.rol === "logistica") {
       Promise.all([
-        supabase.from("ordenes_carga").select("id").eq("estado", "activa").neq("modalidad", "traslado").eq("retira_cliente", false).gte("created_at", PEDIDOS_DESDE).limit(3000),
+        supabase.from("ordenes_carga").select("id").eq("estado", "activa").eq("retira_cliente", false).gte("created_at", PEDIDOS_DESDE).limit(3000),
         supabase.from("pedidos_unidad").select("orden_id, estado").limit(5000),
       ]).then(([o, p]) => {
         if (o.error || p.error) return;

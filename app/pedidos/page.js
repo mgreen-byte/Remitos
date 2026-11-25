@@ -46,7 +46,7 @@ function Pedidos({ profile }) {
 
   const cargar = useCallback(async () => {
     const [o, p, t, pl, pr] = await Promise.all([
-      supabase.from("ordenes_carga").select("*, transportista:transportistas(nombre, cuit), chofer:choferes(nombre, dni)").eq("estado", "activa").neq("modalidad", "traslado").gte("created_at", PEDIDOS_DESDE).order("fecha_carga", { ascending: true, nullsFirst: false }).limit(1000),
+      supabase.from("ordenes_carga").select("*, transportista:transportistas(nombre, cuit), chofer:choferes(nombre, dni)").eq("estado", "activa").gte("created_at", PEDIDOS_DESDE).order("fecha_carga", { ascending: true, nullsFirst: false }).limit(1000),
       supabase.from("pedidos_unidad").select("*").limit(5000),
       supabase.from("transportistas").select("id, nombre, cuit, portal, correos_aviso").order("nombre"),
       supabase.from("plantas").select("*").order("nombre"),
@@ -75,9 +75,9 @@ function Pedidos({ profile }) {
   const nomT = (id) => transportes.find((t) => t.id === id)?.nombre || "";
 
   const filas = useMemo(() => ordenes.map((o) => {
-    const r = resumenOrden(lineas[o.id] || []);
+    const r = resumenOrden(lineas[o.id] || [], o, plantas);
     return { o, ...r, estado: estadoPedido(o, pedidos[o.id]) };
-  }).filter((f) => f.ls.length), [ordenes, lineas, pedidos]);
+  }).filter((f) => f.ls.length), [ordenes, lineas, pedidos, plantas]);
 
   const cuenta = (e) => filas.filter((f) => f.estado === e).length;
   const ordenar = (xs) => {
@@ -108,7 +108,7 @@ function Pedidos({ profile }) {
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-4">
         <header>
           <h1 className="text-[22px] font-semibold text-stone-900">Pedidos de unidad</h1>
-          <p className="text-stone-500 text-[13.5px]">Cada orden de carga activa (cargada desde el {fmtFecha(PEDIDOS_DESDE.slice(0, 10))}) se asigna a un transporte. El transporte la ve en su portal y la acepta o la rechaza; el chofer y las patentes los carga él (cuando los tenga) o Logística. Si retira el cliente, tildalo y sale de los pendientes.</p>
+          <p className="text-stone-500 text-[13.5px]">Cada orden de carga activa, a clientes o de traslado (cargada desde el {fmtFecha(PEDIDOS_DESDE.slice(0, 10))}) se asigna a un transporte. El transporte la ve en su portal y la acepta o la rechaza; el chofer y las patentes los carga él (cuando los tenga) o Logística. Si retira el cliente, tildalo y sale de los pendientes.</p>
         </header>
 
         <div className="flex flex-wrap gap-1">
@@ -142,13 +142,14 @@ function Pedidos({ profile }) {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <a href={`/ordenes?oc=${encodeURIComponent(o.numero)}`} className="font-semibold text-[15px] hover:underline">{o.numero}</a>
                   <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${cls}`}>{et}</span>
+                  {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}
                   {o.fecha_carga && <span className={`text-[12px] ${o.fecha_carga < hoy ? "text-red-700 font-medium" : o.fecha_carga === hoy ? "text-emerald-700 font-medium" : "text-stone-500"}`}>carga {o.fecha_carga === hoy ? "HOY" : fmtFecha(o.fecha_carga)}</span>}
                   <span className="text-[12px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>
                   <span className="text-[12.5px] text-stone-700 md:ml-auto">{fmtNum(f.u)} u.{f.kg ? ` · ${fmtNum(Math.round(f.kg))} kg` : ""}</span>
                 </div>
                 <div className="text-[13px] text-stone-700"><span className="text-stone-500">Carga en:</span> {f.deps.join(" · ")} <span className="text-stone-400">→</span> <span className="text-stone-500">Destinos:</span> {f.dest.join(" · ")}</div>
                 <div className="text-[12px] text-stone-500">{f.clientes.join(" · ")}</div>
-                <AsignacionPedido orden={o} lineas={lineas[o.id] || []} profile={profile} pedido={pedidos[o.id] || null} transportes={transportes} cc={cc} onCambio={cargar} />
+                <AsignacionPedido orden={o} lineas={lineas[o.id] || []} plantas={plantas} profile={profile} pedido={pedidos[o.id] || null} transportes={transportes} cc={cc} onCambio={cargar} />
                 <div className="flex"><button onClick={() => setAbierto(abierto === o.id ? null : o.id)} className="text-[12px] text-sky-700 underline px-1 ml-auto">{abierto === o.id ? "Ocultar recorrido" : "Ver recorrido"}</button></div>
                 {abierto === o.id && <PedidoUnidad orden={o} lineas={lineas[o.id] || []} plantas={plantas} productos={productos} onCerrar={() => setAbierto(null)} />}
               </div>

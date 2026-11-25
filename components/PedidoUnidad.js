@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, urlBase } from "@/lib/util";
 import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
+import { lineasConDestino } from "@/lib/pedidosPortal";
 import { TIPOS_UNIDAD, armarPedido, textoPedido, descargarPedidoPdf, domPlanta, ordenarRecorrido, faltaCargar, resumenCarga } from "@/lib/pedidoUnidad";
 
 const EMPRESA_NOMBRE = { ms: "MS Technologies", stine: "Stine Seed" };
@@ -11,7 +12,14 @@ const fmt = (n) => Number(n || 0).toLocaleString("es-AR", { maximumFractionDigit
 
 // Pedido de unidad al transporte (solo administrador): depósitos de carga (uno o varios),
 // paradas de descarga (clientes agrupados por ubicación), km de todo el recorrido.
-export default function PedidoUnidad({ orden, lineas, plantas, productos = [], onCerrar, soloLectura = false }) {
+export default function PedidoUnidad({ orden, lineas: lineasIn, plantas, productos = [], onCerrar, soloLectura = false }) {
+  // Traslados: la descarga es la planta de destino (se lee con las demás plantas)
+  const [destT, setDestT] = useState(null);
+  useEffect(() => {
+    if (orden.modalidad !== "traslado" || !orden.planta_destino_id) return;
+    supabase.from("plantas").select("*").eq("id", orden.planta_destino_id).maybeSingle().then(({ data }) => data && setDestT(data));
+  }, [orden.modalidad, orden.planta_destino_id]);
+  const lineas = useMemo(() => lineasConDestino(orden, lineasIn, destT ? [destT, ...plantas] : plantas), [orden, lineasIn, destT, plantas]);
   const base = useMemo(() => armarPedido(lineas, productos), [lineas, productos]);
   const { paradas, pendiente } = base;
   const [tipo, setTipo] = useState(orden.tipo_unidad || "");
@@ -40,7 +48,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos = [], o
     })();
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsDep, Object.keys(frescas).length, paradas.length]);
+  }, [idsDep, Object.keys(frescas).length, paradas.map((p) => p.gps).join("|")]);
 
   // Recorrido: cargas y descargas intercaladas. Automático (respeta el orden de descarga de la orden y
   // carga cada depósito antes de la primera descarga que lo necesita, con la menor distancia) o a mano (↑↓).

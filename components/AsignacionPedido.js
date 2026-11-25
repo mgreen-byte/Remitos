@@ -7,7 +7,7 @@ import BuscadorSelect from "@/components/BuscadorSelect";
 import { listasTransporte } from "@/components/TransporteOrden";
 import { ccAvisos } from "@/components/AvisoOrden";
 import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
-import { correoPedido, estadoPedido, tieneUnidad } from "@/lib/pedidosPortal";
+import { correoPedido, estadoPedido, tieneUnidad, textoRetira } from "@/lib/pedidosPortal";
 import { urlOutlookApp, urlOutlookWeb } from "@/lib/avisoOrden";
 import { friendlyError, fmtDocChofer, urlBase } from "@/lib/util";
 
@@ -22,7 +22,7 @@ export const ESTADOS_PEDIDO = {
   falta_unidad: ["Aceptado · falta la unidad", "bg-lime-100 text-lime-800"],
   aceptado: ["Aceptado con unidad", "bg-emerald-100 text-emerald-800"],
   rechazado: ["Rechazado · reasignar", "bg-red-100 text-red-700"],
-  retira: ["Retira el cliente", "bg-stone-200 text-stone-700"],
+  retira: ["Retira el cliente / sin pedido", "bg-stone-200 text-stone-700"],
 };
 const pat = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const fh = (x) => (x ? new Date(x).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
@@ -30,7 +30,7 @@ const inp = "w-full border border-stone-300 rounded px-2 py-1.5 text-[13px] bg-w
 const btn = "text-[12.5px] px-2.5 py-1 rounded-md border";
 
 // pedido / transportes / cc: opcionales (si no vienen, los trae). conTitulo: encabezado propio (dentro de la orden).
-export default function AsignacionPedido({ orden, lineas = [], profile, pedido: pedidoProp, transportes: transProp, cc: ccProp, onCambio, conTitulo = false }) {
+export default function AsignacionPedido({ orden, lineas = [], plantas = [], profile, pedido: pedidoProp, transportes: transProp, cc: ccProp, onCambio, conTitulo = false }) {
   const [pedidoLocal, setPedidoLocal] = useState(null);
   const [transLocal, setTransLocal] = useState([]);
   const [ccLocal, setCcLocal] = useState("");
@@ -79,7 +79,7 @@ export default function AsignacionPedido({ orden, lineas = [], profile, pedido: 
   const retira = async (v) => { if (await rpc("fijar_retira_cliente", { p_orden: orden.id, p_valor: v })) listo(); };
   const avisar = async (web) => {
     const t = transportes.find((x) => x.id === p?.transportista_id);
-    const m = correoPedido({ orden, lineas, transporte: t, cc, usuario: profile.nombre, url: `${urlBase()}/mis-pedidos` });
+    const m = correoPedido({ orden, lineas, plantas, transporte: t, cc, usuario: profile.nombre, url: `${urlBase()}/mis-pedidos` });
     if (!m.para) return setMsg({ tipo: "error", texto: `${m.nombre || "El transporte"} no tiene correos cargados (Pedidos de unidad → “Transportes del portal”).` });
     if (web) window.open(urlOutlookWeb(m), "_blank"); else window.location.href = urlOutlookApp(m);
     await supabase.rpc("marcar_pedido_avisado", { p_orden: orden.id });
@@ -119,7 +119,7 @@ export default function AsignacionPedido({ orden, lineas = [], profile, pedido: 
       )}
       <div className={conTitulo ? "px-3 py-2.5 space-y-2" : "space-y-2"}>
         {orden.retira_cliente ? (
-          <div className="text-[12.5px] text-stone-600">El cliente retira con su transporte: no se pide unidad. La planta completa el transporte y el chofer en el remito.</div>
+          <div className="text-[12.5px] text-stone-600">{orden.modalidad === "traslado" ? "No se pide unidad para este traslado." : "El cliente retira con su transporte: no se pide unidad."} La planta completa el transporte y el chofer en el remito.</div>
         ) : (
           <>
             {p && (
@@ -198,7 +198,7 @@ export default function AsignacionPedido({ orden, lineas = [], profile, pedido: 
         {activa && (
           <label className={`flex items-center gap-2 text-[12.5px] ${p ? "text-stone-400" : "text-stone-700"}`} title={p ? "Primero quitá la asignación al transporte" : ""}>
             <input type="checkbox" disabled={!!p || guardando} checked={!!orden.retira_cliente} onChange={(e) => retira(e.target.checked)} />
-            Retira el cliente (no hace falta pedir unidad){p ? " · para tildarlo, primero quitá la asignación" : ""}
+            {orden.modalidad === "traslado" ? textoRetira(orden) : "Retira el cliente (no hace falta pedir unidad)"}{p ? " · para tildarlo, primero quitá la asignación" : ""}
           </label>
         )}
         {msg && <div className={`text-[12.5px] ${msg.tipo === "error" ? "text-red-700" : "text-emerald-700"}`}>{msg.texto}</div>}

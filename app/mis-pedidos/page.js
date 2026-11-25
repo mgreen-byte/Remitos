@@ -8,7 +8,7 @@ import PedidoUnidad from "@/components/PedidoUnidad";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtFecha, fmtNum, friendlyError, fmtDocChofer } from "@/lib/util";
 import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
-import { tieneUnidad } from "@/lib/pedidosPortal";
+import { tieneUnidad, lineasConDestino } from "@/lib/pedidosPortal";
 
 export default function MisPedidosPage() {
   return <AuthGuard roles={["transportista"]}>{(profile) => <MisPedidos profile={profile} />}</AuthGuard>;
@@ -28,6 +28,7 @@ function MisPedidos({ profile }) {
   const [form, setForm] = useState(null); // { id, modo: "aceptar"|"rechazar", ... }
   const [ver, setVer] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [plantasD, setPlantasD] = useState([]);
   const [orden, setOrden] = useState(() => { try { return localStorage.getItem("misPedidosOrden") || "carga"; } catch { return "carga"; } });
 
   const cargar = useCallback(async () => {
@@ -35,6 +36,9 @@ function MisPedidos({ profile }) {
     setCargando(false);
     if (e) return setError(friendlyError(e));
     setLista(data || []);
+    // Traslados: datos de la planta de destino (para mostrar a dónde va)
+    const ids = [...new Set((data || []).map((x) => x.orden?.planta_destino_id).filter(Boolean))];
+    if (ids.length) supabase.from("plantas").select("*").in("id", ids).then(({ data: pl }) => setPlantasD(pl || []));
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -84,7 +88,8 @@ function MisPedidos({ profile }) {
 
         <div className="space-y-3">
           {ordenada.map((x) => {
-            const { pedido: p, orden: o, lineas: ls } = x;
+            const { pedido: p, orden: o } = x;
+            const ls = lineasConDestino(o, x.lineas, plantasD);
             const base = ls.some((l) => Number(l.saldo) > 0) ? ls.filter((l) => Number(l.saldo) > 0) : ls;
             const u = base.reduce((a, l) => a + Number(l.cantidad || 0), 0);
             const kg = base.reduce((a, l) => a + Number(l.kilos || 0), 0);
@@ -100,6 +105,7 @@ function MisPedidos({ profile }) {
                   <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${etq[1]}`}>{etq[0]}</span>
                   {o.fecha_carga && <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(o.fecha_carga)}</b></span>}
                   <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>
+                  {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}
                   {varios && <span className="text-[12px] text-stone-600 bg-stone-100 rounded px-1.5 py-0.5">{x.transporte}</span>}
                 </div>
                 <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {deps.join(" · ")}</div>
@@ -156,7 +162,7 @@ function MisPedidos({ profile }) {
                     </div>
                   </div>
                 )}
-                {ver === p.id && <PedidoUnidad orden={o} lineas={ls} plantas={[]} soloLectura onCerrar={() => setVer(null)} />}
+                {ver === p.id && <PedidoUnidad orden={o} lineas={x.lineas} plantas={plantasD} soloLectura onCerrar={() => setVer(null)} />}
               </div>
             );
           })}
