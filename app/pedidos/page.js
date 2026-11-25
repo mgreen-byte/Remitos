@@ -25,7 +25,8 @@ const ORDENES = {
   transporte: "Transporte",
   asignado: "Fecha de asignación",
 };
-const TABS = ["sin", "asignado", "falta_unidad", "aceptado", "rechazado", "retira"];
+const TABS = ["sin", "asignado", "falta_unidad", "aceptado", "rechazado", "retira", "desestimado"];
+const TABS_SEL = ["sin", "asignado", "rechazado", "desestimado"]; // pestañas con selección para desestimar / volver
 
 function Pedidos({ profile }) {
   const esAdmin = profile.rol === "admin";
@@ -94,6 +95,21 @@ function Pedidos({ profile }) {
     return orden === "carga_desc" || orden === "creada" ? out.reverse() : out;
   };
   const visibles = ordenar(filas.filter((f) => f.estado === tab && (!busca || [f.o.numero, ...f.clientes, ...f.dest, ...f.deps, nomT(pedidos[f.o.id]?.transportista_id)].some((x) => norm(x).includes(norm(busca))))));
+  const [sel, setSel] = useState(new Set());
+  useEffect(() => setSel(new Set()), [tab]);
+  const conSel = TABS_SEL.includes(tab);
+  const alternar = (id) => setSel((x) => { const n = new Set(x); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const todosSel = visibles.length > 0 && visibles.every((f) => sel.has(f.o.id));
+  const desestimarSel = async () => {
+    const ids = visibles.filter((f) => sel.has(f.o.id)).map((f) => f.o.id);
+    if (!ids.length) return;
+    const volver = tab === "desestimado";
+    const { data, error } = await supabase.rpc("desestimar_pedidos", { p_ordenes: ids, p_valor: !volver });
+    if (error) return setMsg({ tipo: "error", texto: /desestimar_pedidos/.test(error.message || "") ? "Falta correr migration_73.sql en Supabase." : friendlyError(error) });
+    setMsg({ tipo: "ok", texto: volver ? `${data} orden(es) volvieron a pendientes.` : `${data} orden(es) desestimadas: ya no aparecen como pendientes.` });
+    setSel(new Set());
+    cargar();
+  };
   const cambiarOrden = (v) => { setOrden(v); try { localStorage.setItem("pedidosOrden", v); } catch {} };
 
   const guardarT = async (t, cambios) => {
@@ -127,6 +143,16 @@ function Pedidos({ profile }) {
           </label>
         </div>
 
+        {conSel && visibles.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] rounded-md border border-stone-200 bg-white px-3 py-2">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={todosSel} onChange={(e) => setSel(e.target.checked ? new Set(visibles.map((f) => f.o.id)) : new Set())} /> Seleccionar todas ({visibles.length})</label>
+            <span className="text-stone-500">{sel.size} seleccionada(s)</span>
+            <button disabled={!sel.size} onClick={desestimarSel} className="ml-auto px-3 py-1.5 rounded-md border border-stone-400 bg-stone-700 text-white disabled:opacity-40">
+              {tab === "desestimado" ? "Volver a pendientes" : "Desestimar seleccionadas"}
+            </button>
+            {tab !== "desestimado" && <span className="basis-full text-[12px] text-stone-500">Desestimar = no se pide unidad por la plataforma (p. ej. movimientos ya asignados por fuera). No es “Retira el cliente”. Se puede deshacer en la pestaña Desestimados.</span>}
+          </div>
+        )}
         {msg && <div className={`text-sm rounded p-3 border ${msg.tipo === "error" ? "bg-red-50 border-red-200 text-red-700" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>{msg.texto}</div>}
         {!delPortal.length && !cargando && <div className="text-sm rounded p-3 border bg-amber-50 border-amber-200 text-amber-800">Todavía no marcaste cuáles son los transportes del portal: abajo, en “Transportes del portal”.</div>}
         {cargando && <div className="text-sm text-stone-500">Cargando…</div>}
@@ -140,6 +166,7 @@ function Pedidos({ profile }) {
             return (
               <div key={o.id} className="panel p-3 md:p-4 space-y-2">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {conSel && <input type="checkbox" checked={sel.has(o.id)} onChange={() => alternar(o.id)} className="w-4 h-4" />}
                   <a href={`/ordenes?oc=${encodeURIComponent(o.numero)}`} className="font-semibold text-[15px] hover:underline">{o.numero}</a>
                   <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${cls}`}>{et}</span>
                   {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}

@@ -23,6 +23,7 @@ export const ESTADOS_PEDIDO = {
   aceptado: ["Aceptado con unidad", "bg-emerald-100 text-emerald-800"],
   rechazado: ["Rechazado · reasignar", "bg-red-100 text-red-700"],
   retira: ["Retira el cliente / sin pedido", "bg-stone-200 text-stone-700"],
+  desestimado: ["Desestimados", "bg-stone-200 text-stone-600"],
 };
 const pat = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const fh = (x) => (x ? new Date(x).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
@@ -76,6 +77,7 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
     if (await rpc("asignar_pedido", { p_orden: orden.id, p_transportista: t })) { setElegido(""); listo(`Asignada a ${nomT(t)}. Avisale por Outlook.`); }
   };
   const quitar = async () => { if (await rpc("quitar_pedido", { p_orden: orden.id })) listo(); };
+  const desestimar = async (v) => { if (await rpc("desestimar_pedidos", { p_ordenes: [orden.id], p_valor: v })) listo(); };
   const retira = async (v) => { if (await rpc("fijar_retira_cliente", { p_orden: orden.id, p_valor: v })) listo(); };
   const avisar = async (web) => {
     const t = transportes.find((x) => x.id === p?.transportista_id);
@@ -118,7 +120,12 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
         </div>
       )}
       <div className={conTitulo ? "px-3 py-2.5 space-y-2" : "space-y-2"}>
-        {orden.retira_cliente ? (
+        {orden.pedido_desestimado_at && !orden.retira_cliente && est === "desestimado" ? (
+          <div className="text-[12.5px] text-stone-600 flex flex-wrap items-center gap-2">
+            <span>Desestimado: no se pide unidad por la plataforma{orden.pedido_desestimado_por ? ` (lo marcó ${orden.pedido_desestimado_por}, ${fh(orden.pedido_desestimado_at)})` : ""}.</span>
+            {activa && <button disabled={guardando} onClick={() => desestimar(false)} className="text-[12px] text-sky-700 underline">Volver a pendientes</button>}
+          </div>
+        ) : orden.retira_cliente ? (
           <div className="text-[12.5px] text-stone-600">{orden.modalidad === "traslado" ? "No se pide unidad para este traslado." : "El cliente retira con su transporte: no se pide unidad."} La planta completa el transporte y el chofer en el remito.</div>
         ) : (
           <>
@@ -158,6 +165,7 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
                   <button onClick={abrirUnidad} className={`${btn} bg-white border-emerald-600 text-emerald-800`}>{tieneUnidad(p, orden) ? "Cambiar la unidad" : "Cargar la unidad"}</button>
                 )}
                 {p && <button disabled={guardando} onClick={quitar} className="text-[12px] text-stone-500 underline px-1">Quitar asignación</button>}
+                {(!p || p.estado !== "aceptado") && <button disabled={guardando} onClick={() => desestimar(true)} className="text-[12px] text-stone-500 underline px-1" title="Ya se resolvió por fuera (no es Retira el cliente)">Desestimar</button>}
               </div>
             )}
             {unidad && (
@@ -195,7 +203,7 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
             )}
           </>
         )}
-        {activa && (
+        {activa && est !== "desestimado" && (
           <label className={`flex items-center gap-2 text-[12.5px] ${p ? "text-stone-400" : "text-stone-700"}`} title={p ? "Primero quitá la asignación al transporte" : ""}>
             <input type="checkbox" disabled={!!p || guardando} checked={!!orden.retira_cliente} onChange={(e) => retira(e.target.checked)} />
             {orden.modalidad === "traslado" ? textoRetira(orden) : "Retira el cliente (no hace falta pedir unidad)"}{p ? " · para tildarlo, primero quitá la asignación" : ""}
