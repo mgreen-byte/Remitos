@@ -87,13 +87,13 @@ function AdminInner({ profile }) {
             help={
               <>
                 Para crear un usuario nuevo: Supabase → Authentication → Users → Add user (con “Auto Confirm User”). Después aparece acá y le asignás planta y permisos.
-                Despacho de planta: emite remitos y trabaja en su planta. Solo vista: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Transportista (portal): usuario de una empresa de transporte; solo ve “Mis pedidos” (elegí a qué transporte pertenece). Administrador: todo. “Otras plantas habilitadas”: si un usuario de despacho trabaja en más de una planta (por ejemplo, el mismo depósito con soja de MS Technologies y maíz de Stine), tildalas acá y va a poder cambiar de planta desde el menú.
+                Despacho de planta: emite remitos y trabaja en su planta. Solo vista: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Transportista (portal): usuario de una empresa de transporte; solo ve “Mis pedidos” (tildá el transporte o los transportes que maneja). Administrador: todo. “Otras plantas habilitadas”: si un usuario de despacho trabaja en más de una planta (por ejemplo, el mismo depósito con soja de MS Technologies y maíz de Stine), tildalas acá y va a poder cambiar de planta desde el menú.
               </>
             }
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
               { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "logistica", label: "Logística" }, { value: "admin", label: "Administrador" }, { value: "transportista", label: "Transportista (portal)" }] },
-              { key: "transportista_id", label: "Transporte (solo rol Transportista)", type: "select", nullable: true, options: transportes.map((t) => ({ value: t.id, label: t.nombre })) },
+              { key: "transportistas_ids", label: "Transportes (solo rol Transportista)", type: "multi", options: (transportes.some((t) => t.portal) ? transportes.filter((t) => t.portal) : transportes).map((t) => ({ value: t.id, label: t.nombre })) },
               { key: "planta_id", label: "Planta", type: "select", nullable: true, options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "plantas_extra", label: "Otras plantas habilitadas", type: "multi", options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "modalidades", label: "Modalidades", type: "multi", options: MODALIDADES.map((m) => ({ value: m.id, label: m.label })) },

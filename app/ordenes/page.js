@@ -7,6 +7,8 @@ import { useRubro } from "@/lib/rubro";
 import ConformesOrden from "@/components/ConformesOrden";
 import TransporteOrden from "@/components/TransporteOrden";
 import AvisoOrden from "@/components/AvisoOrden";
+import AsignacionPedido from "@/components/AsignacionPedido";
+import { PEDIDOS_DESDE } from "@/lib/pedidosPortal";
 import { mismoAviso } from "@/lib/avisoOrden";
 import { cargarDespachos, filasDeEntregas, descargarEntregasExcel, descargarEntregasPdf } from "@/lib/despachos";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -975,6 +977,9 @@ function OrdenesInner({ profile }) {
                           descargarPdf={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt, empresa: plantas.find((p) => p.id === (o.modalidad === "traslado" ? o.planta_origen_id : ls[0]?.planta_id))?.empresa || "" })}
                         />
                       )}
+                      {poderAdmin && o.estado === "activa" && o.modalidad !== "traslado" && new Date(o.created_at) >= new Date(PEDIDOS_DESDE) && (
+                        <AsignacionPedido orden={o} lineas={ls} profile={profile} onCambio={cargar} conTitulo />
+                      )}
                       {o.estado !== "anulada" && <TransporteOrden orden={o} puede={["admin", "logistica", "operador"].includes(profile.rol)} onCambio={cargar} />}
                       {o.estado !== "anulada" && <ConformesOrden ordenId={o.id} lineaIds={ls.map((l) => l.id)} plantas={plantas} profile={profile} onCambio={cargarFaltaConf} />}
                       {o.estado === "anulada" && (
@@ -1282,7 +1287,7 @@ function OrdenesInner({ profile }) {
                         {o.modalidad !== "traslado" && o.estado !== "anulada" && !soloVista && (!edit || edit.ordenId !== o.id) && poderAdmin && (poderAdmin || (ls.some((l) => l.planta_id === miPlanta) && !completaPlanta(o, miPlanta))) && (
                           <button onClick={() => setEdit({ ordenId: o.id, lineaId: null, data: { ...LINEA_VACIA, planta_id: poderAdmin ? "" : miPlanta }, tieneRemitos: false })} className={btn2}>+ Agregar línea</button>
                         )}
-                        {esAdmin && o.modalidad !== "traslado" && ls.length > 0 && (
+                        {poderAdmin && o.modalidad !== "traslado" && ls.length > 0 && (
                           <button onClick={() => setPedidoUnidad(pedidoUnidad === o.id ? null : o.id)} className={btn2}>Pedido de unidad</button>
                         )}
                         <button onClick={() => descargarOrdenPdf({ orden: o, lineas: ls, remitosDe, nombrePlanta: nombrePlantaT, estado: est.txt, empresa: plantas.find((p) => p.id === (o.modalidad === "traslado" ? o.planta_origen_id : ls[0]?.planta_id))?.empresa || "" })} className={btn2}>Descargar PDF</button>
