@@ -41,6 +41,7 @@ export default function NavBar({ profile, children }) {
   const [pendientes, setPendientes] = useState(0);
   const [avisoTal, setAvisoTal] = useState(0);
   const [avisoConf, setAvisoConf] = useState(0); // remitos sin conforme de salida
+  const [avisoOc, setAvisoOc] = useState(0); // órdenes de carga activas con saldo pendiente
   const [avisoCot, setAvisoCot] = useState(0);
   // Usuario con más de una planta habilitada: puede cambiar la planta en la que está trabajando.
   const [misPlantas, setMisPlantas] = useState([]);
@@ -90,6 +91,12 @@ export default function NavBar({ profile, children }) {
       let qf = supabase.from("v_conformes_pendientes").select("clave", { count: "exact", head: true });
       if (profile.rol === "operador") qf = qf.eq("planta_id", profile.planta.id);
       qf.then(({ count, error }) => setAvisoConf(error ? 0 : count || 0));
+    }
+    // Órdenes de carga activas con algo pendiente de remitir (la planta: las que tienen renglones suyos)
+    if (profile.rol !== "operador" || profile.planta?.id) {
+      let qo = supabase.from("v_ordenes_lineas_saldo").select("orden_id").eq("orden_estado", "activa").gt("saldo", 0).limit(5000);
+      if (profile.rol === "operador") qo = qo.eq("planta_id", profile.planta.id);
+      qo.then(({ data, error }) => setAvisoOc(error ? 0 : new Set((data || []).map((x) => x.orden_id)).size));
     }
     // Talonarios: la planta ve los que faltan confirmar; el admin, las pérdidas reportadas.
     let qt = supabase.from("talonarios").select("id", { count: "exact", head: true }).eq("estado", "activo");
@@ -160,7 +167,7 @@ export default function NavBar({ profile, children }) {
 
 
   const titulo = (items.find(([href]) => href === pathname) || [])[1] || "";
-  const hayAvisos = pendientes + avisoCot + avisoTal + avisoConf > 0;
+  const hayAvisos = pendientes + avisoCot + avisoTal + avisoConf + avisoOc > 0;
   const rolTxt = profile?.rol === "consulta" ? "Solo vista" : profile?.rol === "logistica" ? "Logística" : profile?.planta ? profile.planta.nombre : profile?.rol === "admin" ? "Administrador" : "Sin planta";
 
   const logout = async () => {
@@ -204,13 +211,16 @@ export default function NavBar({ profile, children }) {
               >
                 <Icono d={ICONOS[icono]} />
                 {plegado ? (
-                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) || (icono === "conformes" && avisoConf > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
+                  (icono === "traslados" && pendientes > 0) || (icono === "cot" && avisoCot > 0) || (icono === "talonarios" && avisoTal > 0) || (icono === "conformes" && avisoConf > 0) || (icono === "ordenes" && avisoOc > 0) ? <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" /> : null
                 ) : label}
                 {!plegado && icono === "traslados" && pendientes > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{pendientes}</span>
                 )}
                 {!plegado && icono === "cot" && avisoCot > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoCot}</span>
+                )}
+                {!plegado && icono === "ordenes" && avisoOc > 0 && (
+                  <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center" title="Órdenes activas con saldo pendiente de remitir">{avisoOc}</span>
                 )}
                 {!plegado && icono === "conformes" && avisoConf > 0 && (
                   <span className="ml-auto text-[11px] font-semibold bg-amber-400 text-ink-900 rounded-full px-1.5 min-w-[18px] text-center">{avisoConf}</span>
@@ -254,7 +264,7 @@ export default function NavBar({ profile, children }) {
                   <div key={g}>
                     <div className="px-4 pt-3 pb-1 text-[11px] uppercase tracking-[0.08em] text-stone-500 font-semibold">{g}</div>
                 {its.map(([href, label, icono]) => {
-                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : icono === "conformes" ? avisoConf : 0;
+                  const n = icono === "traslados" ? pendientes : icono === "cot" ? avisoCot : icono === "talonarios" ? avisoTal : icono === "conformes" ? avisoConf : icono === "ordenes" ? avisoOc : 0;
                   return (
                     <Link key={href} href={href} className={`flex items-center gap-3 px-4 py-3.5 rounded-md text-[16px] font-medium ${pathname === href ? "bg-emerald-600 text-white" : "text-stone-200 active:bg-ink-700"}`}>
                       <Icono d={ICONOS[icono]} />
