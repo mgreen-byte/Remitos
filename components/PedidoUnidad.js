@@ -61,7 +61,8 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos = [], o
   // Km de cada tramo del recorrido. Puntos sin ubicación no entran.
   const [km, setKm] = useState({ tramo: [], total: null, estimado: false, faltan: 0, cargando: true });
   const [recorrido, setRecorrido] = useState("");
-  const firmaRuta = claves.join(",") + "|" + (cd ? "ok" : "");
+  // Incluye las coordenadas: si llegan después (p. ej. la planta se lee más tarde en el portal), se recalcula.
+  const firmaRuta = claves.join(",") + "|" + (cd ? claves.map((k) => { const c = ptDe(k); return c ? `${c.lat.toFixed(5)},${c.lng.toFixed(5)}` : "x"; }).join(";") : "");
   useEffect(() => {
     if (!cd) return;
     let vivo = true;
@@ -193,7 +194,7 @@ export default function PedidoUnidad({ orden, lineas, plantas, productos = [], o
                     <div className="font-medium"><span className="text-emerald-800">DESCARGA</span> · {[pa.localidad, pa.provincia].filter(Boolean).join(", ") || pa.domicilio}</div>
                     <div className="text-stone-500 text-[12px]">{pa.domicilio}</div>
                     {pa.contactos.length ? <div className="text-[12px]">Contacto: {pa.contactos.join(" / ")}</div> : <div className="text-[12px] text-amber-700">sin contacto</div>}
-                    {!pa.gps && <div className="text-[12px] text-red-700">sin ubicación</div>}
+                    {pa.gps ? <a href={urlMaps(pa.gps)} target="_blank" rel="noreferrer" className="text-[12px] text-sky-700 underline">Ubicación en Maps</a> : <div className="text-[12px] text-red-700">sin ubicación</div>}
                     {falta && <div className="text-[12px] text-red-700 font-medium">Antes hay que cargar en {falta.map((id) => depDe(id).planta?.nombre || "otro depósito").join(" y ")}.</div>}
                   </div>
                   {i > 0 && <span className="text-[12px] text-emerald-800 bg-emerald-50 rounded-full px-2">{kmTxt(x.km)}</span>}
