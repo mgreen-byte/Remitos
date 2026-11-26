@@ -4,6 +4,7 @@ import { gpsDeRemito } from "@/lib/qr";
 import { descargarPdfDeRemito } from "@/lib/remitoPdfDatos";
 import { Fragment, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { traerTodo } from "@/lib/despachos";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import RemitoConCopias, { SelectorCopias, useCopias } from "@/components/CopiasImpresion";
@@ -72,9 +73,8 @@ function HistorialInner({ profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const buscar = async () => {
-    setLoading(true);
-    setMsg("");
+  // Filtros → función que arma la consulta (la usan la lista, con tope de 300, y el Excel, sin tope)
+  const armarConsulta = async () => {
     let ids = null;
     if (f.lote.trim()) {
       const { data } = await supabase.from("v_remito_items_detalle").select("remito_id").ilike("lote", `%${f.lote.trim()}%`).limit(1000);
@@ -94,19 +94,28 @@ function HistorialInner({ profile }) {
       const idsPend = Object.keys(mapa);
       ids = ids ? ids.filter((x) => idsPend.includes(x)) : idsPend;
     }
-    let q = supabase
-      .from("remitos")
-      .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre, gps), remito_items(*, linea:ordenes_carga_lineas(gps))")
-      .order("created_at", { ascending: false })
-      .limit(300);
-    if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-    if (f.estado && f.estado !== "cot_pendiente") q = q.eq("estado", f.estado);
-    if (f.desde) q = q.gte("fecha", f.desde);
-    if (f.hasta) q = q.lte("fecha", f.hasta);
-    if (f.planta) q = q.eq("planta_id", f.planta);
-    const t = f.texto.trim().replace(/[,()]/g, " ");
-    if (t) q = q.or(`cliente_nombre.ilike.%${t}%,numero.ilike.%${t}%,chofer_nombre.ilike.%${t}%,transportista_nombre.ilike.%${t}%,cot.ilike.%${t}%,orden_carga.ilike.%${t}%`);
-    const { data, error } = await q;
+    return () => {
+      let q = supabase
+        .from("remitos")
+        .select("*, planta:plantas!planta_id(nombre), destino:plantas!planta_destino_id(nombre, gps), remito_items(*, linea:ordenes_carga_lineas(gps))")
+        .order("created_at", { ascending: false })
+        .order("id");
+      if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+      if (f.estado && f.estado !== "cot_pendiente") q = q.eq("estado", f.estado);
+      if (f.desde) q = q.gte("fecha", f.desde);
+      if (f.hasta) q = q.lte("fecha", f.hasta);
+      if (f.planta) q = q.eq("planta_id", f.planta);
+      const t = f.texto.trim().replace(/[,()]/g, " ");
+      if (t) q = q.or(`cliente_nombre.ilike.%${t}%,numero.ilike.%${t}%,chofer_nombre.ilike.%${t}%,transportista_nombre.ilike.%${t}%,cot.ilike.%${t}%,orden_carga.ilike.%${t}%`);
+      return q;
+    };
+  };
+
+  const buscar = async () => {
+    setLoading(true);
+    setMsg("");
+    const armar = await armarConsulta();
+    const { data, error } = await armar().limit(300);
     setLoading(false);
     if (error) return setMsg(friendlyError(error));
     setRows(data || []);
@@ -264,9 +273,21 @@ function HistorialInner({ profile }) {
     setTimeout(() => window.print(), 200);
   };
 
-  const exportar = () => {
+  const [exportando, setExportando] = useState(false);
+  // Excel: TODOS los remitos que cumplen los filtros (no solo los 300 de la lista)
+  const exportar = async () => {
+    setExportando(true);
+    setMsg("");
+    let todos;
+    try {
+      todos = await traerTodo(await armarConsulta());
+    } catch (e) {
+      setExportando(false);
+      return setMsg(friendlyError(e));
+    }
+    setExportando(false);
     const filas = [];
-    rows.forEach((r) =>
+    todos.forEach((r) =>
       (r.remito_items || [])
         .sort((a, b) => a.orden - b.orden)
         .forEach((i) =>
@@ -342,8 +363,8 @@ function HistorialInner({ profile }) {
           <button onClick={buscar} className="bg-emerald-700 text-white text-sm px-4 py-1.5 rounded">
             Buscar
           </button>
-          <button onClick={exportar} disabled={!rows.length} className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded disabled:opacity-40">
-            Exportar Excel
+          <button onClick={exportar} disabled={!rows.length || exportando} title="Baja todos los remitos que cumplen los filtros (sin el tope de 300)" className="border border-emerald-700 text-emerald-800 text-sm px-3 py-1.5 rounded disabled:opacity-40">
+            {exportando ? "Armando el Excel…" : "Exportar Excel (todo lo filtrado)"}
           </button>
           {!soloLectura && <SelectorCopias copias={copias} onChange={setCopias} />}
         </div>
@@ -686,7 +707,7 @@ function HistorialInner({ profile }) {
             </tbody>
           </table>
         </div>
-        {rows.length >= 300 && <div className="text-xs text-stone-400">Se muestran los últimos 300. Acotá con filtros para ver más.</div>}
+        {rows.length >= 300 && <div className="text-xs text-stone-400">En pantalla se muestran los últimos 300. “Exportar Excel” baja todos los que cumplen los filtros (por ejemplo, desde el inicio hasta hoy).</div>}
       </div>
       {reimp && (
         <div className="print-reset hidden print:block">
