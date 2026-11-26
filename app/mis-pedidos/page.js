@@ -47,12 +47,35 @@ function MisPedidos({ profile }) {
 
   const est = (x) => (x.pedido.estado === "aceptado" ? (tieneUnidad(x.pedido, x.orden) ? "aceptado" : "falta") : x.pedido.estado);
   const varios = new Set(lista.map((x) => x.pedido.transportista_id)).size > 1;
+  // Tablero: cantidades por estado y próximas cargas
+  const [filtro, setFiltro] = useState(null); // null | estado | "hoy" | "manana" | "atrasadas" | id de razón social
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const manana = new Date(new Date(`${hoy}T12:00:00-03:00`).getTime() + 864e5).toISOString().slice(0, 10);
+  const activos = (x) => est(x) !== "rechazado";
+  const pasa = (x, f) =>
+    !f ? true
+    : f === "hoy" ? activos(x) && x.orden.fecha_carga === hoy
+    : f === "manana" ? activos(x) && x.orden.fecha_carga === manana
+    : f === "atrasadas" ? ["asignado", "falta"].includes(est(x)) && x.orden.fecha_carga && x.orden.fecha_carga < hoy
+    : f.startsWith("t:") ? x.pedido.transportista_id === f.slice(2)
+    : est(x) === f;
+  const cuenta = (f) => lista.filter((x) => pasa(x, f)).length;
+  const porRS = useMemo(() => {
+    const m = new Map();
+    for (const x of lista) {
+      const k = x.pedido.transportista_id;
+      if (!m.has(k)) m.set(k, { id: k, nombre: x.transporte, total: 0, pend: 0 });
+      const o = m.get(k); o.total++; if (["asignado", "falta"].includes(est(x))) o.pend++;
+    }
+    return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [lista]);
   const ordenada = useMemo(() => {
     const num = (v) => String(v || "").replace(/\d+/g, (d) => d.padStart(8, "0"));
     const k = (x) => orden === "numero" ? num(x.orden.numero) : orden === "estado" ? `${PESO[est(x)]}${x.orden.fecha_carga || "9999"}` : orden === "transporte" ? `${x.transporte || ""}${x.orden.fecha_carga || "9999"}` : x.orden.fecha_carga || "9999";
     const out = [...lista].sort((a, b) => k(a).localeCompare(k(b)) || num(a.orden.numero).localeCompare(num(b.orden.numero)));
-    return orden === "carga_desc" ? out.reverse() : out;
-  }, [lista, orden]);
+    const f = orden === "carga_desc" ? out.reverse() : out;
+    return f.filter((x) => pasa(x, filtro));
+  }, [lista, orden, filtro]);
   const cambiarOrden = (v) => { setOrden(v); try { localStorage.setItem("misPedidosOrden", v); } catch {} };
 
   const abrirUnidad = (x) => setForm({ id: x.pedido.id, modo: "unidad", nombre: x.orden.chofer?.nombre || "", doc: x.orden.chofer?.dni || "", soloDni: /^\d{7,8}$/.test(x.orden.chofer?.dni || ""), chasis: x.orden.chasis || "", acoplado: x.orden.acoplado || "", tipo: x.pedido.tipo_equipo || x.orden.tipo_unidad || "", rs: x.pedido.transportista_id });
@@ -88,6 +111,34 @@ function MisPedidos({ profile }) {
           <h1 className="text-[20px] sm:text-[22px] font-semibold text-stone-900">Mis pedidos de unidad</h1>
           <p className="text-stone-500 text-[13px] sm:text-[13.5px]">Revisá el recorrido y la carga, y <b>aceptá</b> o <b>rechazá</b> (con motivo). El chofer, las patentes y el tipo de equipo los podés cargar al aceptar o más tarde.</p>
         </header>
+        {lista.length > 0 && (
+          <section className="space-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                ["asignado", "Para responder", "Aceptá o rechazá", "border-amber-300 bg-amber-50 text-amber-900"],
+                ["falta", "Falta la unidad", "Cargá chofer y patentes", "border-lime-300 bg-lime-50 text-lime-900"],
+                ["aceptado", "Listos", "Con unidad cargada", "border-emerald-300 bg-emerald-50 text-emerald-900"],
+                ["rechazado", "Rechazados", "Por vos", "border-stone-300 bg-white text-stone-700"],
+              ].map(([k, t, sub, cls]) => (
+                <button key={k} onClick={() => setFiltro(filtro === k ? null : k)} className={`text-left rounded-lg border px-3 py-2.5 ${cls} ${filtro === k ? "ring-2 ring-offset-1 ring-stone-700" : ""}`}>
+                  <div className="text-[26px] leading-none font-semibold">{cuenta(k)}</div>
+                  <div className="text-[13px] font-medium mt-1">{t}</div>
+                  <div className="text-[11.5px] opacity-75">{sub}</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 text-[13px]">
+              {[["atrasadas", "Atrasados sin resolver", "border-red-300 text-red-700"], ["hoy", "Cargan hoy", "border-stone-300 text-stone-700"], ["manana", "Cargan mañana", "border-stone-300 text-stone-700"]].map(([k, t, cls]) => (
+                <button key={k} onClick={() => setFiltro(filtro === k ? null : k)} className={`rounded-full border bg-white px-3 py-1 ${cls} ${filtro === k ? "ring-2 ring-stone-700" : ""}`}>{t}: <b>{cuenta(k)}</b></button>
+              ))}
+              {porRS.length > 1 && porRS.map((t) => (
+                <button key={t.id} onClick={() => setFiltro(filtro === `t:${t.id}` ? null : `t:${t.id}`)} className={`rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-stone-700 ${filtro === `t:${t.id}` ? "ring-2 ring-stone-700" : ""}`}>{t.nombre}: <b>{t.total}</b>{t.pend ? <span className="text-amber-700"> · {t.pend} pendientes</span> : null}</button>
+              ))}
+              {filtro && <button onClick={() => setFiltro(null)} className="px-2 py-1 text-sky-700 underline">Ver todos ({lista.length})</button>}
+            </div>
+          </section>
+        )}
+        {filtro && !ordenada.length && <div className="panel p-4 text-sm text-stone-500">No hay pedidos con ese filtro.</div>}
         {lista.length > 1 && (
           <label className="text-[13px] text-stone-500 flex items-center gap-1.5">Ordenar por
             <select value={orden} onChange={(e) => cambiarOrden(e.target.value)} className="border border-stone-300 rounded-md px-2 py-1.5 text-[14px] sm:text-[13px] bg-white text-stone-800">

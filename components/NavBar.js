@@ -77,7 +77,11 @@ export default function NavBar({ profile, children }) {
   const alternarMenu = () => setPlegado((v) => { try { localStorage.setItem("menuPlegado", v ? "0" : "1"); } catch {} return !v; });
   useEffect(() => {
     if (!profile) return;
-    if (profile.rol === "transportista") return; // el portal de transportistas no consulta nada más
+    if (profile.rol === "transportista") {
+      // Portal: pedidos que esperan algo del transporte (responder o cargar la unidad)
+      supabase.rpc("mis_pedidos").then(({ data }) => setAvisoPu((data || []).filter((x) => x.pedido.estado === "asignado" || (x.pedido.estado === "aceptado" && !x.pedido.unidad_at && !x.orden.chasis)).length));
+      return;
+    }
     // Pedidos de unidad: órdenes activas (a clientes) sin transporte asignado, o rechazadas
     if (profile.rol === "admin" || profile.rol === "logistica") {
       Promise.all([
