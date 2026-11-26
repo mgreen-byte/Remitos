@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, up } from "@/lib/util";
 import ImportarCatalogo from "@/components/ImportarCatalogo";
+import ImportarTabla from "@/components/ImportarTabla";
 
 const inputCls = "border border-stone-300 rounded px-2 py-1 text-sm w-full";
 
 // Tabla editable genérica.
 // columns: [{key, label, type: text|number|select|bool|multi|list, options, upper, width, placeholder}]
-export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false, multiDelete = false, deleteRpc = null }) {
+export default function CrudTable({ table, columns, orderBy = "created_at", canAdd = true, canDelete = false, nuevoDefault = {}, select = "*", help, importarCatalogo = false, multiDelete = false, deleteRpc = null, importar = null }) {
   const [rows, setRows] = useState([]);
   const [edit, setEdit] = useState(null); // {id|null, data}
   const [msg, setMsg] = useState("");
@@ -189,6 +190,11 @@ export default function CrudTable({ table, columns, orderBy = "created_at", canA
         <ImportarCatalogo existentes={rows} onClose={() => setImportando(false)} onDone={cargar} />
       ) : (
         <div><button onClick={() => setImportando(true)} className="btn-secundario">Cargar catálogo desde Excel</button></div>
+      ))}
+      {importar && (importando ? (
+        <ImportarTabla table={table} columns={columns} existentes={rows} titulo={importar.titulo} clave={importar.clave} ejemplo={importar.ejemplo || []} onClose={() => setImportando(false)} onDone={cargar} />
+      ) : (
+        <div><button onClick={() => setImportando(true)} className="btn-secundario">Importar desde Excel</button></div>
       ))}
       {multiDelete && canDelete && (
         <div className="flex items-center gap-3 text-sm">

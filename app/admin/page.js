@@ -160,12 +160,12 @@ function AdminInner({ profile }) {
         {tab === "respaldo" && <ExportarTodo />}
 
         {tab === "areas" && (
-          <CrudTable key="areas" table="areas" orderBy="nombre" canDelete
+          <CrudTable key="areas" table="areas" orderBy="nombre" canDelete importar={{ titulo: "Áreas", clave: ["nombre"], ejemplo: [{ nombre: "PRODUCCION", activa: true }, { nombre: "CALIDAD", activa: true }] }}
             help="Áreas que piden unidades (pedidos internos). Cada usuario Solicitante tiene su área y ve los pedidos de su área. Si un área ya tiene pedidos, desactivala en vez de borrarla."
             columns={[{ key: "nombre", label: "Área", type: "text", upper: true }, { key: "activa", label: "Activa", type: "bool" }]} />
         )}
         {tab === "lugares" && (
-          <CrudTable key="lugares" table="lugares" orderBy="nombre" canDelete
+          <CrudTable key="lugares" table="lugares" orderBy="nombre" canDelete importar={{ titulo: "Lugares", clave: ["nombre", "localidad"], ejemplo: [{ nombre: "CAMPO LA ESPERANZA", tipo: "campo", domicilio: "RUTA 8 KM 230", localidad: "PERGAMINO", provincia: "BUENOS AIRES", gps: "https://maps.app.goo.gl/…", contacto: "Nombre", telefono: "2477 000000", horario: "Lunes a viernes de 8 a 17", activo: true }] }}
             help="Lugares de carga y descarga que no son plantas (campos, depósitos de terceros, oficinas, proveedores). Las plantas aparecen solas en el pedido. Los solicitantes también pueden crear lugares desde el pedido."
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
@@ -181,12 +181,12 @@ function AdminInner({ profile }) {
             ]} />
         )}
         {tab === "tipos_carga" && (
-          <CrudTable key="tipos_carga" table="tipos_carga" orderBy="nombre" canDelete
+          <CrudTable key="tipos_carga" table="tipos_carga" orderBy="nombre" canDelete importar={{ titulo: "Tipos de carga", clave: ["nombre"], ejemplo: [{ nombre: "BOLSAS VACIAS", activo: true }, { nombre: "INSUMOS", activo: true }] }}
             help="Lista de tipos de carga para los pedidos internos (por ejemplo: bolsas vacías, insumos, equipos)."
             columns={[{ key: "nombre", label: "Tipo de carga", type: "text", upper: true }, { key: "activo", label: "Activo", type: "bool" }]} />
         )}
         {tab === "contables" && (
-          <CrudTable key="contables" table="listas_contables" orderBy="nombre" canDelete
+          <CrudTable key="contables" table="listas_contables" orderBy="nombre" canDelete importar={{ titulo: "Listas contables", clave: ["lista", "nombre"], ejemplo: [{ lista: "departamento", nombre: "LOGISTICA", activo: true }, { lista: "cuenta", nombre: "5.1.02 FLETES", activo: true }] }}
             help="Opciones de Departamento, Clase, Subsidiaria y Cuenta para los pedidos internos. Cargá una fila por opción y elegí a qué lista pertenece."
             columns={[{ key: "lista", label: "Lista", type: "select", options: LISTAS_CONTABLES }, { key: "nombre", label: "Opción", type: "text", upper: true }, { key: "activo", label: "Activo", type: "bool" }]} />
         )}
