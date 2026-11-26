@@ -29,6 +29,9 @@ function MisPedidos({ profile }) {
   const [ver, setVer] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [plantasD, setPlantasD] = useState([]);
+  const [misT, setMisT] = useState([]); // razones sociales del usuario
+  useEffect(() => { supabase.rpc("mis_transportes").then(({ data }) => setMisT(data || [])); }, []);
+  const eligeRS = misT.length > 1;
   const [orden, setOrden] = useState(() => { try { return localStorage.getItem("misPedidosOrden") || "carga"; } catch { return "carga"; } });
 
   const cargar = useCallback(async () => {
@@ -52,7 +55,7 @@ function MisPedidos({ profile }) {
   }, [lista, orden]);
   const cambiarOrden = (v) => { setOrden(v); try { localStorage.setItem("misPedidosOrden", v); } catch {} };
 
-  const abrirUnidad = (x) => setForm({ id: x.pedido.id, modo: "unidad", nombre: x.orden.chofer?.nombre || "", doc: x.orden.chofer?.dni || "", soloDni: /^\d{7,8}$/.test(x.orden.chofer?.dni || ""), chasis: x.orden.chasis || "", acoplado: x.orden.acoplado || "", tipo: x.pedido.tipo_equipo || x.orden.tipo_unidad || "" });
+  const abrirUnidad = (x) => setForm({ id: x.pedido.id, modo: "unidad", nombre: x.orden.chofer?.nombre || "", doc: x.orden.chofer?.dni || "", soloDni: /^\d{7,8}$/.test(x.orden.chofer?.dni || ""), chasis: x.orden.chasis || "", acoplado: x.orden.acoplado || "", tipo: x.pedido.tipo_equipo || x.orden.tipo_unidad || "", rs: x.pedido.transportista_id });
   const responder = async (args) => {
     setError("");
     setGuardando(true);
@@ -62,11 +65,21 @@ function MisPedidos({ profile }) {
     setForm(null);
     cargar();
   };
-  const aceptar = (id) => responder({ p_pedido: id, p_acepta: true });
+  const aceptar = (x) => (eligeRS ? setForm({ id: x.pedido.id, modo: "aceptar", rs: x.pedido.transportista_id }) : responder({ p_pedido: x.pedido.id, p_acepta: true }));
   const enviar = () =>
     form.modo === "rechazar"
       ? responder({ p_pedido: form.id, p_acepta: false, p_motivo: form.motivo || "" })
-      : responder({ p_pedido: form.id, p_acepta: true, p_chofer_nombre: form.nombre, p_chofer_doc: form.doc, p_chasis: form.chasis, p_acoplado: form.acoplado, p_tipo_equipo: form.tipo });
+      : form.modo === "aceptar"
+      ? responder({ p_pedido: form.id, p_acepta: true, p_transportista: form.rs || null })
+      : responder({ p_pedido: form.id, p_acepta: true, p_chofer_nombre: form.nombre, p_chofer_doc: form.doc, p_chasis: form.chasis, p_acoplado: form.acoplado, p_tipo_equipo: form.tipo, ...(eligeRS ? { p_transportista: form.rs || null } : {}) });
+  const selRS = (f) => eligeRS && (
+    <div className="sm:col-span-2">
+      <label className="campo-etiqueta">Razón social con la que hacés el viaje</label>
+      <select value={f.rs || ""} onChange={(e) => setForm({ ...f, rs: e.target.value })} className={inp}>
+        {misT.map((t) => <option key={t.id} value={t.id}>{t.nombre}{t.cuit ? ` · CUIT ${t.cuit}` : ""}</option>)}
+      </select>
+    </div>
+  );
 
   return (
     <NavBar profile={profile}>
@@ -106,7 +119,7 @@ function MisPedidos({ profile }) {
                   {o.fecha_carga && <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(o.fecha_carga)}</b></span>}
                   <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>
                   {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}
-                  {varios && <span className="text-[12px] text-stone-600 bg-stone-100 rounded px-1.5 py-0.5">{x.transporte}</span>}
+                  {(varios || eligeRS) && <span className="text-[12px] text-stone-600 bg-stone-100 rounded px-1.5 py-0.5">{p.estado === "aceptado" ? "Viaja con: " : ""}{x.transporte}</span>}
                 </div>
                 <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {deps.join(" · ")}</div>
                 <div className="text-[13.5px]"><span className="text-stone-500">Destinos:</span> {dest.join(" · ")}</div>
@@ -120,7 +133,7 @@ function MisPedidos({ profile }) {
 
                 {!f && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {p.estado !== "aceptado" && <button disabled={guardando} onClick={() => aceptar(p.id)} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">Aceptar</button>}
+                    {p.estado !== "aceptado" && <button disabled={guardando} onClick={() => aceptar(x)} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">Aceptar</button>}
                     <button onClick={() => abrirUnidad(x)} className={`px-3 py-2 rounded-md text-[14px] font-medium ${e === "falta" ? "bg-emerald-700 text-white" : "border border-emerald-600 text-emerald-800 bg-white"}`}>{e === "aceptado" ? "Cambiar la unidad" : p.estado === "aceptado" ? "Cargar la unidad" : "Aceptar y cargar la unidad"}</button>
                     {p.estado !== "rechazado" && <button onClick={() => setForm({ id: p.id, modo: "rechazar", motivo: "" })} className="px-3 py-2 rounded-md border border-stone-300 bg-white text-[14px]">Rechazar</button>}
                     <button onClick={() => setVer(ver === p.id ? null : p.id)} className="px-3 py-2 text-[13.5px] text-sky-700 underline">{ver === p.id ? "Ocultar recorrido" : "Ver recorrido y carga"}</button>
@@ -129,6 +142,7 @@ function MisPedidos({ profile }) {
                 {f?.modo === "unidad" && (
                   <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
                     <div className="grid gap-2 sm:grid-cols-2">
+                      {selRS(f)}
                       <div><label className="campo-etiqueta">Chofer (nombre y apellido)</label><input value={f.nombre} onChange={(e) => setForm({ ...f, nombre: e.target.value.toUpperCase() })} className={inp} /></div>
                       <div>
                         <label className="campo-etiqueta">{f.soloDni ? "DNI del chofer" : "CUIL del chofer"}</label>
@@ -148,6 +162,15 @@ function MisPedidos({ profile }) {
                     </div>
                     <div className="flex gap-2">
                       <button disabled={guardando} onClick={enviar} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">{guardando ? "Guardando…" : "Confirmar"}</button>
+                      <button onClick={() => setForm(null)} className="px-3 py-2 text-[14px] text-stone-500">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {f?.modo === "aceptar" && (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">{selRS(f)}</div>
+                    <div className="flex gap-2">
+                      <button disabled={guardando} onClick={enviar} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">{guardando ? "Guardando…" : "Aceptar"}</button>
                       <button onClick={() => setForm(null)} className="px-3 py-2 text-[14px] text-stone-500">Cancelar</button>
                     </div>
                   </div>
