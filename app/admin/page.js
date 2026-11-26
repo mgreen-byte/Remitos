@@ -9,6 +9,7 @@ import ExportarTodo from "@/components/ExportarTodo";
 import { supabase } from "@/lib/supabaseClient";
 import { MODALIDADES, IVA_DEFAULT, EMPRESAS_DEFAULT, EMPRESAS_ETIQUETA } from "@/lib/fieldCoords";
 import { PROVINCIAS, fmtFecha, hoyISO, friendlyError, fmtMonto } from "@/lib/util";
+import { TIPOS_LUGAR, LISTAS_CONTABLES } from "@/lib/pedidosInternos";
 
 const TABS = [
   ["plantas", "Plantas"],
@@ -18,6 +19,10 @@ const TABS = [
   ["prefijos", "Prefijos de precinto"],
   ["precios", "Precios"],
   ["config", "Configuración"],
+  ["areas", "Áreas"],
+  ["lugares", "Lugares"],
+  ["tipos_carga", "Tipos de carga"],
+  ["contables", "Listas contables"],
   ["respaldo", "Respaldo"],
 ];
 
@@ -26,14 +31,16 @@ export default function AdminPage() {
 }
 
 function AdminInner({ profile }) {
-  const esLogistica = profile.rol === "logistica"; // solo Catálogo y Respaldo
-  const tabs = esLogistica ? TABS.filter(([id]) => id === "catalogo" || id === "respaldo") : TABS;
+  const esLogistica = profile.rol === "logistica"; // Catálogo, Respaldo y los maestros de pedidos internos
+  const tabs = esLogistica ? TABS.filter(([id]) => ["catalogo", "respaldo", "areas", "lugares", "tipos_carga", "contables"].includes(id)) : TABS;
+  const [areas, setAreas] = useState([]);
   const [tab, setTab] = useState(esLogistica ? "catalogo" : "plantas");
   const [plantas, setPlantas] = useState([]);
   const [transportes, setTransportes] = useState([]);
 
   useEffect(() => {
     supabase.from("plantas").select("id, nombre").order("nombre").then(({ data }) => setPlantas(data || []));
+    supabase.from("areas").select("id, nombre").order("nombre").then(({ data }) => setAreas(data || []));
     supabase.from("transportistas").select("id, nombre, portal").order("nombre").then(({ data }) => setTransportes((data || []).sort((a, b) => Number(b.portal) - Number(a.portal) || a.nombre.localeCompare(b.nombre))));
   }, [tab]);
 
@@ -87,12 +94,13 @@ function AdminInner({ profile }) {
             help={
               <>
                 Para crear un usuario nuevo: Supabase → Authentication → Users → Add user (con “Auto Confirm User”). Después aparece acá y le asignás planta y permisos.
-                Despacho de planta: emite remitos y trabaja en su planta. Solo vista: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Transportista (portal): usuario de una empresa de transporte; solo ve “Mis pedidos” (tildá el transporte o los transportes que maneja). Administrador: todo. “Otras plantas habilitadas”: si un usuario de despacho trabaja en más de una planta (por ejemplo, el mismo depósito con soja de MS Technologies y maíz de Stine), tildalas acá y va a poder cambiar de planta desde el menú.
+                Despacho de planta: emite remitos y trabaja en su planta. Solo vista: ve todas las plantas y descarga a Excel, pero no reimprime ni modifica nada (no necesita planta). Solicitante: usuario de otra área que pide unidades (movimientos internos); elegí su Área. Ve “Nuevo pedido” y los pedidos de su área. Transportista (portal): usuario de una empresa de transporte; solo ve “Mis pedidos” (tildá el transporte o los transportes que maneja). Administrador: todo. “Otras plantas habilitadas”: si un usuario de despacho trabaja en más de una planta (por ejemplo, el mismo depósito con soja de MS Technologies y maíz de Stine), tildalas acá y va a poder cambiar de planta desde el menú.
               </>
             }
             columns={[
               { key: "nombre", label: "Nombre", type: "text", upper: true },
-              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "logistica", label: "Logística" }, { value: "admin", label: "Administrador" }, { value: "transportista", label: "Transportista (portal)" }] },
+              { key: "rol", label: "Rol", type: "select", options: [{ value: "operador", label: "Despacho de planta" }, { value: "consulta", label: "Solo vista" }, { value: "logistica", label: "Logística" }, { value: "admin", label: "Administrador" }, { value: "transportista", label: "Transportista (portal)" }, { value: "solicitante", label: "Solicitante (pide unidades)" }] },
+              { key: "area_id", label: "Área (solo rol Solicitante)", type: "select", nullable: true, options: areas.map((a) => ({ value: a.id, label: a.nombre })) },
               { key: "transportistas_ids", label: "Transportes (solo rol Transportista)", type: "multi", options: (transportes.some((t) => t.portal) ? transportes.filter((t) => t.portal) : transportes).map((t) => ({ value: t.id, label: t.nombre })) },
               { key: "planta_id", label: "Planta", type: "select", nullable: true, options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
               { key: "plantas_extra", label: "Otras plantas habilitadas", type: "multi", options: plantas.map((p) => ({ value: p.id, label: p.nombre })) },
@@ -150,6 +158,38 @@ function AdminInner({ profile }) {
         {tab === "config" && <Config />}
 
         {tab === "respaldo" && <ExportarTodo />}
+
+        {tab === "areas" && (
+          <CrudTable key="areas" table="areas" orderBy="nombre" canDelete
+            help="Áreas que piden unidades (pedidos internos). Cada usuario Solicitante tiene su área y ve los pedidos de su área. Si un área ya tiene pedidos, desactivala en vez de borrarla."
+            columns={[{ key: "nombre", label: "Área", type: "text", upper: true }, { key: "activa", label: "Activa", type: "bool" }]} />
+        )}
+        {tab === "lugares" && (
+          <CrudTable key="lugares" table="lugares" orderBy="nombre" canDelete
+            help="Lugares de carga y descarga que no son plantas (campos, depósitos de terceros, oficinas, proveedores). Las plantas aparecen solas en el pedido. Los solicitantes también pueden crear lugares desde el pedido."
+            columns={[
+              { key: "nombre", label: "Nombre", type: "text", upper: true },
+              { key: "tipo", label: "Tipo", type: "select", options: TIPOS_LUGAR },
+              { key: "domicilio", label: "Dirección", type: "text", upper: true, nullable: true },
+              { key: "localidad", label: "Localidad", type: "text", upper: true },
+              { key: "provincia", label: "Provincia", type: "select", nullable: true, options: PROVINCIAS.map((p) => ({ value: p, label: p })) },
+              { key: "gps", label: "Ubicación (link de Maps)", type: "text", nullable: true, placeholder: "https://maps.app.goo.gl/…" },
+              { key: "contacto", label: "Contacto", type: "text", nullable: true },
+              { key: "telefono", label: "Teléfono", type: "text", nullable: true },
+              { key: "horario", label: "Horario", type: "text", nullable: true },
+              { key: "activo", label: "Activo", type: "bool" },
+            ]} />
+        )}
+        {tab === "tipos_carga" && (
+          <CrudTable key="tipos_carga" table="tipos_carga" orderBy="nombre" canDelete
+            help="Lista de tipos de carga para los pedidos internos (por ejemplo: bolsas vacías, insumos, equipos)."
+            columns={[{ key: "nombre", label: "Tipo de carga", type: "text", upper: true }, { key: "activo", label: "Activo", type: "bool" }]} />
+        )}
+        {tab === "contables" && (
+          <CrudTable key="contables" table="listas_contables" orderBy="nombre" canDelete
+            help="Opciones de Departamento, Clase, Subsidiaria y Cuenta para los pedidos internos. Cargá una fila por opción y elegí a qué lista pertenece."
+            columns={[{ key: "lista", label: "Lista", type: "select", options: LISTAS_CONTABLES }, { key: "nombre", label: "Opción", type: "text", upper: true }, { key: "activo", label: "Activo", type: "bool" }]} />
+        )}
       </div>
     </NavBar>
   );

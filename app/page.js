@@ -13,7 +13,7 @@ export default function Home() {
       } = await supabase.auth.getSession();
       if (!session) return router.replace("/login");
       const { data: perfil } = await supabase.from("profiles").select("rol").eq("id", session.user.id).maybeSingle();
-      router.replace(perfil?.rol === "transportista" ? "/mis-pedidos" : perfil?.rol === "admin" || perfil?.rol === "consulta" || perfil?.rol === "logistica" ? "/inicio" : "/generar");
+      router.replace(perfil?.rol === "transportista" ? "/mis-pedidos" : perfil?.rol === "solicitante" ? "/solicitudes" : perfil?.rol === "admin" || perfil?.rol === "consulta" || perfil?.rol === "logistica" ? "/inicio" : "/generar");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import PedidoUnidad from "@/components/PedidoUnidad";
+import RecorridoInterno from "@/components/RecorridoInterno";
+import { nombrePunto, lugarTexto, cargaTexto, horaTexto } from "@/lib/pedidosInternos";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtFecha, fmtNum, friendlyError, fmtDocChofer } from "@/lib/util";
 import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
@@ -18,7 +20,7 @@ const pat = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const lugar = (l) => [l.localidad, l.provincia].filter(Boolean).join(", ") || l.domicilio || "";
 const corto = (n) => String(n || "").split("|")[0].replace(/^(DEP[OÓ]SITO|PLANTA|ESTANCIA)\s+/i, "").replace(/["“”]/g, "").trim();
 const ORDENES = { carga: "Fecha de carga", carga_desc: "Fecha de carga (últimas primero)", numero: "Número de orden", estado: "Pendientes primero", transporte: "Transporte" };
-const PESO = { asignado: 0, falta: 1, rechazado: 2, aceptado: 3 };
+const PESO = { asignado: 0, falta: 1, aceptado: 2, en_viaje: 3, rechazado: 4, finalizado: 5, cancelado: 6 };
 const inp = "w-full border border-stone-300 rounded-md px-3 py-2 text-[15px] sm:text-sm bg-white";
 
 function MisPedidos({ profile }) {
@@ -45,13 +47,24 @@ function MisPedidos({ profile }) {
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const est = (x) => (x.pedido.estado === "aceptado" ? (tieneUnidad(x.pedido, x.orden) ? "aceptado" : "falta") : x.pedido.estado);
+  const est = (x) => (x.orden.estado === "cancelada" ? "cancelado" : x.pedido.entrega_at ? "finalizado" : x.pedido.salida_at ? "en_viaje"
+    : x.pedido.estado === "aceptado" ? (tieneUnidad(x.pedido, x.orden) ? "aceptado" : "falta") : x.pedido.estado);
+  const [cierre, setCierre] = useState(null); // { id, remito, cpe, km, kg_descargados } (internos, al marcar "Entregué")
+  const viaje = async (id, paso, datos) => {
+    setError("");
+    setGuardando(true);
+    const { error: e } = await supabase.rpc("marcar_viaje", { p_pedido: id, p_paso: paso, p_datos: datos || {} });
+    setGuardando(false);
+    if (e) return setError(friendlyError(e));
+    setCierre(null);
+    cargar();
+  };
   const varios = new Set(lista.map((x) => x.pedido.transportista_id)).size > 1;
   // Tablero: cantidades por estado y próximas cargas
   const [filtro, setFiltro] = useState(null); // null | estado | "hoy" | "manana" | "atrasadas" | id de razón social
   const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
   const manana = new Date(new Date(`${hoy}T12:00:00-03:00`).getTime() + 864e5).toISOString().slice(0, 10);
-  const activos = (x) => est(x) !== "rechazado";
+  const activos = (x) => !["rechazado", "cancelado", "finalizado"].includes(est(x));
   const pasa = (x, f) =>
     !f ? true
     : f === "hoy" ? activos(x) && x.orden.fecha_carga === hoy
@@ -113,11 +126,13 @@ function MisPedidos({ profile }) {
         </header>
         {lista.length > 0 && (
           <section className="space-y-2">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
                 ["asignado", "Para responder", "Aceptá o rechazá", "border-amber-300 bg-amber-50 text-amber-900"],
                 ["falta", "Falta la unidad", "Cargá chofer y patentes", "border-lime-300 bg-lime-50 text-lime-900"],
-                ["aceptado", "Listos", "Con unidad cargada", "border-emerald-300 bg-emerald-50 text-emerald-900"],
+                ["aceptado", "Programados", "Con unidad · marcá “Salí”", "border-emerald-300 bg-emerald-50 text-emerald-900"],
+                ["en_viaje", "En viaje", "Marcá “Entregué”", "border-indigo-300 bg-indigo-50 text-indigo-900"],
+                ["finalizado", "Entregados", "Últimos 7 días", "border-stone-300 bg-white text-stone-700"],
                 ["rechazado", "Rechazados", "Por vos", "border-stone-300 bg-white text-stone-700"],
               ].map(([k, t, sub, cls]) => (
                 <button key={k} onClick={() => setFiltro(filtro === k ? null : k)} className={`text-left rounded-lg border px-3 py-2.5 ${cls} ${filtro === k ? "ring-2 ring-offset-1 ring-stone-700" : ""}`}>
@@ -153,6 +168,7 @@ function MisPedidos({ profile }) {
         <div className="space-y-3">
           {ordenada.map((x) => {
             const { pedido: p, orden: o } = x;
+            const pi = x.tipo === "interno" ? x.interno : null;
             const ls = lineasConDestino(o, x.lineas, plantasD);
             const base = ls.some((l) => Number(l.saldo) > 0) ? ls.filter((l) => Number(l.saldo) > 0) : ls;
             const u = base.reduce((a, l) => a + Number(l.cantidad || 0), 0);
@@ -160,29 +176,67 @@ function MisPedidos({ profile }) {
             const deps = [...new Set(base.map((l) => corto(l.planta_nombre)).filter(Boolean))];
             const dest = [...new Set(base.map(lugar).filter(Boolean))];
             const e = est(x);
-            const etq = e === "aceptado" ? ["Aceptado", "bg-emerald-100 text-emerald-800"] : e === "falta" ? ["Aceptado · falta cargar la unidad", "bg-lime-100 text-lime-800"] : e === "rechazado" ? ["Rechazado", "bg-red-100 text-red-700"] : ["Pendiente de respuesta", "bg-amber-100 text-amber-800"];
+            const etq = { aceptado: ["Programado", "bg-emerald-100 text-emerald-800"], falta: ["Aceptado · falta cargar la unidad", "bg-lime-100 text-lime-800"], rechazado: ["Rechazado", "bg-red-100 text-red-700"],
+              en_viaje: ["En viaje", "bg-indigo-100 text-indigo-800"], finalizado: ["Entregado", "bg-stone-200 text-stone-700"], cancelado: ["CANCELADO por Stine", "bg-red-600 text-white"] }[e] || ["Pendiente de respuesta", "bg-amber-100 text-amber-800"];
+            const cerrado = ["en_viaje", "finalizado", "cancelado"].includes(e);
             const f = form?.id === p.id ? form : null;
             return (
               <div key={p.id} className={`panel p-3 sm:p-4 space-y-2 ${e === "asignado" ? "border-l-4 border-l-amber-400" : e === "falta" ? "border-l-4 border-l-lime-500" : ""}`}>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-semibold text-[16px]">{o.numero}</span>
                   <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${etq[1]}`}>{etq[0]}</span>
-                  {o.fecha_carga && <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(o.fecha_carga)}</b></span>}
-                  <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>
+                  {o.fecha_carga && <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(o.fecha_carga)}{pi ? horaTexto(pi) : ""}</b></span>}
+                  {!pi && <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>}
+                  {pi && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-teal-100 text-teal-800">Movimiento interno</span>}
                   {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}
                   {(varios || eligeRS) && <span className="text-[12px] text-stone-600 bg-stone-100 rounded px-1.5 py-0.5">{p.estado === "aceptado" ? "Viaja con: " : ""}{x.transporte}</span>}
                 </div>
-                <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {deps.join(" · ")}</div>
-                <div className="text-[13.5px]"><span className="text-stone-500">Destinos:</span> {dest.join(" · ")}</div>
-                <div className="text-[13px] text-stone-700">{fmtNum(u)} unidades{kg ? ` · ${fmtNum(Math.round(kg))} kg` : ""}</div>
+                {pi ? (
+                  <>
+                    <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {nombrePunto(pi.carga)} <span className="text-stone-500">({lugarTexto(pi.carga)})</span></div>
+                    {(pi.paradas || []).map((pa, i) => <div key={i} className="text-[13.5px]"><span className="text-stone-500">Parada {i + 1}:</span> {nombrePunto(pa)} <span className="text-stone-500">({lugarTexto(pa)})</span></div>)}
+                    <div className="text-[13.5px]"><span className="text-stone-500">Descarga en:</span> {nombrePunto(pi.descarga)} <span className="text-stone-500">({lugarTexto(pi.descarga)})</span></div>
+                    <div className="text-[13px] text-stone-700">{cargaTexto(pi) || "—"}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {deps.join(" · ")}</div>
+                    <div className="text-[13.5px]"><span className="text-stone-500">Destinos:</span> {dest.join(" · ")}</div>
+                    <div className="text-[13px] text-stone-700">{fmtNum(u)} unidades{kg ? ` · ${fmtNum(Math.round(kg))} kg` : ""}</div>
+                  </>
+                )}
                 {o.observaciones_deposito && <div className="text-[13px] bg-sky-50 border border-sky-200 rounded px-2 py-1">{o.observaciones_deposito}</div>}
-                {e === "aceptado" && (
+                {["aceptado", "en_viaje", "finalizado"].includes(e) && (
                   <div className="text-[13px] text-emerald-800">✓ Unidad: {o.chofer?.nombre || "—"}{o.chofer?.dni ? ` (${fmtDocChofer(o.chofer.dni)})` : ""} · {o.chasis || "—"} / {o.acoplado || "—"}{p.tipo_equipo ? ` · ${p.tipo_equipo}` : ""}</div>
                 )}
                 {e === "falta" && <div className="text-[13px] text-lime-800">Aceptado. Cuando tengas la unidad, cargá el chofer y las patentes.</div>}
                 {p.estado === "rechazado" && <div className="text-[13px] text-red-700">Rechazado: {p.motivo_rechazo}</div>}
 
-                {!f && (
+                {e === "cancelado" && <div className="text-[13px] text-red-700">Stine canceló este pedido{pi?.motivo_cancelacion ? `: ${pi.motivo_cancelacion}` : ""}. No hace falta hacer el viaje.</div>}
+                {p.salida_at && <div className="text-[12.5px] text-indigo-800">Salió {new Date(p.salida_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{p.entrega_at ? ` · entregado ${new Date(p.entrega_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}</div>}
+                {!f && !cierre && ["aceptado", "en_viaje"].includes(e) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {e === "aceptado" && <button disabled={guardando} onClick={() => viaje(p.id, "salida")} className="px-3 py-2 rounded-md bg-indigo-700 text-white text-[14px] font-medium disabled:opacity-60">Salí (en viaje)</button>}
+                    {e === "en_viaje" && <button disabled={guardando} onClick={() => (pi ? setCierre({ id: p.id, remito: pi.remito || "", cpe: pi.cpe || "", km: pi.km ?? "", kg_descargados: pi.kg_descargados ?? "" }) : viaje(p.id, "entrega"))} className="px-3 py-2 rounded-md bg-indigo-700 text-white text-[14px] font-medium disabled:opacity-60">Entregué</button>}
+                    {e === "en_viaje" && <button disabled={guardando} onClick={() => viaje(p.id, "deshacer")} className="px-3 py-2 text-[13px] text-stone-500 underline">Deshacer “Salí”</button>}
+                  </div>
+                )}
+                {cierre?.id === p.id && (
+                  <div className="rounded-md border border-indigo-200 bg-indigo-50/50 p-3 space-y-2">
+                    <div className="text-[13px] text-stone-700">Datos del viaje (si los tenés; se pueden pasar después a Logística).</div>
+                    <div className="grid gap-2 grid-cols-2">
+                      <div><label className="campo-etiqueta">Remito</label><input value={cierre.remito} onChange={(ev) => setCierre({ ...cierre, remito: ev.target.value.toUpperCase() })} className={inp} /></div>
+                      <div><label className="campo-etiqueta">CPE</label><input value={cierre.cpe} onChange={(ev) => setCierre({ ...cierre, cpe: ev.target.value.toUpperCase() })} className={inp} /></div>
+                      <div><label className="campo-etiqueta">Km</label><input inputMode="decimal" value={cierre.km} onChange={(ev) => setCierre({ ...cierre, km: ev.target.value.replace(/[^\d.,]/g, "") })} className={inp} /></div>
+                      <div><label className="campo-etiqueta">Kg descargados</label><input inputMode="decimal" value={cierre.kg_descargados} onChange={(ev) => setCierre({ ...cierre, kg_descargados: ev.target.value.replace(/[^\d.,]/g, "") })} className={inp} /></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button disabled={guardando} onClick={() => viaje(p.id, "entrega", { remito: cierre.remito, cpe: cierre.cpe, km: String(cierre.km), kg_descargados: String(cierre.kg_descargados) })} className="px-3 py-2 rounded-md bg-indigo-700 text-white text-[14px] font-medium disabled:opacity-60">Confirmar entrega</button>
+                      <button onClick={() => setCierre(null)} className="px-3 py-2 text-[14px] text-stone-500">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {!f && !cerrado && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {p.estado !== "aceptado" && <button disabled={guardando} onClick={() => aceptar(x)} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">Aceptar</button>}
                     <button onClick={() => abrirUnidad(x)} className={`px-3 py-2 rounded-md text-[14px] font-medium ${e === "falta" ? "bg-emerald-700 text-white" : "border border-emerald-600 text-emerald-800 bg-white"}`}>{e === "aceptado" ? "Cambiar la unidad" : p.estado === "aceptado" ? "Cargar la unidad" : "Aceptar y cargar la unidad"}</button>
@@ -236,7 +290,8 @@ function MisPedidos({ profile }) {
                     </div>
                   </div>
                 )}
-                {ver === p.id && <PedidoUnidad orden={o} lineas={x.lineas} plantas={plantasD} soloLectura onCerrar={() => setVer(null)} />}
+                {cerrado && <button onClick={() => setVer(ver === p.id ? null : p.id)} className="px-1 text-[13px] text-sky-700 underline">{ver === p.id ? "Ocultar recorrido" : "Ver recorrido"}</button>}
+                {ver === p.id && (pi ? <RecorridoInterno pi={{ ...pi, transporte: x.transporte }} onCerrar={() => setVer(null)} /> : <PedidoUnidad orden={o} lineas={x.lineas} plantas={plantasD} soloLectura onCerrar={() => setVer(null)} />)}
               </div>
             );
           })}

@@ -8,6 +8,7 @@ import { listasTransporte } from "@/components/TransporteOrden";
 import { ccAvisos } from "@/components/AvisoOrden";
 import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
 import { correoPedido, estadoPedido, tieneUnidad, textoRetira } from "@/lib/pedidosPortal";
+import { correoTransporteInterno } from "@/lib/pedidosInternos";
 import { urlOutlookApp, urlOutlookWeb } from "@/lib/avisoOrden";
 import { friendlyError, fmtDocChofer, urlBase } from "@/lib/util";
 
@@ -20,7 +21,11 @@ export const ESTADOS_PEDIDO = {
   sin: ["Sin asignar", "bg-amber-100 text-amber-800"],
   asignado: ["Esperando respuesta", "bg-sky-100 text-sky-800"],
   falta_unidad: ["Aceptado · falta la unidad", "bg-lime-100 text-lime-800"],
-  aceptado: ["Aceptado con unidad", "bg-emerald-100 text-emerald-800"],
+  aceptado: ["Programado (con unidad)", "bg-emerald-100 text-emerald-800"],
+  en_ejecucion: ["En ejecución", "bg-indigo-100 text-indigo-800"],
+  finalizado: ["Finalizado", "bg-stone-200 text-stone-700"],
+  por_confirmar: ["Por confirmar (internos)", "bg-amber-100 text-amber-800"],
+  cancelado: ["Cancelados (internos)", "bg-stone-200 text-stone-500"],
   rechazado: ["Rechazado · reasignar", "bg-red-100 text-red-700"],
   retira: ["Retira el cliente / sin pedido", "bg-stone-200 text-stone-700"],
   desestimado: ["Desestimados", "bg-stone-200 text-stone-600"],
@@ -31,7 +36,11 @@ const inp = "w-full border border-stone-300 rounded px-2 py-1.5 text-[13px] bg-w
 const btn = "text-[12.5px] px-2.5 py-1 rounded-md border";
 
 // pedido / transportes / cc: opcionales (si no vienen, los trae). conTitulo: encabezado propio (dentro de la orden).
-export default function AsignacionPedido({ orden, lineas = [], plantas = [], profile, pedido: pedidoProp, transportes: transProp, cc: ccProp, onCambio, conTitulo = false }) {
+// interno: pedido interno completo (pedidos_internos_lista). En ese caso "orden" se arma desde el interno.
+export default function AsignacionPedido({ orden: ordenProp, interno = null, lineas = [], plantas = [], profile, pedido: pedidoProp, transportes: transProp, cc: ccProp, onCambio, conTitulo = false }) {
+  const orden = interno
+    ? { id: interno.id, numero: interno.numero, modalidad: "interno", estado: interno.estado === "confirmado" ? "activa" : interno.estado, transportista_id: interno.transportista_id, chofer: interno.chofer, chasis: interno.chasis, acoplado: interno.acoplado, tipo_unidad: null }
+    : ordenProp;
   const [pedidoLocal, setPedidoLocal] = useState(null);
   const [transLocal, setTransLocal] = useState([]);
   const [ccLocal, setCcLocal] = useState("");
@@ -44,9 +53,9 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
 
   const traer = useCallback(async () => {
     if (!propio) return;
-    const { data } = await supabase.from("pedidos_unidad").select("*").eq("orden_id", orden.id).maybeSingle();
+    const { data } = await supabase.from("pedidos_unidad").select("*").eq(interno ? "interno_id" : "orden_id", orden.id).maybeSingle();
     setPedidoLocal(data || null);
-  }, [orden.id, propio]);
+  }, [orden.id, propio, interno]);
   useEffect(() => { traer(); }, [traer]);
   useEffect(() => { if (!transProp) transportesPortal().then(setTransLocal); if (ccProp === undefined) ccAvisos().then(setCcLocal); }, [transProp, ccProp]);
 
@@ -56,7 +65,7 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
   const delPortal = transportes.filter((t) => t.portal);
   const opciones = delPortal.length ? delPortal : transportes;
   const nomT = (id) => transportes.find((t) => t.id === id)?.nombre || "—";
-  const est = estadoPedido(orden, p);
+  const est = interno ? (p?.entrega_at ? "finalizado" : p?.salida_at ? "en_ejecucion" : !p ? "sin" : p.estado === "aceptado" ? (tieneUnidad(p, orden) ? "aceptado" : "falta_unidad") : p.estado) : estadoPedido(orden, p);
   const listo = async (texto) => {
     if (texto) setMsg({ tipo: "ok", texto });
     await traer();
@@ -74,17 +83,21 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
   const asignar = async () => {
     const t = elegido || (p && p.estado !== "rechazado" ? p.transportista_id : "");
     if (!t) return setMsg({ tipo: "error", texto: "Elegí el transporte." });
-    if (await rpc("asignar_pedido", { p_orden: orden.id, p_transportista: t })) { setElegido(""); listo(`Asignada a ${nomT(t)}. Avisale por Outlook.`); }
+    const ok = interno ? await rpc("asignar_interno", { p_id: orden.id, p_transportista: t }) : await rpc("asignar_pedido", { p_orden: orden.id, p_transportista: t });
+    if (ok) { setElegido(""); listo(`Asignado a ${nomT(t)}. Avisale por Outlook.`); }
   };
-  const quitar = async () => { if (await rpc("quitar_pedido", { p_orden: orden.id })) listo(); };
+  const quitar = async () => { if (interno ? await rpc("quitar_interno", { p_id: orden.id }) : await rpc("quitar_pedido", { p_orden: orden.id })) listo(); };
   const desestimar = async (v) => { if (await rpc("desestimar_pedidos", { p_ordenes: [orden.id], p_valor: v })) listo(); };
   const retira = async (v) => { if (await rpc("fijar_retira_cliente", { p_orden: orden.id, p_valor: v })) listo(); };
   const avisar = async (web) => {
     const t = transportes.find((x) => x.id === p?.transportista_id);
-    const m = correoPedido({ orden, lineas, plantas, transporte: t, cc, usuario: profile.nombre, url: `${urlBase()}/mis-pedidos` });
+    const m = interno
+      ? correoTransporteInterno({ pi: interno, transporte: t, cc, usuario: profile.nombre, url: `${urlBase()}/mis-pedidos` })
+      : correoPedido({ orden, lineas, plantas, transporte: t, cc, usuario: profile.nombre, url: `${urlBase()}/mis-pedidos` });
     if (!m.para) return setMsg({ tipo: "error", texto: `${m.nombre || "El transporte"} no tiene correos cargados (Pedidos de unidad → “Transportes del portal”).` });
     if (web) window.open(urlOutlookWeb(m), "_blank"); else window.location.href = urlOutlookApp(m);
-    await supabase.rpc("marcar_pedido_avisado", { p_orden: orden.id });
+    if (interno) await supabase.rpc("marcar_interno_avisado", { p_id: orden.id, p_a: "transporte" });
+    else await supabase.rpc("marcar_pedido_avisado", { p_orden: orden.id });
     listo();
   };
 
@@ -102,11 +115,17 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
   };
   const guardarUnidad = async () => {
     const u = unidad;
-    if (await rpc("cargar_unidad_pedido", { p_orden: orden.id, p_chofer_nombre: u.nombre, p_chofer_doc: u.doc, p_chasis: u.chasis, p_acoplado: u.acoplado, p_tipo_equipo: u.tipo })) {
+    const args = { p_chofer_nombre: u.nombre, p_chofer_doc: u.doc, p_chasis: u.chasis, p_acoplado: u.acoplado, p_tipo_equipo: u.tipo };
+    if (interno ? await rpc("cargar_unidad_interno", { p_id: orden.id, ...args }) : await rpc("cargar_unidad_pedido", { p_orden: orden.id, ...args })) {
       setUnidad(null);
-      listo("Unidad cargada: ya quedó como camión de la orden.");
+      listo(interno ? "Unidad cargada: el pedido quedó Programado." : "Unidad cargada: ya quedó como camión de la orden.");
     }
   };
+
+  // Seguimiento del viaje (Logística también puede marcarlo)
+  const [cierre, setCierre] = useState(null); // { paso, remito, cpe, km, kg_descargados } (internos)
+  const viaje = async (paso, datos) => { if (await rpc("marcar_viaje", { p_pedido: p.id, p_paso: paso, p_datos: datos || {} })) { setCierre(null); listo(); } };
+  const abrirCierre = (paso) => setCierre({ paso, remito: interno?.remito || "", cpe: interno?.cpe || "", km: interno?.km ?? "", kg_descargados: interno?.kg_descargados ?? "" });
 
   const [et, cls] = ESTADOS_PEDIDO[est];
   const activa = orden.estado === "activa";
@@ -142,9 +161,38 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
                   </span>
                 )}
                 {p.estado === "rechazado" && <span className="block text-red-700">✕ Rechazado {fh(p.respondido_at)}: {p.motivo_rechazo}</span>}
+                {p.salida_at && <span className="block text-indigo-800">▶ En ejecución desde {fh(p.salida_at)} ({p.salida_por_nombre})</span>}
+                {p.entrega_at && <span className="block text-stone-700">■ Finalizado {fh(p.entrega_at)} ({p.entrega_por_nombre})</span>}
+                {interno && (interno.remito || interno.cpe || interno.km || interno.kg_descargados) && (
+                  <span className="block text-stone-600">{[interno.remito && `Remito ${interno.remito}`, interno.cpe && `CPE ${interno.cpe}`, interno.km && `${interno.km} km`, interno.kg_descargados && `${interno.kg_descargados} kg descargados`].filter(Boolean).join(" · ")}</span>
+                )}
               </div>
             )}
-            {activa && !unidad && (
+            {p && p.estado === "aceptado" && !unidad && !cierre && (activa || p.salida_at) && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[12px] text-stone-500">Viaje:</span>
+                {!p.salida_at && tieneUnidad(p, orden) && <button disabled={guardando} onClick={() => viaje("salida")} className={`${btn} bg-indigo-700 border-indigo-700 text-white`}>Marcar salida (en ejecución)</button>}
+                {!p.entrega_at && (p.salida_at || tieneUnidad(p, orden)) && <button disabled={guardando} onClick={() => (interno ? abrirCierre("entrega") : viaje("entrega"))} className={`${btn} bg-white border-stone-400 text-stone-800`}>Marcar entregado (finalizado)</button>}
+                {interno && (p.salida_at || p.entrega_at) && <button onClick={() => abrirCierre("datos")} className={`${btn} bg-white border-stone-300 text-stone-700`}>Remito / CPE / km / kg</button>}
+                {(p.salida_at || p.entrega_at) && <button disabled={guardando} onClick={() => viaje("deshacer")} className="text-[12px] text-stone-500 underline px-1">Deshacer último paso</button>}
+              </div>
+            )}
+            {cierre && (
+              <div className="rounded-md border border-stone-300 bg-stone-50 p-3 space-y-2">
+                <div className="text-[12.5px] text-stone-600">{cierre.paso === "entrega" ? "Marcar entregado. Si los tenés, completá los datos del viaje (se pueden cargar después)." : "Datos del viaje"}</div>
+                <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
+                  <div><label className="campo-etiqueta">Remito</label><input value={cierre.remito} onChange={(e) => setCierre({ ...cierre, remito: e.target.value.toUpperCase() })} className={inp} /></div>
+                  <div><label className="campo-etiqueta">CPE</label><input value={cierre.cpe} onChange={(e) => setCierre({ ...cierre, cpe: e.target.value.toUpperCase() })} className={inp} /></div>
+                  <div><label className="campo-etiqueta">Km</label><input inputMode="decimal" value={cierre.km} onChange={(e) => setCierre({ ...cierre, km: e.target.value.replace(/[^\d.,]/g, "") })} className={inp} /></div>
+                  <div><label className="campo-etiqueta">Kg descargados</label><input inputMode="decimal" value={cierre.kg_descargados} onChange={(e) => setCierre({ ...cierre, kg_descargados: e.target.value.replace(/[^\d.,]/g, "") })} className={inp} /></div>
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={guardando} onClick={() => viaje(cierre.paso, { remito: cierre.remito, cpe: cierre.cpe, km: String(cierre.km), kg_descargados: String(cierre.kg_descargados) })} className="px-3 py-1.5 rounded-md bg-emerald-700 text-white text-[13px]">{cierre.paso === "entrega" ? "Marcar entregado" : "Guardar"}</button>
+                  <button onClick={() => setCierre(null)} className="px-3 py-1.5 text-[13px] text-stone-500">Cancelar</button>
+                </div>
+              </div>
+            )}
+            {activa && !unidad && !p?.salida_at && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {(!p || p.estado !== "aceptado") && (
                   <>
@@ -165,16 +213,16 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
                   <button onClick={abrirUnidad} className={`${btn} bg-white border-emerald-600 text-emerald-800`}>{tieneUnidad(p, orden) ? "Cambiar la unidad" : "Cargar la unidad"}</button>
                 )}
                 {p && <button disabled={guardando} onClick={quitar} className="text-[12px] text-stone-500 underline px-1">Quitar asignación</button>}
-                {(!p || p.estado !== "aceptado") && <button disabled={guardando} onClick={() => desestimar(true)} className="text-[12px] text-stone-500 underline px-1" title="Ya se resolvió por fuera (no es Retira el cliente)">Desestimar</button>}
+                {!interno && (!p || p.estado !== "aceptado") && <button disabled={guardando} onClick={() => desestimar(true)} className="text-[12px] text-stone-500 underline px-1" title="Ya se resolvió por fuera (no es Retira el cliente)">Desestimar</button>}
               </div>
             )}
             {unidad && (
               <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
-                <div className="text-[12.5px] text-stone-600">Cargás la unidad en nombre de <b>{nomT(p?.transportista_id)}</b>. Queda como camión de la orden (la planta igual puede cambiarlo al hacer el remito).</div>
+                <div className="text-[12.5px] text-stone-600">Cargás la unidad en nombre de <b>{nomT(p?.transportista_id)}</b>. {interno ? "El pedido queda Programado." : "Queda como camión de la orden (la planta igual puede cambiarlo al hacer el remito)."}</div>
                 {choferes.length > 0 && (
                   <div>
                     <label className="campo-etiqueta">Chofer ya cargado (opcional)</label>
-                    <BuscadorSelect value="" onChange={elegirChofer} options={choferes.map((c) => ({ value: c.id, label: c.nombre, sub: c.dni || "", buscar: `${c.chasis || ""} ${c.acoplado || ""}` }))} placeholder="Buscar por nombre, CUIL o patente…" />
+                    <BuscadorSelect value="" onChange={elegirChofer} className={inp} options={choferes.map((c) => ({ value: c.id, label: c.nombre, sub: c.dni || "", buscar: `${c.chasis || ""} ${c.acoplado || ""}` }))} placeholder="Buscar por nombre, CUIL o patente…" />
                   </div>
                 )}
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -203,7 +251,7 @@ export default function AsignacionPedido({ orden, lineas = [], plantas = [], pro
             )}
           </>
         )}
-        {activa && est !== "desestimado" && (
+        {activa && !interno && est !== "desestimado" && (
           <label className={`flex items-center gap-2 text-[12.5px] ${p ? "text-stone-400" : "text-stone-700"}`} title={p ? "Primero quitá la asignación al transporte" : ""}>
             <input type="checkbox" disabled={!!p || guardando} checked={!!orden.retira_cliente} onChange={(e) => retira(e.target.checked)} />
             {orden.modalidad === "traslado" ? textoRetira(orden) : "Retira el cliente (no hace falta pedir unidad)"}{p ? " · para tildarlo, primero quitá la asignación" : ""}

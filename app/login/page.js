@@ -28,7 +28,7 @@ export default function LoginPage() {
     }
     // Admin y consulta arrancan en el tablero de inicio; el operador, en Nuevo remito.
     const { data: perfil } = await supabase.from("profiles").select("rol").eq("id", data.user.id).maybeSingle();
-    router.replace(perfil?.rol === "transportista" ? "/mis-pedidos" : perfil?.rol === "admin" || perfil?.rol === "consulta" || perfil?.rol === "logistica" ? "/inicio" : "/generar");
+    router.replace(perfil?.rol === "transportista" ? "/mis-pedidos" : perfil?.rol === "solicitante" ? "/solicitudes" : perfil?.rol === "admin" || perfil?.rol === "consulta" || perfil?.rol === "logistica" ? "/inicio" : "/generar");
   };
 
   return (

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { PEDIDOS_DESDE } from "@/lib/pedidosPortal";
+import { ultimoCambioInterno } from "@/lib/pedidosInternos";
 import { RUBROS, useRubro } from "@/lib/rubro";
 
 const ICONOS = {
@@ -44,7 +45,8 @@ export default function NavBar({ profile, children }) {
   const [avisoTal, setAvisoTal] = useState(0);
   const [avisoConf, setAvisoConf] = useState(0); // remitos sin conforme de salida
   const [avisoOc, setAvisoOc] = useState(0); // órdenes de carga activas con saldo pendiente
-  const [avisoPu, setAvisoPu] = useState(0); // pedidos de unidad: órdenes sin asignar o rechazadas
+  const [avisoPu, setAvisoPu] = useState(0);
+  const [area, setArea] = useState(""); // pedidos de unidad: órdenes sin asignar o rechazadas
   const [avisoCot, setAvisoCot] = useState(0);
   // Usuario con más de una planta habilitada: puede cambiar la planta en la que está trabajando.
   const [misPlantas, setMisPlantas] = useState([]);
@@ -79,18 +81,30 @@ export default function NavBar({ profile, children }) {
     if (!profile) return;
     if (profile.rol === "transportista") {
       // Portal: pedidos que esperan algo del transporte (responder o cargar la unidad)
-      supabase.rpc("mis_pedidos").then(({ data }) => setAvisoPu((data || []).filter((x) => x.pedido.estado === "asignado" || (x.pedido.estado === "aceptado" && !x.pedido.unidad_at && !x.orden.chasis)).length));
+      supabase.rpc("mis_pedidos").then(({ data }) => setAvisoPu((data || []).filter((x) => x.orden.estado !== "cancelada" && !x.pedido.salida_at && (x.pedido.estado === "asignado" || (x.pedido.estado === "aceptado" && !x.pedido.unidad_at && !x.orden.chasis))).length));
       return;
     }
-    // Pedidos de unidad: órdenes activas (a clientes) sin transporte asignado, o rechazadas
+    if (profile.rol === "solicitante") {
+      // Solicitante: pedidos de su área que cambiaron desde la última vez que entró a "Mis pedidos"
+      supabase.from("areas").select("nombre").eq("id", profile.area_id || "00000000-0000-0000-0000-000000000000").maybeSingle().then(({ data }) => setArea(data?.nombre || ""));
+      supabase.rpc("pedidos_internos_lista").then(({ data }) => {
+        let visto = ""; try { visto = localStorage.getItem("solicitudesVisto") || ""; } catch {}
+        setAvisoPu((data || []).filter((x) => ultimoCambioInterno(x) > visto).length);
+      });
+      return;
+    }
+    // Pedidos de unidad: órdenes activas sin transporte asignado o rechazadas + internos por confirmar / sin transporte / rechazados
     if (profile.rol === "admin" || profile.rol === "logistica") {
       Promise.all([
         supabase.from("ordenes_carga").select("id").eq("estado", "activa").eq("retira_cliente", false).is("pedido_desestimado_at", null).gte("created_at", PEDIDOS_DESDE).limit(3000),
-        supabase.from("pedidos_unidad").select("orden_id, estado").limit(5000),
-      ]).then(([o, p]) => {
+        supabase.from("pedidos_unidad").select("orden_id, interno_id, estado").limit(5000),
+        supabase.from("pedidos_internos").select("id, estado").in("estado", ["pendiente", "confirmado"]).limit(3000),
+      ]).then(([o, p, pi]) => {
         if (o.error || p.error) return;
-        const est = Object.fromEntries((p.data || []).map((x) => [x.orden_id, x.estado]));
-        setAvisoPu((o.data || []).filter((x) => !est[x.id] || est[x.id] === "rechazado").length);
+        const est = Object.fromEntries((p.data || []).map((x) => [x.orden_id || x.interno_id, x.estado]));
+        const nOc = (o.data || []).filter((x) => !est[x.id] || est[x.id] === "rechazado").length;
+        const nPi = (pi.error ? [] : pi.data || []).filter((x) => x.estado === "pendiente" || !est[x.id] || est[x.id] === "rechazado").length;
+        setAvisoPu(nOc + nPi);
       });
     }
     // COT pendientes: el operador ve los de su planta; admin y consulta, todos.
@@ -125,7 +139,7 @@ export default function NavBar({ profile, children }) {
   }, [profile, pathname]);
 
   const rol = profile?.rol;
-  const items = rol === "transportista" ? [["/mis-pedidos", "Mis pedidos", "pedidos"]] : [
+  const items = rol === "transportista" ? [["/mis-pedidos", "Mis pedidos", "pedidos"]] : rol === "solicitante" ? [["/solicitudes", "Mis pedidos", "pedidos"], ["/pedido-interno", "Nuevo pedido", "generar"]] : [
     ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/inicio", "Inicio", "inicio"]] : []),
     ...(rol !== "consulta" && rol !== "logistica" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/ordenes", "Órdenes de carga", "ordenes"],
@@ -144,7 +158,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
   // Secciones del menú (solo títulos; los permisos de cada entrada no cambian).
-  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/pedidos": "Operación", "/mis-pedidos": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
+  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/pedidos": "Operación", "/mis-pedidos": "Operación", "/solicitudes": "Operación", "/pedido-interno": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
   const ORDEN_GRUPOS = ["Operación", "Stock", "Fiscal", "Análisis", "Configuración"];
   const grupoDe = (href) => GRUPO[href] || "Configuración";
   const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);
@@ -165,6 +179,8 @@ export default function NavBar({ profile, children }) {
   );
   const franjaPlanta = profile?.rol === "transportista" ? (
     <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 text-[13px]">Portal de transporte · {profile.nombre}</div>
+  ) : profile?.rol === "solicitante" ? (
+    <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 text-[13px]">Pedidos de unidad · {area ? `Área ${area}` : "sin área asignada"} · {profile.nombre}</div>
   ) : (!profile?.planta || profile.rol === "admin") ? (profile && (
     <div className="no-print bg-stone-700 text-white px-4 md:px-6 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
       <span className="opacity-80">{rubro ? `Mostrando solo ${rubro === "maiz" ? "maíz" : "soja"}` : "Mostrando soja y maíz"}</span>

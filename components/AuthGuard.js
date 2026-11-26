@@ -39,8 +39,12 @@ export default function AuthGuard({ children, adminOnly, roles }) {
         router.replace("/mis-pedidos");
         return;
       }
+      if (profile.rol === "solicitante" && !(roles && roles.includes("solicitante"))) {
+        router.replace("/solicitudes");
+        return;
+      }
       if ((adminOnly && profile.rol !== "admin") || (roles && !roles.includes(profile.rol))) {
-        router.replace(profile.rol === "transportista" ? "/mis-pedidos" : profile.rol === "consulta" || profile.rol === "logistica" ? "/inicio" : "/generar");
+        router.replace(profile.rol === "transportista" ? "/mis-pedidos" : profile.rol === "solicitante" ? "/solicitudes" : profile.rol === "consulta" || profile.rol === "logistica" ? "/inicio" : "/generar");
         return;
       }
       setState({ loading: false, profile, notice: "" });
