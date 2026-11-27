@@ -23,6 +23,7 @@ const TABS = [
   ["lugares", "Lugares"],
   ["tipos_carga", "Tipos de carga"],
   ["contables", "Listas contables"],
+  ["reglas", "Reglas contables"],
   ["respaldo", "Respaldo"],
 ];
 
@@ -32,8 +33,9 @@ export default function AdminPage() {
 
 function AdminInner({ profile }) {
   const esLogistica = profile.rol === "logistica"; // Catálogo, Respaldo y los maestros de pedidos internos
-  const tabs = esLogistica ? TABS.filter(([id]) => ["catalogo", "respaldo", "areas", "lugares", "tipos_carga", "contables"].includes(id)) : TABS;
+  const tabs = esLogistica ? TABS.filter(([id]) => ["catalogo", "respaldo", "areas", "lugares", "tipos_carga", "contables", "reglas"].includes(id)) : TABS;
   const [areas, setAreas] = useState([]);
+  const [listasC, setListasC] = useState([]);
   const [tab, setTab] = useState(esLogistica ? "catalogo" : "plantas");
   const [plantas, setPlantas] = useState([]);
   const [transportes, setTransportes] = useState([]);
@@ -41,6 +43,7 @@ function AdminInner({ profile }) {
   useEffect(() => {
     supabase.from("plantas").select("id, nombre").order("nombre").then(({ data }) => setPlantas(data || []));
     supabase.from("areas").select("id, nombre").order("nombre").then(({ data }) => setAreas(data || []));
+    supabase.from("listas_contables").select("id, lista, nombre").order("nombre").then(({ data }) => setListasC(data || []));
     supabase.from("transportistas").select("id, nombre, portal").order("nombre").then(({ data }) => setTransportes((data || []).sort((a, b) => Number(b.portal) - Number(a.portal) || a.nombre.localeCompare(b.nombre))));
   }, [tab]);
 
@@ -184,6 +187,15 @@ function AdminInner({ profile }) {
           <CrudTable key="tipos_carga" table="tipos_carga" orderBy="nombre" canDelete importar={{ titulo: "Tipos de carga", clave: ["nombre"], ejemplo: [{ nombre: "BOLSAS VACIAS", activo: true }, { nombre: "INSUMOS", activo: true }] }}
             help="Lista de tipos de carga para los pedidos internos (por ejemplo: bolsas vacías, insumos, equipos)."
             columns={[{ key: "nombre", label: "Tipo de carga", type: "text", upper: true }, { key: "activo", label: "Activo", type: "bool" }]} />
+        )}
+        {tab === "reglas" && (
+          <CrudTable key="reglas" table="reglas_contables" orderBy="empresa" canDelete
+            help="Para el listado de Movimientos: qué Subsidiaria, Cuenta y Categoría llevan las órdenes a clientes y los traslados, según la empresa de la planta (Stine / MS). Una fila por empresa y tipo. Los pedidos internos usan lo que se cargó en cada pedido. Las opciones salen de Listas contables."
+            columns={[
+              { key: "empresa", label: "Empresa", type: "select", options: [{ value: "stine", label: "Stine Seed" }, { value: "ms", label: "MS Technologies" }] },
+              { key: "tipo", label: "Tipo de movimiento", type: "select", options: [{ value: "cliente", label: "Orden a clientes" }, { value: "traslado", label: "Traslado" }] },
+              ...["subsidiaria", "cuenta", "categoria"].map((k) => ({ key: `${k}_id`, label: { subsidiaria: "Subsidiaria", cuenta: "Cuenta", categoria: "Categoría" }[k], type: "select", nullable: true, options: listasC.filter((x) => x.lista === k).map((x) => ({ value: x.id, label: x.nombre })) })),
+            ]} />
         )}
         {tab === "contables" && (
           <CrudTable key="contables" table="listas_contables" orderBy="nombre" canDelete importar={{ titulo: "Listas contables", clave: ["lista", "nombre"], ejemplo: [{ lista: "departamento", nombre: "LOGISTICA", activo: true }, { lista: "cuenta", nombre: "5.1.02 FLETES", activo: true }] }}

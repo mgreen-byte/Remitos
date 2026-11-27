@@ -144,7 +144,7 @@ export default function NavBar({ profile, children }) {
     ...(rol !== "consulta" && rol !== "logistica" ? [["/generar", "Nuevo remito", "generar"]] : []),
     ["/ordenes", "Órdenes de carga", "ordenes"],
     ...(rol === "admin" || rol === "logistica" ? [["/pedidos", "Pedidos de unidad", "pedidos"]] : []),
-    ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/despachos", "Despachos", "despachos"]] : []),
+    ...(rol === "admin" || rol === "consulta" || rol === "logistica" ? [["/despachos", "Despachos", "despachos"], ["/movimientos", "Movimientos", "historial"]] : []),
     ["/stock", "Stock", "stock"],
     ...(rol === "admin" || rol === "logistica" ? [["/calidad", "Calidad", "calidad"]] : []),
     ["/traslados", "Traslados", "traslados"],
@@ -158,7 +158,7 @@ export default function NavBar({ profile, children }) {
     ...(rol === "admin" || rol === "logistica" ? [["/admin", "Administración", "admin"]] : []),
   ];
   // Secciones del menú (solo títulos; los permisos de cada entrada no cambian).
-  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/pedidos": "Operación", "/mis-pedidos": "Operación", "/solicitudes": "Operación", "/pedido-interno": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/reportes": "Análisis" };
+  const GRUPO = { "/inicio": "Operación", "/generar": "Operación", "/ordenes": "Operación", "/pedidos": "Operación", "/mis-pedidos": "Operación", "/solicitudes": "Operación", "/pedido-interno": "Operación", "/traslados": "Operación", "/historial": "Operación", "/conformes": "Operación", "/stock": "Stock", "/calidad": "Stock", "/talonarios": "Fiscal", "/cot": "Fiscal", "/despachos": "Análisis", "/movimientos": "Análisis", "/reportes": "Análisis" };
   const ORDEN_GRUPOS = ["Operación", "Stock", "Fiscal", "Análisis", "Configuración"];
   const grupoDe = (href) => GRUPO[href] || "Configuración";
   const secciones = ORDEN_GRUPOS.map((g) => [g, items.filter((it) => grupoDe(it[0]) === g)]).filter(([, its]) => its.length);

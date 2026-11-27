@@ -27,7 +27,7 @@ function Formulario({ profile }) {
   const [areas, setAreas] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [listas, setListas] = useState([]);
-  const [f, setF] = useState({ fecha_carga: "", hora: "", area_id: "", camiones: 1, tipo_carga_id: "", kg: "", bolsas: "", pallets: "", comentarios: "", departamento_id: "", clase_id: "", subsidiaria_id: "", cuenta_id: "" });
+  const [f, setF] = useState({ fecha_carga: "", hora: "", area_id: "", camiones: 1, tipo_carga_id: "", kg: "", bolsas: "", pallets: "", comentarios: "", departamento_id: "", clase_id: "", subsidiaria_id: "", cuenta_id: "", categoria_id: "" });
   const [carga, setCarga] = useState(vacioPunto);
   const [descarga, setDescarga] = useState(vacioPunto);
   const [paradas, setParadas] = useState([]);
@@ -55,7 +55,7 @@ function Formulario({ profile }) {
       if (!x.editable) setError(profile.rol === "solicitante" ? "Este pedido ya fue asignado a un transporte: los cambios pedíselos a Logística." : "El pedido está cancelado o finalizado.");
       setNumero(x.numero);
       setF({ fecha_carga: x.fecha_carga || "", hora: x.hora || "", area_id: x.area_id || "", camiones: 1, tipo_carga_id: x.tipo_carga_id || "", kg: x.kg ?? "", bolsas: x.bolsas ?? "", pallets: x.pallets ?? "", comentarios: x.comentarios || "",
-        departamento_id: x.departamento_id || "", clase_id: x.clase_id || "", subsidiaria_id: x.subsidiaria_id || "", cuenta_id: x.cuenta_id || "" });
+        departamento_id: x.departamento_id || "", clase_id: x.clase_id || "", subsidiaria_id: x.subsidiaria_id || "", cuenta_id: x.cuenta_id || "", categoria_id: x.categoria_id || "" });
       setCarga({ ref: refDe(x.carga_planta_id, x.carga_lugar_id), contacto: x.carga_contacto || "", telefono: x.carga_telefono || "" });
       setDescarga({ ref: refDe(x.descarga_planta_id, x.descarga_lugar_id), contacto: x.descarga_contacto || "", telefono: x.descarga_telefono || "" });
       setParadas((x.paradas_ids || []).map((p) => ({ ref: refDe(p.planta_id, p.lugar_id), contacto: p.contacto || "", telefono: p.telefono || "" })));
