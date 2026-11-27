@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { coordsDe, kmTramos, linkRecorrido, urlMaps } from "@/lib/rutas";
 import { urlBase, fmtFecha, fmtNum } from "@/lib/util";
-import { puntosDe, nombrePunto, lugarTexto, cargaTexto, horaTexto, textoInterno, descargarInternoPdf, tipoLugarLabel } from "@/lib/pedidosInternos";
+import { puntosDe, nombrePunto, lugarTexto, cargaTexto, horaTexto, textoInterno, descargarInternoPdf, tipoLugarLabel, detalleParada } from "@/lib/pedidosInternos";
 
 export default function RecorridoInterno({ pi, onCerrar }) {
   const pts = puntosDe(pi);
@@ -18,6 +18,7 @@ export default function RecorridoInterno({ pi, onCerrar }) {
     let vivo = true;
     (async () => {
       const cs = await Promise.all(pts.map((p) => (p.gps ? coordsDe(p.gps).catch(() => null) : null)));
+      if (pi.traspaso) { if (vivo) { setKm({ tramo: [], total: 0, estimado: false, faltan: 0, cargando: false }); setLink(""); } return; }
       const ok = []; const ref = [];
       cs.forEach((c, i) => { if (c) { ok.push(c); ref.push(i); } });
       const faltan = pts.length - ok.length;
@@ -54,9 +55,11 @@ export default function RecorridoInterno({ pi, onCerrar }) {
       <div className="rounded-md border border-stone-200 bg-white p-3 text-[13px] space-y-1">
         <div className="flex flex-wrap gap-x-5 gap-y-1">
           <span>Fecha de carga: <b>{fmtFecha(pi.fecha_carga)}{horaTexto(pi)}</b></span>
+          <span>Unidad: <b>{pi.tipo_unidad || "—"}</b></span>
           <span>Carga: <b>{cargaTexto(pi) || "—"}</b></span>
           <span>Kms: <b>{km.cargando ? "calculando…" : km.total != null ? `${fmtNum(Math.round(km.total))} km${km.estimado ? " (estimado)" : ""}` : "—"}</b></span>
         </div>
+        {pi.traspaso && <div className="text-[12.5px] text-stone-700"><b>Traspaso de stock</b>: carga y descarga en el mismo lugar.</div>}
         {linkFinal && <a href={linkFinal} target="_blank" rel="noreferrer" className="text-sky-700 underline break-all">Ver recorrido en Google Maps · {linkFinal.replace(/^https?:\/\//, "")}</a>}
         {km.faltan > 0 && !km.cargando && <div className="text-[12px] text-amber-700">{km.faltan} punto(s) sin ubicación de Maps: no entran en el cálculo.</div>}
         {km.estimado && <div className="text-[12px] text-amber-700">No respondió el servicio de rutas: es una estimación en línea recta + 30%.</div>}
@@ -70,7 +73,7 @@ export default function RecorridoInterno({ pi, onCerrar }) {
               <div className="flex items-start gap-2">
                 <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ${az ? "bg-sky-700" : ve ? "bg-emerald-700" : "bg-stone-500"}`}>{i + 1}</span>
                 <div className="flex-1 space-y-0.5">
-                  <div className="font-semibold"><span className={az ? "text-sky-800" : ve ? "text-emerald-800" : "text-stone-600"}>{p.paso}</span> · {nombrePunto(p)} <span className="font-normal text-[11.5px] text-stone-400">{tipoLugarLabel(p.tipo)}</span></div>
+                  <div className="font-semibold"><span className={az ? "text-sky-800" : ve ? "text-emerald-800" : "text-stone-600"}>{p.paso}</span> · {nombrePunto(p)} <span className="font-normal text-[11.5px] text-stone-400">{tipoLugarLabel(p.tipo)}</span>{detalleParada(p) && <span className="font-normal text-stone-700"> · {detalleParada(p)}</span>}</div>
                   {(p.domicilio || p.localidad) && <div className="text-stone-600">{[p.domicilio, lugarTexto(p)].filter(Boolean).join(" - ")}</div>}
                   {(p.contacto || p.telefono || p.horario) && <div className="text-stone-600">{[p.contacto && `Contacto: ${p.contacto}`, p.telefono, p.horario && `Horario: ${p.horario}`].filter(Boolean).join(" · ")}</div>}
                   {p.gps ? <a href={urlMaps(p.gps)} target="_blank" rel="noreferrer" className="text-[12px] text-sky-700 underline">Ubicación en Maps</a> : <div className="text-[12px] text-red-700">sin ubicación</div>}

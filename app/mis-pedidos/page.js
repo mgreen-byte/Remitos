@@ -6,7 +6,7 @@ import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import PedidoUnidad from "@/components/PedidoUnidad";
 import RecorridoInterno from "@/components/RecorridoInterno";
-import { nombrePunto, lugarTexto, cargaTexto, horaTexto } from "@/lib/pedidosInternos";
+import { nombrePunto, lugarTexto, cargaTexto, horaTexto, detalleParada } from "@/lib/pedidosInternos";
 import { supabase } from "@/lib/supabaseClient";
 import { fmtFecha, fmtNum, friendlyError, fmtDocChofer } from "@/lib/util";
 import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
@@ -186,7 +186,7 @@ function MisPedidos({ profile }) {
                   <span className="font-semibold text-[16px]">{o.numero}</span>
                   <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${etq[1]}`}>{etq[0]}</span>
                   {o.fecha_carga && <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(o.fecha_carga)}{pi ? horaTexto(pi) : ""}</b></span>}
-                  {!pi && <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>}
+                  <span className="text-[13px] text-stone-500">{o.tipo_unidad || "unidad a definir"}</span>
                   {pi && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-teal-100 text-teal-800">Movimiento interno</span>}
                   {o.modalidad === "traslado" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-violet-100 text-violet-800">Traslado</span>}
                   {(varios || eligeRS) && <span className="text-[12px] text-stone-600 bg-stone-100 rounded px-1.5 py-0.5">{p.estado === "aceptado" ? "Viaja con: " : ""}{x.transporte}</span>}
@@ -194,7 +194,7 @@ function MisPedidos({ profile }) {
                 {pi ? (
                   <>
                     <div className="text-[13.5px]"><span className="text-stone-500">Carga en:</span> {nombrePunto(pi.carga)} <span className="text-stone-500">({lugarTexto(pi.carga)})</span></div>
-                    {(pi.paradas || []).map((pa, i) => <div key={i} className="text-[13.5px]"><span className="text-stone-500">Parada {i + 1}:</span> {nombrePunto(pa)} <span className="text-stone-500">({lugarTexto(pa)})</span></div>)}
+                    {(pi.paradas || []).map((pa, i) => <div key={i} className="text-[13.5px]"><span className="text-stone-500">Parada {i + 1}{pa.accion ? ` (${pa.accion})` : ""}:</span> {nombrePunto(pa)} <span className="text-stone-500">({lugarTexto(pa)})</span>{detalleParada(pa) ? <span className="text-stone-600"> · {detalleParada(pa)}</span> : null}</div>)}
                     <div className="text-[13.5px]"><span className="text-stone-500">Descarga en:</span> {nombrePunto(pi.descarga)} <span className="text-stone-500">({lugarTexto(pi.descarga)})</span></div>
                     <div className="text-[13px] text-stone-700">{cargaTexto(pi) || "—"}</div>
                   </>

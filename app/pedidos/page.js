@@ -126,15 +126,35 @@ function Pedidos({ profile }) {
   const conSel = TABS_SEL.includes(tab);
   const alternar = (id) => setSel((x) => { const n = new Set(x); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const todosSel = visibles.length > 0 && visibles.every((x) => sel.has(x.id));
-  const confirmarSel = async (ids) => {
-    const { data, error } = await supabase.rpc("confirmar_pedidos_internos", { p_ids: ids });
+  const [cuentas, setCuentas] = useState([]);
+  const [cuentaLote, setCuentaLote] = useState("");
+  useEffect(() => { supabase.from("listas_contables").select("id, nombre").eq("lista", "cuenta").eq("activo", true).order("nombre").then(({ data }) => setCuentas(data || [])); }, []);
+  const [cuentaDe, setCuentaDe] = useState({}); // id interno -> cuenta elegida en la tarjeta
+  const fijarCuenta = async (pi, cuenta) => {
+    setCuentaDe((x) => ({ ...x, [pi.id]: cuenta }));
+    if (pi.estado === "pendiente") return; // se guarda al confirmar
+    const { error } = await supabase.rpc("fijar_cuenta_interno", { p_id: pi.id, p_cuenta: cuenta || null });
+    if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+    cargar();
+  };
+  const confirmarSel = async (ids, cuenta) => {
+    // Cuenta elegida en cada tarjeta (si cambió) y, para los que no tienen, la del lote
+    for (const id of ids) {
+      const pi = internos.find((y) => y.id === id);
+      const c = cuentaDe[id];
+      if (pi && c && c !== pi.cuenta_id) {
+        const { error } = await supabase.rpc("fijar_cuenta_interno", { p_id: id, p_cuenta: c });
+        if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
+      }
+    }
+    const { data, error } = await supabase.rpc("confirmar_pedidos_internos", { p_ids: ids, p_cuenta: cuenta || null });
     if (error) return setMsg({ tipo: "error", texto: friendlyError(error) });
     setMsg({ tipo: "ok", texto: `${data} pedido(s) confirmados: ya se pueden asignar (pestaña Sin asignar).` });
     setSel(new Set());
     cargar();
   };
   const desestimarSel = async () => {
-    if (tab === "por_confirmar") return confirmarSel(visibles.filter((x) => x.k === "i" && sel.has(x.id)).map((x) => x.id));
+    if (tab === "por_confirmar") return confirmarSel(visibles.filter((x) => x.k === "i" && sel.has(x.id)).map((x) => x.id), cuentaLote);
     const ids = visibles.filter((x) => x.k === "o" && sel.has(x.id)).map((x) => x.id);
     if (!ids.length) return setMsg({ tipo: "error", texto: "Desestimar es solo para órdenes de carga. Un pedido interno se cancela." });
     const volver = tab === "desestimado";
@@ -172,7 +192,8 @@ function Pedidos({ profile }) {
     const e = estadoInterno(pi);
     const [et, cls] = ESTADOS_PEDIDO[x.estado] || ["", ""];
     const hoy = hoyAR();
-    const contables = [pi.departamento, pi.clase, pi.subsidiaria, pi.cuenta].filter(Boolean);
+    const contables = [pi.departamento, pi.clase, pi.categoria, pi.subsidiaria].filter(Boolean);
+    const cuentaSel = cuentaDe[pi.id] ?? pi.cuenta_id ?? "";
     const fhs = (t) => (t ? new Date(t).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
     return (
       <div key={pi.id} className="panel p-3 md:p-4 space-y-2">
@@ -182,6 +203,8 @@ function Pedidos({ profile }) {
           <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${cls}`}>{e === "pendiente" ? "Por confirmar" : e === "cancelado" ? "Cancelado" : et}</span>
           <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-teal-100 text-teal-800">Interno · {pi.area || "sin área"}</span>
           {pi.grupo_total > 1 && <span className="text-[12px] text-stone-500">camión {pi.grupo_n} de {pi.grupo_total}</span>}
+          <span className="text-[12px] text-stone-600">{pi.tipo_unidad || "unidad a definir"}</span>
+          {pi.traspaso && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-stone-200 text-stone-700">Traspaso de stock</span>}
           <span className={`text-[12px] ${pi.fecha_carga < hoy && !["finalizado", "cancelado"].includes(e) ? "text-red-700 font-medium" : pi.fecha_carga === hoy ? "text-emerald-700 font-medium" : "text-stone-500"}`}>carga {pi.fecha_carga === hoy ? "HOY" : fmtFecha(pi.fecha_carga)}{horaTexto(pi)}</span>
           <span className="text-[12.5px] text-stone-700 md:ml-auto">{cargaTexto(pi)}</span>
         </div>
@@ -193,6 +216,13 @@ function Pedidos({ profile }) {
           <AsignacionPedido interno={pi} profile={profile} pedido={pi.pedido || null} transportes={transportes} cc={cc} onCambio={cargar} />
         )}
         <div className="flex flex-wrap items-center gap-1.5">
+          {e !== "cancelado" && (
+            <label className={`flex items-center gap-1 text-[12.5px] ${!cuentaSel ? "text-amber-800" : "text-stone-600"}`}>Cuenta:
+              <select value={cuentaSel} onChange={(ev) => fijarCuenta(pi, ev.target.value)} className={`border rounded-md px-1.5 py-1 text-[12.5px] bg-white ${!cuentaSel ? "border-amber-400" : "border-stone-300"}`}>
+                <option value="">{e === "pendiente" ? "elegir para confirmar…" : "—"}</option>{cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </label>
+          )}
           {e === "pendiente" && <button onClick={() => confirmarSel([pi.id])} className="text-[12.5px] px-2.5 py-1 rounded-md border bg-emerald-700 border-emerald-700 text-white">Confirmar</button>}
           {pi.editable && <a href={`/pedido-interno?id=${pi.id}`} className="text-[12.5px] px-2.5 py-1 rounded-md border bg-white border-stone-300 text-stone-700">Modificar</a>}
           {pi.editable && <button onClick={() => setCancelarPi({ id: pi.id, motivo: "" })} className="text-[12.5px] px-2.5 py-1 rounded-md border bg-white border-stone-300 text-red-700">Cancelar pedido</button>}
@@ -251,6 +281,13 @@ function Pedidos({ profile }) {
           <div className="flex flex-wrap items-center gap-3 text-[13px] rounded-md border border-stone-200 bg-white px-3 py-2">
             <label className="flex items-center gap-2"><input type="checkbox" checked={todosSel} onChange={(e) => setSel(e.target.checked ? new Set(visibles.map((x) => x.id)) : new Set())} /> Seleccionar todas ({visibles.length})</label>
             <span className="text-stone-500">{sel.size} seleccionada(s)</span>
+            {tab === "por_confirmar" && (
+              <label className="flex items-center gap-1.5">Cuenta para los que no tienen:
+                <select value={cuentaLote} onChange={(e) => setCuentaLote(e.target.value)} className="border border-stone-300 rounded-md px-2 py-1 text-[13px] bg-white">
+                  <option value="">—</option>{cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </label>
+            )}
             <button disabled={!sel.size} onClick={desestimarSel} className="ml-auto px-3 py-1.5 rounded-md border border-stone-400 bg-stone-700 text-white disabled:opacity-40">
               {tab === "desestimado" ? "Volver a pendientes" : tab === "por_confirmar" ? "Confirmar seleccionados" : "Desestimar seleccionadas"}
             </button>

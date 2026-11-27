@@ -8,6 +8,7 @@ import BuscadorSelect from "@/components/BuscadorSelect";
 import { supabase } from "@/lib/supabaseClient";
 import { friendlyError, hoyISO, PROVINCIAS } from "@/lib/util";
 import { TIPOS_LUGAR, LISTAS_CONTABLES, tipoLugarLabel } from "@/lib/pedidosInternos";
+import { TIPOS_UNIDAD } from "@/lib/pedidoUnidad";
 
 export default function PedidoInternoPage() {
   return <AuthGuard roles={["solicitante", "admin", "logistica"]}>{(profile) => <Formulario profile={profile} />}</AuthGuard>;
@@ -15,7 +16,10 @@ export default function PedidoInternoPage() {
 
 const inp = "w-full border border-stone-300 rounded-md px-3 py-2 text-[15px] sm:text-sm bg-white";
 const lab = "block text-[12px] font-medium text-stone-600 mb-1";
-const vacioPunto = { ref: "", contacto: "", telefono: "" };
+const vacioPunto = { ref: "", contacto: "", telefono: "", tipo: "descarga", bolsas: "", kilos: "" };
+// Números escritos en formato argentino (1.500,5) → texto que entiende la base (1500.5)
+const numAR = (x) => { const t = String(x ?? "").trim(); if (!t) return ""; const v = Number(t.replace(/\./g, "").replace(",", ".")); return Number.isFinite(v) ? String(v) : ""; };
+const fmtAR = (v) => (v === null || v === undefined || v === "" ? "" : String(v).replace(".", ","));
 const refDe = (planta, lugar) => (planta ? `p:${planta}` : lugar ? `l:${lugar}` : "");
 
 function Formulario({ profile }) {
@@ -27,7 +31,7 @@ function Formulario({ profile }) {
   const [areas, setAreas] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [listas, setListas] = useState([]);
-  const [f, setF] = useState({ fecha_carga: "", hora: "", area_id: "", camiones: 1, tipo_carga_id: "", kg: "", bolsas: "", pallets: "", comentarios: "", departamento_id: "", clase_id: "", subsidiaria_id: "", cuenta_id: "", categoria_id: "" });
+  const [f, setF] = useState({ fecha_carga: "", hora: "", area_id: "", camiones: 1, tipo_carga_id: "", kg: "", bolsas: "", pallets: "", comentarios: "", departamento_id: "", clase_id: "", subsidiaria_id: "", cuenta_id: "", categoria_id: "", tipo_unidad: "", traspaso: false });
   const [carga, setCarga] = useState(vacioPunto);
   const [descarga, setDescarga] = useState(vacioPunto);
   const [paradas, setParadas] = useState([]);
@@ -54,11 +58,11 @@ function Formulario({ profile }) {
       if (!x) return setError("No encontré el pedido.");
       if (!x.editable) setError(profile.rol === "solicitante" ? "Este pedido ya fue asignado a un transporte: los cambios pedíselos a Logística." : "El pedido está cancelado o finalizado.");
       setNumero(x.numero);
-      setF({ fecha_carga: x.fecha_carga || "", hora: x.hora || "", area_id: x.area_id || "", camiones: 1, tipo_carga_id: x.tipo_carga_id || "", kg: x.kg ?? "", bolsas: x.bolsas ?? "", pallets: x.pallets ?? "", comentarios: x.comentarios || "",
+      setF({ fecha_carga: x.fecha_carga || "", hora: x.hora || "", area_id: x.area_id || "", camiones: 1, tipo_carga_id: x.tipo_carga_id || "", kg: fmtAR(x.kg), bolsas: x.bolsas ?? "", pallets: x.pallets ?? "", tipo_unidad: x.tipo_unidad || "", traspaso: !!x.traspaso, comentarios: x.comentarios || "",
         departamento_id: x.departamento_id || "", clase_id: x.clase_id || "", subsidiaria_id: x.subsidiaria_id || "", cuenta_id: x.cuenta_id || "", categoria_id: x.categoria_id || "" });
       setCarga({ ref: refDe(x.carga_planta_id, x.carga_lugar_id), contacto: x.carga_contacto || "", telefono: x.carga_telefono || "" });
       setDescarga({ ref: refDe(x.descarga_planta_id, x.descarga_lugar_id), contacto: x.descarga_contacto || "", telefono: x.descarga_telefono || "" });
-      setParadas((x.paradas_ids || []).map((p) => ({ ref: refDe(p.planta_id, p.lugar_id), contacto: p.contacto || "", telefono: p.telefono || "" })));
+      setParadas((x.paradas_ids || []).map((p) => ({ ref: refDe(p.planta_id, p.lugar_id), contacto: p.contacto || "", telefono: p.telefono || "", tipo: p.tipo || "descarga", bolsas: p.bolsas ?? "", kilos: fmtAR(p.kilos) })));
     });
   }, [editId, profile.rol]);
 
@@ -90,12 +94,12 @@ function Formulario({ profile }) {
     setError("");
     const c = aIds(carga), d = aIds(descarga);
     const p = {
-      ...f, camiones: Number(f.camiones || 1),
+      ...f, camiones: Number(f.camiones || 1), kg: numAR(f.kg),
       carga_planta_id: c.planta_id, carga_lugar_id: c.lugar_id, carga_contacto: carga.contacto, carga_telefono: carga.telefono,
       descarga_planta_id: d.planta_id, descarga_lugar_id: d.lugar_id, descarga_contacto: descarga.contacto, descarga_telefono: descarga.telefono,
-      paradas: paradas.filter((x) => x.ref).map((x) => ({ ...aIds(x), contacto: x.contacto, telefono: x.telefono })),
+      paradas: paradas.filter((x) => x.ref).map((x) => ({ ...aIds(x), contacto: x.contacto, telefono: x.telefono, tipo: x.tipo, bolsas: x.bolsas, kilos: x.kilos })),
     };
-    if (!esLog) delete p.area_id;
+    if (!esLog) { delete p.area_id; delete p.cuenta_id; }
     setGuardando(true);
     const { data, error: e } = editId ? await supabase.rpc("editar_pedido_interno", { p_id: editId, p }) : await supabase.rpc("crear_pedido_interno", { p });
     setGuardando(false);
@@ -120,6 +124,15 @@ function Formulario({ profile }) {
             {d.domicilio && <div>{d.domicilio}</div>}
             {d.horario && <div>Horario: {d.horario}</div>}
             {!d.gps && <div className="text-amber-700">Este lugar no tiene ubicación de Maps (no entra en el cálculo de km).</div>}
+          </div>
+        )}
+        {typeof para === "number" && (
+          <div className="grid gap-2 grid-cols-3">
+            <div><label className={lab}>En esta parada</label>
+              <select value={pt.tipo || "descarga"} onChange={(e) => set({ ...pt, tipo: e.target.value })} className={inp}><option value="carga">Carga</option><option value="descarga">Descarga</option></select>
+            </div>
+            <div><label className={lab}>Bolsas</label><input inputMode="numeric" value={pt.bolsas} onChange={(e) => set({ ...pt, bolsas: e.target.value.replace(/\D/g, "") })} className={inp} /></div>
+            <div><label className={lab}>Kilos</label><input inputMode="decimal" value={pt.kilos} onChange={(e) => set({ ...pt, kilos: e.target.value.replace(/[^\d,]/g, "") })} className={inp} /></div>
           </div>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
@@ -158,6 +171,10 @@ function Formulario({ profile }) {
           {punto({ key: "c", titulo: "Carga *", pt: carga, set: setCarga, para: "carga" })}
           {paradas.map((p, i) => punto({ key: `p${i}`, titulo: `Parada intermedia ${i + 1}`, pt: p, set: (v) => setParadas(paradas.map((x, j) => (j === i ? v : x))), para: i, quitar: () => setParadas(paradas.filter((_, j) => j !== i)) }))}
           <button type="button" onClick={() => setParadas([...paradas, { ...vacioPunto }])} className="text-[13px] text-sky-700 underline">+ Agregar parada intermedia</button>
+          <label className="flex items-start gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-[13px]">
+            <input type="checkbox" checked={f.traspaso} onChange={(e) => { setF({ ...f, traspaso: e.target.checked }); if (e.target.checked && carga.ref) setDescarga({ ...descarga, ref: carga.ref }); }} className="mt-0.5" />
+            <span><b>Traspaso de stock</b>: carga y descarga en el mismo lugar (no se calculan km).</span>
+          </label>
           {punto({ key: "d", titulo: "Descarga *", pt: descarga, set: setDescarga, para: "descarga" })}
         </section>
 
@@ -190,8 +207,15 @@ function Formulario({ profile }) {
                 <option value="">Elegir…</option>{tipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
               </select>
             </div>
+            <div className="sm:col-span-2"><label className={lab}>Tipo de unidad *</label>
+              <select value={f.tipo_unidad} onChange={(e) => setF({ ...f, tipo_unidad: e.target.value })} className={inp}>
+                <option value="">Elegir…</option>
+                {f.tipo_unidad && !TIPOS_UNIDAD.includes(f.tipo_unidad) && <option value={f.tipo_unidad}>{f.tipo_unidad}</option>}
+                {TIPOS_UNIDAD.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
             {!editId && <div><label className={lab}>Cantidad de camiones</label><input type="number" min={1} max={30} value={f.camiones} onChange={(e) => setF({ ...f, camiones: e.target.value })} className={inp} /></div>}
-            <div><label className={lab}>Kg</label><input inputMode="decimal" value={f.kg} onChange={(e) => setF({ ...f, kg: e.target.value.replace(/[^\d.,]/g, "") })} className={inp} /></div>
+            <div><label className={lab}>Kg</label><input inputMode="decimal" value={f.kg} onChange={(e) => setF({ ...f, kg: e.target.value.replace(/[^\d,]/g, "") })} placeholder="Ej.: 28000" className={inp} /></div>
             <div><label className={lab}>Bolsas</label><input inputMode="numeric" value={f.bolsas} onChange={(e) => setF({ ...f, bolsas: e.target.value.replace(/\D/g, "") })} className={inp} /></div>
             <div><label className={lab}>Pallets</label><input inputMode="numeric" value={f.pallets} onChange={(e) => setF({ ...f, pallets: e.target.value.replace(/\D/g, "") })} className={inp} /></div>
             <div className="sm:col-span-3"><label className={lab}>Comentarios</label><textarea rows={2} value={f.comentarios} onChange={(e) => setF({ ...f, comentarios: e.target.value })} className={inp} /></div>
@@ -202,8 +226,8 @@ function Formulario({ profile }) {
         <section className="panel p-4 space-y-3">
           <div className="text-[13px] font-semibold text-stone-800">Datos contables</div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {LISTAS_CONTABLES.map((l) => (
-              <div key={l.value}><label className={lab}>{l.label}</label>
+            {LISTAS_CONTABLES.filter((l) => l.value !== "cuenta" || esLog).map((l) => (
+              <div key={l.value}><label className={lab}>{l.label}{l.value === "cuenta" ? " (Logística · obligatoria para confirmar)" : " *"}</label>
                 <select value={f[`${l.value}_id`]} onChange={(e) => setF({ ...f, [`${l.value}_id`]: e.target.value })} className={inp}>
                   <option value="">—</option>{lista(l.value).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
                 </select>
@@ -212,6 +236,7 @@ function Formulario({ profile }) {
           </div>
         </section>
 
+        <div className="text-[12px] text-stone-500">* Obligatorios. La hora es opcional.{esLog ? "" : " La cuenta contable la completa Logística."}</div>
         {error && <div className="text-sm rounded p-3 border bg-red-50 border-red-200 text-red-700">{error}</div>}
         <div className="flex gap-2">
           <button disabled={guardando} onClick={guardar} className="px-4 py-2.5 rounded-md bg-emerald-700 text-white text-[14px] font-medium disabled:opacity-60">{guardando ? "Guardando…" : editId ? "Guardar cambios" : "Enviar pedido"}</button>

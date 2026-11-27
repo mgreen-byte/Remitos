@@ -97,7 +97,7 @@ function Solicitudes({ profile }) {
                   <span className="text-[13px] text-stone-700">Carga: <b>{fmtFecha(x.fecha_carga)}{horaTexto(x)}</b></span>
                 </div>
                 <div className="text-[13.5px]"><b>{nombrePunto(x.carga)}</b> <span className="text-stone-500">({lugarTexto(x.carga)})</span>{(x.paradas || []).length > 0 && <span className="text-stone-500"> → {x.paradas.length} parada(s)</span>} <span className="text-stone-400">→</span> <b>{nombrePunto(x.descarga)}</b> <span className="text-stone-500">({lugarTexto(x.descarga)})</span></div>
-                <div className="text-[12.5px] text-stone-600">{cargaTexto(x)}{x.solicitante_nombre ? ` · pidió ${x.solicitante_nombre}` : ""}</div>
+                <div className="text-[12.5px] text-stone-600">{x.tipo_unidad ? `${x.tipo_unidad} · ` : ""}{x.traspaso ? "Traspaso de stock · " : ""}{cargaTexto(x)}{x.solicitante_nombre ? ` · pidió ${x.solicitante_nombre}` : ""}</div>
                 {(x.pedido_transporte || x.chasis) && e !== "cancelado" && (
                   <div className="text-[13px] text-emerald-800">Transporte: <b>{x.pedido_transporte || x.transporte}</b>{x.chasis ? ` · ${x.chofer?.nombre || "—"}${x.chofer?.dni ? ` (${fmtDocChofer(x.chofer.dni)})` : ""} · ${x.chasis}${x.acoplado ? " / " + x.acoplado : ""}` : " · unidad a confirmar"}</div>
                 )}
